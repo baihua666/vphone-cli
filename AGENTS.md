@@ -4,7 +4,7 @@ Virtual iPhone boot tool using Apple's Virtualization.framework with PCC researc
 
 ## Quick Reference
 
-- **Build:** `make build`
+- **Build + signed app + guest daemon:** `./scripts/build.sh` (canonical complete bundle)
 - **Boot (GUI):** `make boot`
 - **Boot (DFU):** `make boot_dfu`
 - **All targets:** `make help`
@@ -22,6 +22,8 @@ Virtual iPhone boot tool using Apple's Virtualization.framework with PCC researc
 For any changes applying new patches, also update research/0_binary_patch_comparison.md. Dont forget this.
 
 ## Local Skills
+
+- For project development, IPA installation/launch failures, upstream attribution, and debugging knowledge maintenance, read `skills/vphone-development/SKILL.md` first. Keep verified incidents in `research/debug_journal.md` and reusable procedures in that skill.
 
 - If working on kernel analysis, symbolication lookups, or kernel patch reasoning, read `skills/kernel-analysis-vphone600/SKILL.md` first.
 - Use this skill as the default procedure for `vphone600` kernel work.
@@ -166,7 +168,9 @@ research/                         # Detailed firmware/patch documentation
 
 ## Build & Sign
 
-The binary requires private entitlements for PV=3 virtualization. Always use `make build` — never `swift build` alone, as the unsigned binary will fail at runtime.
+The binary requires private entitlements for PV=3 virtualization. Use `./scripts/build.sh` for complete source builds and IPA validation; never run `swift build` output unsigned. `make build` only builds/signs the host, and the lean `make bundle` is not the canonical runtime resource layout.
+
+For reusable EXP creation/export commands, see `scripts/exp.sh --help` and `skills/vphone-development/SKILL.md`. EXP is a firmware variant selected during patch/install, not a Git branch.
 
 ## Design System
 

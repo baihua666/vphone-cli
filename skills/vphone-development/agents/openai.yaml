@@ -1,0 +1,4 @@
+interface:
+  display_name: "vphone 项目开发与排障"
+  short_description: "用于 vphone 项目开发、IPA 签名排障、上游归因与经验沉淀"
+  default_prompt: "使用 $vphone-development 核对上游来源和运行证据，完成最小修复、验证并更新项目经验。"

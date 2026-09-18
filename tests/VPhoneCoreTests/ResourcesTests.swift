@@ -3,6 +3,20 @@ import Foundation
 import Testing
 
 struct ResourcesTests {
+    @Test func signingCertificateIsFoundInFullBundleAndDevLayouts() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for relativePath in ["Contents/Resources/scripts/vphoned/signcert.p12", "scripts/vphoned/signcert.p12"] {
+            let certificate = root.appendingPathComponent(relativePath)
+            try FileManager.default.createDirectory(at: certificate.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("test certificate".utf8).write(to: certificate)
+        }
+        let bundled = VPhoneResources(base: root.appendingPathComponent("Contents/Resources"))
+        let development = VPhoneResources(base: root)
+        #expect(try Data(contentsOf: bundled.signcert) == Data("test certificate".utf8))
+        #expect(try Data(contentsOf: development.signcert) == Data("test certificate".utf8))
+    }
+
     @Test func bundledLayoutResolvesToContentsResources() {
         let exe = "/Applications/vphone-cli.app/Contents/MacOS/vphone-cli"
         let r = VPhoneResources.resolve(executablePath: exe)
