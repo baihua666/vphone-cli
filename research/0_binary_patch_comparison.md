@@ -1,5 +1,54 @@
 # Patch Comparison: Regular / Development / Jailbreak / Experimental
 
+**Subway compatibility control (2026-10-08):** fresh upstream 1.0.14 Regular launched Subway 3.69.2 but crashed with `EXC_GUARD / SET_EXCEPTION_BEHAVIOR` in `FIRCLSMachExceptionInit -> task_swap_exception_ports`. Re-generated default and `--force-exc-guard` Regular from original cloudOS 26.1 input using the unmodified release app. Deployed guest kernel payload exactly matches regenerated default; the opt-in payload differs by exactly 4 bytes from it. Preserve default VM, apply only that official delta to a stopped separate clone, preserve IMG4 manifest/container and verify hash after write. No new patch implementation. See [comparison record](subway_stock_comparison_20261008.md).
+
+**Regular control preparation (2026-10-08):** the verified, unmodified upstream 1.0.14 release prepared a new independent 26.1/23B85 VM with default Regular options (58 emitted records across 9 components; no EXP, Frida, or force-EXC_GUARD). DFU restore exited 0. CFW subsequently exited 0 and the VM reached Setup Assistant; system setup and IPA installation are complete; default Regular crashes with EXC_GUARD, and the official compatibility clone reaches the game age prompt; 3D corruption was subsequently reproduced in both the menu and actual gameplay on the official compatibility clone; this is not an application pass or an attribution result. No patch implementation was changed. See [comparison record](subway_stock_comparison_20261008.md).
+
+## Local opt-in MobileGestalt experiment (2026-09-23)
+
+The shared literal macros in `scripts/vphone_custom_features.h` gate this
+fork's **new** customization. Both `TB_VPHONE_CUSTOMIZATIONS` and
+`TB_VPHONE_HIDE_MOBILEGESTALT_VM` must be `1`; both ship as `0`. Existing
+upstream EXP patches and earlier local workflow changes are not reclassified
+as new custom code. Python reads this header at patch time; this is not a
+live guest switch. `scripts/build.sh` includes the header with runtime scripts.
+
+The experiment only makes `/usr/lib/libMobileGestalt.dylib` query the original
+`kern.hv_vmm_present` name. It requires the existing EXP kernel OID rename;
+on that kernel the query is expected to fail with ENOENT, leaving the known
+consumer's cached VM flag zero. The syscall does **not** successfully return
+zero, and the VM has not become physical hardware. Other dylib policy and
+kernel/DeviceTree patches remain unchanged. MobileGestalt also serves graphics
+consumers: boot/UI compatibility remains unverified, so this is OFF by default.
+
+Reveal/validation: scan both canonical and renamed cstrings, resolve the owning
+Mach-O install name, require supported page-hash coverage, change only byte 5
+for the identified MobileGestalt consumer, and reuse DSC page re-attestation.
+No per-build file offset or virtual address is used. Turning either macro OFF
+and re-running the patcher on the same offline chunks restores the existing
+EXP string and hashes. Editing a header or restarting a host does not undo an
+already deployed firmware patch: rollback must also restore/redeploy the
+affected guest cache from a verified backup, then reboot. Do not rely on the
+installer's cached Cryptex being recopied without checking deployed bytes.
+
+Checks: five automated tests cover all gate combinations, pristine/previously
+patched input, idempotence, dry-run in both directions, page hashes, exact
+rollback, malformed macros and unsupported cache refusal. On a disposable
+copy of the 26.1/23B85 IPSW's `dyld_shared_cache_arm64e.15`, defaults matched
+HEAD's patcher exactly. Enabled changed 33 bytes (one cstring byte plus its
+SHA-256 slot); OFF restored the full file SHA-256:
+`c285b7f828e2fc8915873e65bdb62b1d86f495337cf8ea335befeacde07bdefa`.
+Evidence: `.build/validation/custom-vm-features/roundtrip.json` and `roundtrip.log`.
+This is offline verification, not guest boot, application, Pangle, or physical
+device equivalence validation. No new default firmware patch count is added.
+
+Source use: edit the two literal macros, then preview with
+`.venv/bin/python scripts/patchers/cfw.py patch-hv-vmm-dsc <offline-chunks> --dry-run`.
+Remove `--dry-run` only for a backed-up offline target. For bundled use rebuild
+with `scripts/build.sh` and verify the bundled header; the old bundle has its
+own copy. The header is the sole configuration source; environment variables
+of the same names do not override it.
+
 > **EXP is a JB superset.** Everything in the baseline tables below that is `Y`
 > for JB is also `Y` for EXP. The columns are kept at three variants to avoid
 > noise — the only place EXP and JB diverge is the **Experimental additions**
@@ -42,6 +91,8 @@
 >   stop bailing on the camera permission check. The NeutrinoCore patch
 >   stops the viewfinder's CIImageProcessorKernel chain from asserting
 >   on a nil descriptor when ANE detection comes back NO on the VM.
+
+**Fresh-instance validation (2026-09-18):** `vm-fresh` was created from an empty disk and pristine 26.1/23B85 IPSWs, then patched with the existing EXP pipeline plus `--force-exc-guard`. The local pipeline reported 179 records across 9 components and DFU restore succeeded. No patch implementation was changed. CFW installation and first boot subsequently succeeded; JB setup completed and the existing Debug app installed. Setup Assistant and app launch completed after host storage cleanup. The app returned the same nonzero IDFA on repeated live reads, distinct from the shared IDFA in the original two-instance screenshot. Original VM disk metadata and readable identity hashes remained unchanged. This verifies different IDFAs after a clean restore, not network isolation or unlinkability. See `debug_journal.md` J-2026-09-18-10.
 
 ## Boot Chain Patches
 
@@ -119,6 +170,8 @@
 | 27    | `PACIBSP→RET`              | `_thread_guard_violation`        | Disable fatal EXC_GUARD (Mach port guard) delivery. Dev variant + iOS 18 bases always; regular/jb/exp otherwise opt-in via `--force-exc-guard` (see note below). | Y* | Y | Y* |
 
 † Always required on iOS 18 bases (18.6.2's runningboardd/SpringBoard trip `GUARD_TYPE_MACH_PORT` "flavor 10", crash-looping the UI — the VM won't boot without it there). On other bases this is opt-in, not always-on: some third-party apps shipping crash-reporting/RASP SDKs (Bugly, Crashlytics, KSCrash, ...) call `task_swap_exception_ports()`, which the research kernel can enforce as a fatal `GUARD_TYPE_MACH_PORT`/`KOBJECT_REPLY_PORT_SEMANTICS` violation (see [upstream issue #291](https://github.com/Lakr233/vphone-cli/issues/291), reproduced and confirmed via crash logs against a `kernelcache.research.vphone600 (26.1/23B85)` build) — but it's not required for the VM itself to boot on 26.x, so it stays opt-in rather than always-on for regular/jb/exp. `applyExcGuard` in `FirmwarePipeline`/`KernelPatcher` is `iosBaseIs18 || forceExcGuard`; pass `--force-exc-guard` to `patch-firmware` (or `FORCE_EXC_GUARD=1` to the relevant `make fw_patch*` target) to enable it on a base that needs it. `iosBaseIs18` (from `iPhone-BuildManifest.plist`'s `ProductVersion`) also still gates the unrelated 18.x skywalk-netagent boot-arg workaround.
+
+**Local validation (2026-09-18, Orblino/Pangle):** an existing 26.1/23B85 EXP guest still had the original `PACIBSP` at `thread_guard_violation` and crashed in `HMDPAGCrashDetect_mach_start -> task_swap_exception_ports` with `SET_EXCEPTION_BEHAVIOR`. Official `1.0.14` `patch-firmware --variant exp --force-exc-guard` on pristine cloudOS inputs emitted `kernel.thread_guard_violation`. For this existing guest, the record was applied alone to the backed-up Preboot IMG4 after checking the original instruction and matching the following 124 bytes against the official output; the complete IMG4 changed by exactly four bytes and retained its manifest/properties. No new patch logic or patch count was added. See `debug_journal.md` for runtime verification and the distinction between this compatibility setting and advertisement loading errors.
 
 ### JB-Only Kernel Methods (Reference List)
 
@@ -929,3 +982,7 @@ cache rebuild.
     rows (chained auth-rebase `sy_call` into __TEXT_EXEC + sane
     `sy_return_type/sy_narg/sy_arg_bytes`). Base @ foff `0x7693B0` (558 rows);
     `sysent[439]` (`SYS_kas_info`) @ foff `0x76BCD8`; cave + 3 entry writes emit.
+
+### 2026-09-22：损坏 vm-fresh 经授权全新重建
+
+复用本地 iPhone17,3 26.1/23B85 与 cloudOS 26.1/23B85 原始 IPSW，现有 1.0.14 基线工具执行 `fw patch --variant exp --force-exc-guard`。9 个组件全部成功，本次运行报告 179 处实际修改；此为特定固件运行计数，不替换上文逻辑补丁分类。未修改补丁算法。恢复与首启验收见 debug_journal.md 的本次重建记录。

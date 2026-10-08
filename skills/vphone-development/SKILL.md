@@ -1,6 +1,6 @@
 ---
 name: vphone-development
-description: Use when developing or debugging this vphone-cli repository, especially IPA installation or launch failures, resource packaging, upstream-versus-local regressions, or maintenance of the project's debugging knowledge.
+description: Use when developing or debugging this vphone-cli repository, preparing EXP firmware and VM archives, managing VM storage and temporary artifacts, enabling official compatibility patches, or diagnosing IPA installation and launch failures against upstream behavior.
 ---
 
 # vphone 项目开发与排障
@@ -14,6 +14,19 @@ description: Use when developing or debugging this vphone-cli repository, especi
 - 存在 `.codegraph/` 时先用 CodeGraph 定位符号、调用路径，再补充定向文件检索；不要自动重建索引。
 - 涉及 vphone600 内核分析时转读 [kernel-analysis-vphone600](../kernel-analysis-vphone600/SKILL.md)，并遵守项目内核 patch guardrails。新增二进制补丁需同步 `research/0_binary_patch_comparison.md`；普通安装器修改不增加固件补丁计数。
 - 不创建、读取或更新项目 `TODO.md`。本轮计划和进度用对话记录，需要留存的结论写入研究日志。
+
+## VM 存储与临时产物
+
+- APFS 克隆真实已恢复镜像时，先核对运行版本的 clone 语义。本地旧实现删除 NVRAM，不应直接用于已有可启动镜像；官方 2026-10-06 `--new-identity` 仅清空配置 ECID/MAC 及冲突网络参数，保留同一停止时刻的 Disk.img、NVRAM、SEPStorage。本机真实 iOS 克隆验证见 [报告](../../research/apfs_clone_validation_20261008.md)。新的 ECID 不代表新 IDFA、独立 SEP 根密钥或全新 App 数据。
+- 验证克隆占用应比较停机后 `F_LOG2PHYS_EXT` 的物理区间并集；`du` 会重复计算共享块。正常停止应使用 vphone Quit 或先确认实际宿主 PID 的信号入口；lsof 的磁盘持有者可能是 Virtualization XPC，直接向其发信号会造成异常停机。自动化截图复用完整 JSON 响应读取，不能只 recv 一小段就关闭连接。
+- 用户要求两个独立身份实例时，先根据创建记录与实际 IDFA 验证结果确定目录映射，不按 `vm2` 名称或不同 ECID 推断广告身份独立。当前历史记录中 `vm` 与旧 `vm2` 的 IDFA 相同，真正全新恢复且验证不同的是 `vm-fresh`；后者于 2026-09-22 经用户授权清空重建，已进入新机设置；本次重建后的 IDFA 尚待完成设置后重新验收。2026-10-08 用户要求只保留官方/定制两个实例，现 `start.sh` 映射为 `1/official=~/.vphone/VMs/stock-regular-guard-20261008`（官方 1.0.14 Regular + 官方 force-exc-guard）和 `2/custom=vm-fresh`（本地构建/历史 EXP）；旧 vm 及临时测试实例已按授权删除。官方 app 保存在 `~/.vphone/runtimes/upstream-1.0.14/`，不随本地 build 替换。此映射不切换 Git 分支，也不自动把新源码补丁部署到已有固件。不能将旧克隆当作已验证独立实例，也不能通过删除 NVRAM、改 ECID 或伪造 IDFA 代替全新系统数据初始化与验收。
+- 启动在输出设备身份后报 `NSPOSIXErrorDomain Code=13` 时，先检查实际配置对应的 NVRAM、磁盘和 SEP 文件是否可读写。曾出现 `vm2/nvram.bin` 为 `root:staff 600`；以管理员认证仅修正该文件属主，随后继续用普通用户启动。不要用 `sudo ./start.sh`、递归放宽权限或重建 NVRAM 代替修复，否则可能继续产生 root 文件或丢失实例状态。
+- 新建、克隆、导入 VM 或生成大体积备份、归档前，先检查目标位置。优先使用仓库外的既有 VM 库（默认 `~/.vphone/VMs`），不要仅为整理而搬动用户现有实例。必须放在仓库内时，在写入大文件之前用 `git check-ignore -v -- <目标目录>/Disk.img` 验证真实目标被忽略；已有文件再用 `git ls-files -- <目标目录>` 排查是否已被跟踪。`/vm`、`/vm-*/` 不覆盖 `vm2` 或任意新名字，不能凭命名猜测。
+- 本机专用目录优先在 `git rev-parse --git-path info/exclude` 返回的文件中追加精确目录规则，保留原内容；需团队共享时才修改 `.gitignore`。忽略规则不影响已跟踪文件，也不能阻止显式强制添加；不要自动移除已有索引或历史。VM 磁盘、SEP/NVRAM 和固件中间产物不应进入代码提交或自动工作区快照。[Git 官方忽略规则](https://github.com/git/git/blob/master/Documentation/gitignore.adoc)
+- 大体积操作前用 `df -h` 检查目标卷剩余空间，用 `du` 检查 VM、固件缓存和 Git 对象目录；根据下载、解包、恢复及导出的同时占用预留空间。稀疏磁盘的逻辑容量不等于已分配空间，APFS 克隆可能共享块，不能把多个目录的 `du` 简单相加当作可回收量。空间不足时先解决占用，不连续重试恢复、导出或打包。
+- 复用已有固件缓存和已验证实例；仅在任务需要独立环境时新建 VM。临时解包、构建和诊断输出放在已忽略的任务目录，结束时清理本次可重建且未被使用的中间文件；需要保留的证据记录用途及位置。不要反复生成整机副本或归档作为默认排障步骤，也不要把旧 VM、备份或损坏镜像当作普通临时文件删除；遵循用户已明确的保留和清理范围。
+- 若空间异常增长，检查 Git 对象目录的 `pack/tmp_pack_*` 及其占用进程。用 `lsof`、PID/父进程和命令确认是否为本仓库虚拟磁盘的后台 `git add`/打包；只停止已确认需要中止的相关操作，不批量杀 Git 或 VM。先修正忽略范围并确认写入已停止，再逐个检查遗留临时包是否无进程占用；仅清理确认遗弃的 `tmp_pack_*`，不删除正式 `.pack/.idx/.rev`，不以 `git gc --prune=now` 或清空 `.git/objects` 代替核查。
+- 清理后复查 `df -h`、Git 对象目录占用、`git status --short` 和 `git fsck --connectivity-only --no-dangling`，确认忽略规则生效。分别报告实际回收空间和保留的实例；Git 连通性通过不等于 guest 文件系统或 VM 启动通过。已验证事件见调试日志 J-2026-09-19-12。
 
 ## 修改前：核对来源与边界
 
@@ -57,7 +70,16 @@ description: Use when developing or debugging this vphone-cli repository, especi
 - 恢复证书可能同时改变 CMS 和权限保留。若未做分别控制实验，只能声称“恢复证书输入解决该安装路径”，不能声称独立证明其中某一因素充分必要。
 - 2026-09-18 的 J-03 验证补齐证书恢复两款 IPA；J-05 进一步回退三处生产修改、完整源码构建、重编译 Orblino Weave 并验证 guest 重启后启动及游戏连线。因此该工作流无需这三处修改；不推广为所有 IPA 或干净 EXP 固件均已验证。
 
+## SDK 初始化后的 EXC_GUARD
+
+- 已有应用 PID 后在 `task_swap_exception_ports` / 崩溃采集 SDK 初始化中出现 `GUARD_TYPE_MACH_PORT / SET_EXCEPTION_BEHAVIOR`，先检查官方 `--force-exc-guard` 选项和实际启动内核，不重复诊断为安装证书遗漏，也不归因于广告反作弊。
+- 26.x EXP 默认不启用此项；官方 `fw patch <name> --variant exp --force-exc-guard` 后需部署到实际启动固件，单纯重编译 host 或传 `vm launch --variant exp` 不会替换已安装内核。该选项会关闭 guard violation 递送，限定用于明确需要的研究 VM，不能默认加到所有 EXP 创建流程。
+- 固件流水线使用原始 IPSW 输入；对已经打过补丁的目录重复执行可能因原始指令不再存在而失败。既有 VM 上的离线单项部署属于维护操作：先停止 VM、备份磁盘/NVRAM/SEP 与原 IMG4，使用官方动态生成的记录，核对原指令与目标函数、保留容器属性和 manifest，验证精确 diff 后再部署。不得从日志硬编码地址，不未经对比整体覆盖历史固件。
+- 验收必须再次触发原 SDK 初始化，确认应用持续运行并获得回调；`20001/no_fill` 只证明请求链路到达业务结果，不等于广告展示成功。第一次 `40060` 后续未复现，也不足以证明其根因已解决。
+
 ## 验证和交付
+
+宿主/客体版本、Ping 往返和部署哈希验收见 [运行版本诊断](references/runtime-diagnostics.md)。Guest Version 返回构建标识，不是文件哈希；仅改变 Git 标识时，现有 daemon Makefile 不会自动重编译，需要先对 `scripts/vphoned` 执行局部 clean，再完整构建。
 
 按改动选择必要检查，不因文档修改重复跑固件全量测试：
 
@@ -77,13 +99,17 @@ description: Use when developing or debugging this vphone-cli repository, especi
 
 ## 持续沉淀
 
+测试设备上的广告自动请求及后台时间核对，使用 [广告测试取证流程](references/ad-test-trace.md) 和快捷入口 `scripts/ad_test_trace.sh`（底层 `ad_test_trace.py`）。先确认测试设备登记及当前模式；使用新截图识别测试面板按钮，不缓存滚动前坐标。分别记录 UI 操作、SDK 请求开始和回调，按报表时区及延迟核对；没有请求 ID 或测试流量统计依据，不声称与后台逐笔匹配。
+
 每次有新的可复现发现，在 `research/debug_journal.md` 顶部追加事件：环境/版本、症状、证据、来源归属、假设及反证、修复、验证、遗留项。纠正被推翻的旧条目并标注 superseded，避免摘要继续传播旧结论；引用日志片段和版本，不能只留会过期的 `/tmp` 路径。
 
 仅把会改变下一次决策的稳定方法提炼到本 skill：复现条件、有效判断、失效边界、验证命令。现场 PID、UDID、临时路径及单次操作留在日志；同一事实保持一个主记录位置。新增规则应来自真实故障或反例，删掉过时条目，不扩大成泛化平台或自动后台任务。
 
 ## EXP 源码构建与可复用归档
 
-- 长期基线：官方 `1.0.14` / `9c23c8a`，自有 `tb_dev` 维护定制；更新时重新核对上游，不把本地 HEAD 当官方。EXP 在同一源码内，通过固件参数选择，无需切换所谓 EXP 分支。
+- 人工制作镜像、启用官方兼容补丁或重新部署固件时，先读 [EXP 镜像制作流程](references/exp-image-workflow.md)。快捷入口为 `scripts/exp.sh prepare NAME --force-exc-guard`；支持 `--dry-run`，只准备新 VM 的固件，后续恢复、CFW 安装、首启和导出分步进行。
+- 官方 1.0.14 的 `vm create` 不提供 `--force-exc-guard`，内部固定关闭。不要向原 `create` 入口透传此参数或假定环境变量生效；需要该选项时使用上述分步流程，不修改 Swift 创建器只为传参。
+- 长期基线：官方 `1.0.14` / `9c23c8a`，自有 `codex/business-vm` 维护定制（原 `tb_dev` 保留历史指针；见 research/branch_workflow.md）；更新时重新核对上游，不把本地 HEAD 当官方。EXP 在同一源码内，通过固件参数选择，无需切换所谓 EXP 分支。
 - 使用项目根目录的 [scripts/exp.sh](../../scripts/exp.sh)：薄封装官方 `build.sh`、`vm create --variant exp`、`vm export`；不复制固件补丁逻辑。
 
 ```sh

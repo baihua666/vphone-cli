@@ -50,7 +50,8 @@ from .cfw_patch_hv_vmm import (
     MANGLED_BYTE,
 )
 from .cfw_dsc_chunks import DSCChunks
-from .cfw_dsc_codesign import reattest_modified_pages
+from .cfw_dsc_codesign import _read_chunk_cd_blob, reattest_modified_pages
+from .custom_features import hide_mobilegestalt_vm
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ DONT_PATCH_INSTALL_NAMES = (
     "/System/Library/PrivateFrameworks/WatchdogServiceManagement.framework/WatchdogServiceManagement",
 )
 _DONT_PATCH_SET: frozenset[str] = frozenset(DONT_PATCH_INSTALL_NAMES)
+_MOBILEGESTALT = "/usr/lib/libMobileGestalt.dylib"
 
 
 def _classify(chunks, string_vma):
@@ -120,8 +122,11 @@ def patch_hv_vmm_in_dsc(chunks_dir, *, dry_run=False):
 
     Returns {install_name: count_of_cstring_sites_mangled}.
     """
+    # New customization is opt-in; OFF reuses the original EXP mangle below.
+    hide_mg = hide_mobilegestalt_vm()
     chunks = DSCChunks(chunks_dir)
     print(f"  [.] {chunks!r}")
+    print(f"  [.] TB_VPHONE_HIDE_MOBILEGESTALT_VM effective={int(hide_mg)}")
 
     print(f"  [.] locating cstring \"kern.hv_vmm_present\\0\"...")
     string_vmas = chunks.find_string_vmas(NEEDLE)
@@ -129,6 +134,21 @@ def patch_hv_vmm_in_dsc(chunks_dir, *, dry_run=False):
     # need their 16 KiB pages added to the re-attestation set so a
     # re-run on a previously-patched DSC keeps slot hashes in sync.
     already_mangled_vmas = chunks.find_string_vmas(MANGLED_NEEDLE)
+    if hide_mg:
+        # Refuse unsupported caches BEFORE any writes, including baseline ones.
+        targets = [v for v in string_vmas + already_mangled_vmas
+                   if _classify(chunks, v) == _MOBILEGESTALT]
+        if not targets:
+            raise ValueError("No MobileGestalt VM string found; experiment unsupported")
+        for vma in targets:
+            cp, offset = chunks.find_chunk_for_vma(vma + MANGLE_OFFSET)
+            meta = _read_chunk_cd_blob(cp)
+            if not meta:
+                raise ValueError("MobileGestalt page has no supported CodeDirectory")
+            page = offset // meta["page_size"]
+            if (page >= meta["n_code_slots"]
+                    or (page + 1) * meta["page_size"] > meta["code_limit"]):
+                raise ValueError("MobileGestalt page is outside signed code coverage")
     if not string_vmas and not already_mangled_vmas:
         print(f"  [-] cstring not present in any executable mapping; "
               f"nothing to do (either patched already or absent)")
@@ -166,11 +186,13 @@ def patch_hv_vmm_in_dsc(chunks_dir, *, dry_run=False):
             results[label] = results.get(label, 0)
             continue
 
-        if install_name in _DONT_PATCH_SET:
+        if install_name in _DONT_PATCH_SET or (hide_mg and install_name == _MOBILEGESTALT):
             print(f"      [.] SKIP (blacklisted — stays unpatched, "
                   f"will hit ENOENT): {install_name}  string@0x{vma:X}")
             skipped_in_blacklist += 1
             results[label] = results.get(label, 0)
+            if hide_mg and install_name == _MOBILEGESTALT:
+                modified_vmas.append(vma)
             continue
 
         # Sanity: the byte at vma must currently look like the pristine cstring.
@@ -220,6 +242,21 @@ def patch_hv_vmm_in_dsc(chunks_dir, *, dry_run=False):
             install_name = None
         if install_name is None:
             continue
+        if hide_mg and install_name == _MOBILEGESTALT:
+            # An existing EXP cache already uses the renamed OID. Undo only
+            # this consumer's string; never alter the kernel/graphics drivers.
+            current = chunks.read_at_vma(vma, len(MANGLED_NEEDLE))
+            if current != MANGLED_NEEDLE:
+                raise ValueError(f"MobileGestalt string changed at 0x{vma:X}; refusing")
+            if not dry_run:
+                chunks.write_at_vma(vma + MANGLE_OFFSET, ORIGINAL_BYTE)
+            action = "would restore" if dry_run else "restored"
+            print(f"      [+] {action} {install_name} string@0x{vma:X} "
+                  "to kern.hv_vmm_present (requires EXP kernel rename)")
+            results[install_name] = results.get(install_name, 0) + 1
+            patched_total += 1
+            modified_vmas.append(vma)
+            continue
         if install_name in _DONT_PATCH_SET:
             # This dylib is supposed to be unpatched but appears mangled.
             # Most likely the operator mangled and then re-added it to
@@ -259,7 +296,7 @@ def patch_hv_vmm_in_dsc(chunks_dir, *, dry_run=False):
               f"modified page(s)")
         reattest_modified_pages(chunks, modified_vmas, dry_run=True)
 
-    print(f"  [+] DSC patch complete: {patched_total} cstring(s) mangled, "
+    print(f"  [+] DSC patch complete: {patched_total} cstring(s) changed, "
           f"{skipped_in_blacklist} in-blacklist (left unpatched), "
           f"{skipped_unclassified} unclassified, "
           f"{refused} refused/error")
