@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Launch the official baseline or the local customized VM without rebuilding.
+# Launch pinned legacy 1.0.14 runtimes only; never auto-upgrade existing guests.
 set -euo pipefail
 
 ROOT="${0:A:h}"
@@ -23,13 +23,13 @@ case "${1:-official}" in
   -h|--help)
     print -- '用法：./start.sh [official|custom|1|2]（默认 official）'
     print -- '1/official：官方 1.0.14 Regular + 官方 force-exc-guard'
-    print -- '2/custom：本地构建 + 现有 vm-fresh EXP；不会自动重刷固件'
+    print -- '2/custom：同步前保留的旧版本地构建 + vm-fresh EXP（不是当前源码构建）'
     exit 0
     ;;
   *) print -u2 -- '请选择 official/1 或 custom/2'; exit 2 ;;
 esac
 
-[[ -x "$CLI" ]] || { print -u2 -- "运行程序不存在：$CLI；official 请恢复已校验官方发布包，custom 请运行 ./scripts/build.sh"; exit 1; }
+[[ -x "$CLI" ]] || { print -u2 -- "运行程序不存在：$CLI；official 请恢复已校验官方发布包，custom 需恢复同步前的 1.0.14 运行产物；新版部署请参见 Research/branch_workflow.md"; exit 1; }
 [[ -f "$LIBRARY/$VM_NAME/config.plist" ]] || { print -u2 -- "实例不存在：$VM_NAME"; exit 1; }
 for file in Disk.img nvram.bin SEPStorage; do
   if [[ ! -r "$LIBRARY/$VM_NAME/$file" || ! -w "$LIBRARY/$VM_NAME/$file" ]]; then
@@ -43,5 +43,6 @@ if /usr/sbin/lsof -t -- "$LIBRARY/$VM_NAME/Disk.img" >/dev/null 2>&1; then
   exit 1
 fi
 
+print -- "注意：此入口固定使用旧版运行产物，不代表已部署新版源码。"
 print -- "启动 ${1:-official}：$VM_NAME（$VARIANT）"
 exec "$CLI" vm launch "$VM_NAME" --library-root "$LIBRARY" --variant "$VARIANT"

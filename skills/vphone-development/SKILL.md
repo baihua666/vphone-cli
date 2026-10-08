@@ -5,19 +5,30 @@ description: Use when developing or debugging this vphone-cli repository, prepar
 
 # vphone 项目开发与排障
 
+## 当前基线（2026-10-08 同步后，优先于下面的历史流程）
+
+- 官方源码基线为 `dfcfae9c608c432a9a63f846d5cda8272fde0b82`；`main` 跟踪 `upstream/main`，业务分支为 `codex/business-vm`。同步前完整代码保留在 `codex/pre-upstream-sync-20261008`（`d23154b`）。
+- 当前架构、构建和测试入口以根目录 `AGENTS.md` 为准：Xcode workspace 的 `VPhone` scheme 生成 `VPhone.bundle`。旧 `scripts/build.sh`、根目录 SwiftPM、Python 固件流水线及 `--variant exp` 已不适用；下面涉及这些内容的步骤仅供 1.0.14 历史排障。
+- 新固件按官方 patch sets/presets 选择；不得把旧 EXP 自动映射到某个新 preset。旧 MobileGestalt 可选定制尚未移植，新固件不包含该本地开关。
+- 本次仅同步源码，没有重刷或迁移 VM。`start.sh` 明确使用原有 1.0.14 运行产物，不能作为新版自动化验收；旧 `scripts/exp.sh` 仅提示迁移并拒绝执行。
+- 研究文档位于 `Research/`，调试记录为 `Research/debug_journal.md`。本次迁移与验收范围见 `Research/branch_workflow.md`。
+- 保留的 Python 取证工具是宿主研究工具，不进入 VPhone.bundle；产品使用上游原生实现。不要恢复已删除的 Python 补丁/安装器或使用旧资源路径测试新版。
+
+## 以下为 1.0.14 历史排障与验证记录
+
 目标：先核对代码来源和实际运行链路，交付最小可验证修复；把可复用的方法沉淀在这里，把每次事件的证据放在研究日志中。始终用中文沟通，先给出简短计划。
 
 ## 项目入口
 
 - 项目根目录以本 skill 的 `../..` 为准，不依赖用户当前目录。
-- 先读项目 `AGENTS.md` 与 [调试日志](../../research/debug_journal.md) 中相关事件。旧日志是线索，需区分已观察事实、假设、已验证结论和已被推翻的判断。
+- 先读项目 `AGENTS.md` 与 [调试日志](../../Research/debug_journal.md) 中相关事件。旧日志是线索，需区分已观察事实、假设、已验证结论和已被推翻的判断。
 - 存在 `.codegraph/` 时先用 CodeGraph 定位符号、调用路径，再补充定向文件检索；不要自动重建索引。
 - 涉及 vphone600 内核分析时转读 [kernel-analysis-vphone600](../kernel-analysis-vphone600/SKILL.md)，并遵守项目内核 patch guardrails。新增二进制补丁需同步 `research/0_binary_patch_comparison.md`；普通安装器修改不增加固件补丁计数。
 - 不创建、读取或更新项目 `TODO.md`。本轮计划和进度用对话记录，需要留存的结论写入研究日志。
 
 ## VM 存储与临时产物
 
-- APFS 克隆真实已恢复镜像时，先核对运行版本的 clone 语义。本地旧实现删除 NVRAM，不应直接用于已有可启动镜像；官方 2026-10-06 `--new-identity` 仅清空配置 ECID/MAC 及冲突网络参数，保留同一停止时刻的 Disk.img、NVRAM、SEPStorage。本机真实 iOS 克隆验证见 [报告](../../research/apfs_clone_validation_20261008.md)。新的 ECID 不代表新 IDFA、独立 SEP 根密钥或全新 App 数据。
+- APFS 克隆真实已恢复镜像时，先核对运行版本的 clone 语义。本地旧实现删除 NVRAM，不应直接用于已有可启动镜像；官方 2026-10-06 `--new-identity` 仅清空配置 ECID/MAC 及冲突网络参数，保留同一停止时刻的 Disk.img、NVRAM、SEPStorage。本机真实 iOS 克隆验证见 [报告](../../Research/apfs_clone_validation_20261008.md)。新的 ECID 不代表新 IDFA、独立 SEP 根密钥或全新 App 数据。
 - 验证克隆占用应比较停机后 `F_LOG2PHYS_EXT` 的物理区间并集；`du` 会重复计算共享块。正常停止应使用 vphone Quit 或先确认实际宿主 PID 的信号入口；lsof 的磁盘持有者可能是 Virtualization XPC，直接向其发信号会造成异常停机。自动化截图复用完整 JSON 响应读取，不能只 recv 一小段就关闭连接。
 - 用户要求两个独立身份实例时，先根据创建记录与实际 IDFA 验证结果确定目录映射，不按 `vm2` 名称或不同 ECID 推断广告身份独立。当前历史记录中 `vm` 与旧 `vm2` 的 IDFA 相同，真正全新恢复且验证不同的是 `vm-fresh`；后者于 2026-09-22 经用户授权清空重建，已进入新机设置；本次重建后的 IDFA 尚待完成设置后重新验收。2026-10-08 用户要求只保留官方/定制两个实例，现 `start.sh` 映射为 `1/official=~/.vphone/VMs/stock-regular-guard-20261008`（官方 1.0.14 Regular + 官方 force-exc-guard）和 `2/custom=vm-fresh`（本地构建/历史 EXP）；旧 vm 及临时测试实例已按授权删除。官方 app 保存在 `~/.vphone/runtimes/upstream-1.0.14/`，不随本地 build 替换。此映射不切换 Git 分支，也不自动把新源码补丁部署到已有固件。不能将旧克隆当作已验证独立实例，也不能通过删除 NVRAM、改 ECID 或伪造 IDFA 代替全新系统数据初始化与验收。
 - 启动在输出设备身份后报 `NSPOSIXErrorDomain Code=13` 时，先检查实际配置对应的 NVRAM、磁盘和 SEP 文件是否可读写。曾出现 `vm2/nvram.bin` 为 `root:staff 600`；以管理员认证仅修正该文件属主，随后继续用普通用户启动。不要用 `sudo ./start.sh`、递归放宽权限或重建 NVRAM 代替修复，否则可能继续产生 root 文件或丢失实例状态。
