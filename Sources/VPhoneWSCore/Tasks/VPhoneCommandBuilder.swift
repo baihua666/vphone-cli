@@ -1,3 +1,5 @@
+import Foundation
+
 public struct VPhoneCommandBuilder: Sendable {
     public let libraryRoot: String?
     public init(libraryRoot: String?) { self.libraryRoot = libraryRoot }
@@ -24,7 +26,12 @@ public struct VPhoneCommandBuilder: Sendable {
     }
 
     public func exportArgs(name: String, out: String) -> [String] {
-        withLibraryRoot(["vm", "export", name, "-o", out])
+        if let libraryRoot {
+            let folder = URL(fileURLWithPath: libraryRoot).appendingPathComponent(name).resolvingSymlinksInPath()
+            return ["vm", "export", folder.lastPathComponent, "-o", out,
+                    "--library-root", folder.deletingLastPathComponent().path]
+        }
+        return withLibraryRoot(["vm", "export", name, "-o", out])
     }
 
     public func importArgs(archive: String, name: String) -> [String] {

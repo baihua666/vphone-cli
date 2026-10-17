@@ -2,9 +2,11 @@ import Foundation
 
 public struct HostReadiness: Sendable {
     let runner: CLIRunner
+    let cliPath: String?
 
-    public init(runner: CLIRunner) {
+    public init(runner: CLIRunner, cliPath: String? = nil) {
         self.runner = runner
+        self.cliPath = cliPath
     }
 
     public static func evalNestedVM(hvVmmPresent stdout: String) -> HostCheck {
@@ -98,7 +100,7 @@ public struct HostReadiness: Sendable {
         async let rguests = researchGuests()
         let cliLoc = VPhoneCLILocator().locate(
             explicit: nil,
-            envPath: nil,
+            envPath: cliPath ?? ProcessInfo.processInfo.environment["VPHONE_CLI_PATH"],
             pathLookup: VPhoneCLILocator.whichLookup,
             fileExists: FileManager.default.fileExists(atPath:)
         )

@@ -1,7 +1,7 @@
 import Foundation
 
 public struct VariantStore: Sendable {
-    private struct Sidecar: Codable { let variant: String }
+    private struct Sidecar: Codable { let variant: String?; var executablePath: String? }
     private let libraryRoot: String
     public init(libraryRoot: String) { self.libraryRoot = libraryRoot }
 
@@ -10,7 +10,7 @@ public struct VariantStore: Sendable {
     }
 
     public func setVariant(_ variant: String, forVM name: String) throws {
-        let data = try JSONEncoder().encode(Sidecar(variant: variant))
+        let data = try JSONEncoder().encode(Sidecar(variant: variant, executablePath: executablePath(forVM: name)))
         try data.write(to: url(name))
     }
 
@@ -18,5 +18,11 @@ public struct VariantStore: Sendable {
         guard let data = try? Data(contentsOf: url(name)),
               let side = try? JSONDecoder().decode(Sidecar.self, from: data) else { return nil }
         return side.variant
+    }
+
+    public func executablePath(forVM name: String) -> String? {
+        guard let data = try? Data(contentsOf: url(name)),
+              let side = try? JSONDecoder().decode(Sidecar.self, from: data) else { return nil }
+        return side.executablePath
     }
 }

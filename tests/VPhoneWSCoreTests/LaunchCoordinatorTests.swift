@@ -17,7 +17,7 @@ private let exe = URL(fileURLWithPath: "/usr/bin/vphone-cli")
 }
 
 @MainActor
-@Test func stopRunsVmStop() async throws {
+@Test func stopWithoutHostDoesNotSignalDiskHolder() async throws {
     let runner = FakeCLIRunner()
     runner.stub(arguments: ["vm", "stop", "a", "--library-root", "/lib"],
                 result: CLIResult(stdout: "a: stopped", stderr: "", exitCode: 0))
@@ -26,5 +26,5 @@ private let exe = URL(fileURLWithPath: "/usr/bin/vphone-cli")
         executable: exe, libraryRoot: "/lib", launcher: FakeProcessLauncher(stubPID: 5),
         client: client, probe: RunningStateProbe(runner: runner))
     try await coord.stop(name: "a")
-    #expect(runner.calls.contains { $0.arguments == ["vm", "stop", "a", "--library-root", "/lib"] })
+    #expect(!runner.calls.contains { $0.arguments.first == "vm" })
 }

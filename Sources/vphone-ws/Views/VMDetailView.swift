@@ -121,7 +121,8 @@ struct VMDetailView: View {
                         kind: row.isRunning ? .running : .stopped,
                         label: row.isRunning ? "Running" : "Stopped")
                 }
-                Text("~/.vphone/VMs/\(row.report.name)")
+                Text(URL(fileURLWithPath: AppEnvironment.defaultLibraryRoot())
+                    .appendingPathComponent(row.report.name).resolvingSymlinksInPath().path)
                     .font(.wsMono(12)).foregroundStyle(Theme.faint)
                     .lineLimit(1).truncationMode(.middle)
             }
@@ -177,7 +178,7 @@ struct VMDetailView: View {
         Button("Settings") { showSettings = true }.buttonStyle(.wsSecondary)
         Button("Clone") { newName = ""; showCloneAlert = true }.buttonStyle(.wsSecondary)
         Button("Rename") { newName = ""; showRenameAlert = true }.buttonStyle(.wsSecondary)
-        Button("Export") { exportVM() }.buttonStyle(.wsSecondary)
+        Button("Export") { exportVM() }.buttonStyle(.wsSecondary).disabled(row.isRunning)
         Button("Delete") { confirmDelete = true }.buttonStyle(.wsDanger)
     }
 

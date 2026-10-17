@@ -37,7 +37,7 @@ public enum AppEnvironment {
                 executable: exe, libraryRoot: root, launcher: SystemProcessLauncher(),
                 client: client, probe: probe),
             client: client,
-            readiness: HostReadiness(runner: runner),
+            readiness: HostReadiness(runner: runner, cliPath: exe.path),
             taskCenter: TaskCenter(runner: SystemStreamingRunner()),
             executable: exe,
             commandBuilder: VPhoneCommandBuilder(libraryRoot: root),
