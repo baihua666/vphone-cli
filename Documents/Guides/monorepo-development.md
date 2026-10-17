@@ -87,3 +87,11 @@ git branch --track main upstream/main
 ```
 
 无需克隆相邻 vphone-ws，也无需复制它的 `.build`。本机 `workstation.command` 是已配置实例的便捷入口；新机器请先用 `build all`，再 `run-dev`，按正式 host setup 和原生 CLI 创建开发实例。
+
+## 本次迁入验证（2026-10-17）
+
+- `scripts/dev.sh test gui`：64 项通过。
+- `scripts/dev.sh test cli`：CoreKit 409 项、50 suites 通过。
+- `scripts/dev.sh build gui` 与 `build cli`：均成功，CLI 完整 bundle 构建检查通过。
+- `scripts/dev.sh run`：实际运行进程位于本仓库 `VPhoneWorkstation/.build`，GUI 显示 Host ready，并列出 official/custom 两台现有 2.x 实例。未重建或更换固定运行宿主。
+- 验证基于当前工作区；原来未提交的 guest 解锁修改、研究记录与测试仍由原任务维护，没有混入 monorepo 整合提交。未声称远端提交包含这些本机既有修改，也未重新进行固件恢复或完整归档测试。
