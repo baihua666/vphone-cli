@@ -1,4 +1,22 @@
 # General
+# Host-local runtime state and VM payloads (shared across all checkouts).
+/.codegraph/
+/.local/
+*.local.zsh
+.env.*
+!.env.example
+*.img
+*.ipsw
+*.tzst
+*.txz
+nvram.bin
+SEPStorage
+.vphone-ws.json
+host-config.zsh
+/machines/
+/runtimes/
+/vm[0-9]*/
+
 .DS_Store
 __MACOSX/
 .AppleDouble

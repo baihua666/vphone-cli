@@ -35,6 +35,64 @@ CLI 的 Xcode 工程及根目录布局保持不变。GUI 源码直接纳入同�
 
 现有两台实例及其宿主路径还参与 Mac 网络分流。构建不会部署、重签、替换库外固定宿主，也不会修改实例 sidecar、网络配置或固件。启用新的宿主版本需要单独做兼容与运行验收。
 
+## 多台 Mac 仅同步源码
+
+多台 Mac 通过 `origin/tb_dev` 同步代码、测试、工程与依赖锁文件、通用脚本、使用文档和技能。每台 Mac 自己构建、创建和管理实例；镜像、IPSW、IPA、固定宿主、归档、日志、令牌和本机运行配置不同步、不进 Git。构建产物在各机器本地生成。
+
+通用说明放在 `Documents/Guides/`；研究结论在 `Research/` 记录版本、复现方法和验证范围。本机路径、实例清单和代理节点留在仓库外，不把一台机器的运行状态当作其他机器的前置条件。不要仅为同步文档复制原始日志或含凭据的现场响应。
+
+### 本机启动配置
+
+`start.sh` 和 `workstation.command` 默认读取仓库外的 `~/.vphone/host-config.zsh`；可用 `VPHONE_HOST_CONFIG` 指向另一个本地文件。它是会被执行的 zsh 配置，只使用自己维护的文件。新机器自行创建，已有配置按需编辑，不直接覆盖。示例（路径和实例名须替换为本机实际值）：
+
+```zsh
+# ~/.vphone/host-config.zsh — 不提交，不复制到其他 Mac
+: ${VPHONE_CLI_PATH:="$HOME/.vphone/runtimes/my-build/VPhone.bundle/Contents/MacOS/vphone-cli"}
+: ${VPHONE_LIBRARY_ROOT:="$HOME/.vphone/machines"}
+: ${VPHONE_OFFICIAL_NAME:=my-research-phone}
+: ${VPHONE_CUSTOM_NAME:=my-test-phone}
+# 两个别名需要不同宿主时，再设置 VPHONE_OFFICIAL_CLI / VPHONE_CUSTOM_CLI。
+```
+
+上述写法让已设置的环境变量优先；自行编写配置时也应保留这个约定。`start.sh official|1` 与 `custom|2` 使用对应别名和宿主，别名宿主未配置时使用 `VPHONE_CLI_PATH`。不提供宿主时明确报错，不自动选用新构建替换固定版本。`workstation.command` 使用仓库内 GUI 和本机的 CLI/实例库；实例 sidecar 的固定宿主仍由现有 GUI 解析。
+
+已有管理器运行时，macOS 可能复用原进程，修改配置不会立即改变它。不要为更新源码停止 VM；需要应用新管理器配置时，在合适时机退出管理器再打开。不要覆盖运行中的固定 bundle，也不要修改现有实例 sidecar 或代理路径规则。`run-dev` 继续使用独立开发库，不读取这份正式启动配置。
+
+### 忽略规则与提交
+
+所有 Mac 都要排除的运行数据放根 `.gitignore`；仅某台机器的临时文件放 `.git/info/exclude`，后者不会随 clone 同步。镜像和固定宿主优先保存在仓库外。新建大文件前用 `git check-ignore -v -- <目标文件>` 核对；用 `git ls-files -- <目标路径>` 排查是否已跟踪。忽略规则不影响已跟踪文件，也不能阻止 `git add -f`，不能把它当强制上传拦截。不要忽略全部 JSON、plist 或数据库后缀，以免隐藏工程和测试资源。
+
+首次获取（不需要克隆相邻 GUI 仓库）：
+
+```sh
+git clone -b tb_dev git@github.com:baihua666/vphone-cli.git
+cd vphone-cli
+./scripts/dev.sh build all
+```
+
+每次换 Mac 工作先检查工作区，再更新。存在未完成修改时先整理，不能直接覆盖：
+
+```sh
+git status --short
+git pull --ff-only origin tb_dev
+```
+
+完成一个改动后，代码、对应测试和文档一起提交；独立改动分开。选择具体文件或使用 `git add -p`，新增文件单独添加，避免将无关现场文件一起暂存：
+
+```sh
+git add -p
+# git add -- 本次新增的具体文件
+git diff --cached --stat
+git diff --cached --check
+git diff --cached
+# 按变更范围运行所属测试和构建；仅脚本/同步规范变更：
+zsh scripts/tests/source-sync-tests.zsh
+git commit -m "Describe the complete change"
+git push origin tb_dev
+```
+
+`push` 只上传提交历史，不上传未提交文件或仓库外配置。两台机器都产生新提交时，`pull --ff-only` 会拒绝分叉；先检查双方提交，正常合并、解决冲突并验证，再 push，不强推覆盖。镜像永远不参与这条同步路径，也不因 pull 自动创建、迁移或启动。
+
 ## 接口共同开发
 
 界面和 CLI 功能可在同一提交中修改，但保持 `GUI → CLI → VM/guest` 的依赖方向。GUI 解析 CLI 输出的变更需同时覆盖适配层测试；不得用 UI 自行重写固件、恢复、签名或 IPA 安装逻辑。
@@ -72,7 +130,7 @@ git push origin tb_dev
 
 ## CI 与产物
 
-根目录 `.github/workflows/build.yml` 在 `main` / `tb_dev` push 及 PR 上验证原生 bundle 和 Workstation 测试/构建。迁入目录内的 `.github` 只保留上游历史，GitHub 不会执行该嵌套目录的 workflow。
+根目录 `.github/workflows/build.yml` 在 `main` / `tb_dev` push 及 PR 上验证启动配置/忽略规则、原生 bundle 和 Workstation 测试/构建。迁入目录内的 `.github` 只保留上游历史，GitHub 不会执行该嵌套目录的 workflow。
 
 CLI 产物：`.build/XcodeBundle/Build/Products/Debug/VPhone.bundle`。
 GUI 产物：`VPhoneWorkstation/.build/vphone-ws.app`。

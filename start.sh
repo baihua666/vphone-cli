@@ -1,35 +1,36 @@
 #!/bin/zsh
-# Launch pinned legacy 1.0.14 runtimes only; never auto-upgrade existing guests.
+# Launch through this Mac's explicitly configured runtime.
 set -euo pipefail
 
-ROOT="${0:A:h}"
 if (( $# > 1 )); then
   print -u2 -- '用法：./start.sh [official|custom|1|2]（默认 official）'
   exit 2
 fi
+if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+  print -- '用法：./start.sh [official|custom|1|2]（默认 official）'
+  print -- '请在 ~/.vphone/host-config.zsh 配置本机宿主和实例别名。'
+  exit 0
+fi
+CONFIG="${VPHONE_HOST_CONFIG:-$HOME/.vphone/host-config.zsh}"
+if [[ -f "$CONFIG" ]]; then
+  source "$CONFIG"
+elif [[ -n "${VPHONE_HOST_CONFIG:-}" ]]; then
+  print -u2 -- "本机配置不存在：$CONFIG"; exit 1
+fi
+LIBRARY="${VPHONE_LIBRARY_ROOT:-$HOME/.vphone/machines}"
 case "${1:-official}" in
   official|1)
-    CLI="$HOME/.vphone/runtimes/upstream-1.0.14/vphone-cli.app/Contents/MacOS/vphone-cli"
-    LIBRARY="$HOME/.vphone/VMs"
-    VM_NAME=stock-regular-guard-20261008
-    VARIANT=regular
+    CLI="${VPHONE_OFFICIAL_CLI:-${VPHONE_CLI_PATH:-}}"
+    VM_NAME="${VPHONE_OFFICIAL_NAME:-official}"
     ;;
   custom|2)
-    CLI="$ROOT/.build/vphone-cli.app/Contents/MacOS/vphone-cli"
-    LIBRARY="$ROOT"
-    VM_NAME=vm-fresh
-    VARIANT=exp
-    ;;
-  -h|--help)
-    print -- '用法：./start.sh [official|custom|1|2]（默认 official）'
-    print -- '1/official：官方 1.0.14 Regular + 官方 force-exc-guard'
-    print -- '2/custom：同步前保留的旧版本地构建 + vm-fresh EXP（不是当前源码构建）'
-    exit 0
+    CLI="${VPHONE_CUSTOM_CLI:-${VPHONE_CLI_PATH:-}}"
+    VM_NAME="${VPHONE_CUSTOM_NAME:-custom}"
     ;;
   *) print -u2 -- '请选择 official/1 或 custom/2'; exit 2 ;;
 esac
 
-[[ -x "$CLI" ]] || { print -u2 -- "运行程序不存在：$CLI；official 请恢复已校验官方发布包，custom 需恢复同步前的 1.0.14 运行产物；新版部署请参见 Research/branch_workflow.md"; exit 1; }
+[[ -n "$CLI" && -x "$CLI" ]] || { print -u2 -- '请在本机配置中设置可执行的 VPHONE_CLI_PATH 或对应别名的 CLI 路径。'; exit 1; }
 [[ -f "$LIBRARY/$VM_NAME/config.plist" ]] || { print -u2 -- "实例不存在：$VM_NAME"; exit 1; }
 for file in Disk.img nvram.bin SEPStorage; do
   if [[ ! -r "$LIBRARY/$VM_NAME/$file" || ! -w "$LIBRARY/$VM_NAME/$file" ]]; then
@@ -43,6 +44,5 @@ if /usr/sbin/lsof -t -- "$LIBRARY/$VM_NAME/Disk.img" >/dev/null 2>&1; then
   exit 1
 fi
 
-print -- "注意：此入口固定使用旧版运行产物，不代表已部署新版源码。"
-print -- "启动 ${1:-official}：$VM_NAME（$VARIANT）"
-exec "$CLI" vm launch "$VM_NAME" --library-root "$LIBRARY" --variant "$VARIANT"
+print -- "启动 ${1:-official}：$VM_NAME（新版固定宿主）"
+exec "$CLI" vm launch "$VM_NAME" --library-root "$LIBRARY"

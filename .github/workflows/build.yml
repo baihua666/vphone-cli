@@ -14,6 +14,8 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      - name: Test source sync and local startup configuration
+        run: zsh scripts/tests/source-sync-tests.zsh
       - name: Test and build Workstation
         run: |
           ./scripts/dev.sh test gui
