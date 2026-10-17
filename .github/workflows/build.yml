@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [main]
+    branches: [main, tb_dev]
   pull_request:
   workflow_dispatch:
 
@@ -10,6 +10,14 @@ permissions:
   contents: read
 
 jobs:
+  workstation:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test and build Workstation
+        run: |
+          ./scripts/dev.sh test gui
+          ./scripts/dev.sh build gui
   build:
     runs-on: macos-26
     steps:

@@ -2,6 +2,14 @@
 
 Virtual iPhone boot tool using Apple's Virtualization.framework with PCC research VMs.
 
+## Monorepo development
+
+- This fork develops Workstation GUI and the native CLI together on `tb_dev`. The GUI lives in `VPhoneWorkstation/`; edit it here, not in the old sibling checkout.
+- Use `scripts/dev.sh build|test [gui|cli|all]`. `test cli` runs CoreKit tests; also run owning target tests for specific CLI changes. The imported GUI keeps its existing SwiftPM build; do not change the CLI's Xcode architecture.
+- Product direction is GUI → native CLI → VM/guest. Keep firmware, restore and installation logic in the CLI. Existing GUI creation options are not yet fully adapted to CLI 2.x.
+- `workstation.command` uses the in-repository GUI with the existing pinned runtime configuration. Building is not deploying: do not replace pinned hosts, VM data or proxy-path settings as part of routine development.
+- CLI updates merge from `upstream/main`; GUI updates use `git subtree pull --prefix=VPhoneWorkstation workstation-upstream main`. Keep `main` as the CLI upstream baseline. See `Documents/Guides/monorepo-development.md`.
+
 ## Quick Reference
 
 - **Build:** `xcodebuild -workspace VPhone.xcworkspace -scheme VPhone -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/XcodeBundle build`

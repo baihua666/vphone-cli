@@ -2,6 +2,8 @@
 
 # vphone-cli
 
+> **本 fork 为 GUI + CLI monorepo。** GUI 位于 `VPhoneWorkstation/`，底层继续使用原生 `vphone-cli` / `VPhone.bundle`。日常开发分支为 `tb_dev`；统一入口为 `./scripts/dev.sh`。参见 [共同开发与上游同步](Documents/Guides/monorepo-development.md)。下面保留上游 CLI 产品文档。
+
 Run a virtual iPhone on an Apple Silicon Mac.
 
 ![Virtual iPhone running on macOS](Documents/demo.jpeg)
