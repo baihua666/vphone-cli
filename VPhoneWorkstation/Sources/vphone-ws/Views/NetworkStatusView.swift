@@ -4,6 +4,7 @@ import VPhoneWSCore
 struct NetworkStatusView: View {
     let row: VMRow
     let client: VPhoneCLIClient
+    var proxyRevision = 0
     @State private var status: VMNetworkStatus?
     @State private var error: String?
     @State private var busy = false
@@ -45,6 +46,7 @@ struct NetworkStatusView: View {
             if row.isRunning { load(probe: false) }
         }
         .onDisappear { request?.cancel() }
+        .onChange(of: proxyRevision) { _, _ in load(probe: false) }
     }
 
     private func load(probe: Bool) {

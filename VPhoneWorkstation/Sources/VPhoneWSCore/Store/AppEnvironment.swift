@@ -17,6 +17,7 @@ public enum AppEnvironment {
         public let executable: URL
         public let commandBuilder: VPhoneCommandBuilder
         public let variants: VariantStore
+        public let proxy = ClashProxyService()
     }
 
     @MainActor

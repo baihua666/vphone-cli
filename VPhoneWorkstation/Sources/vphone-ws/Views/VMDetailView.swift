@@ -14,6 +14,7 @@ struct VMDetailView: View {
     @State private var showRenameAlert = false
     @State private var newName = ""
     @State private var actionError: String?
+    @State private var proxyRevision = 0
 
     private var errorPresented: Binding<Bool> {
         Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
@@ -51,7 +52,10 @@ struct VMDetailView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 callout
-                NetworkStatusView(row: row, client: services.client).id(row.report.name)
+                ProxyRouteView(row: row, client: services.client, proxy: services.proxy) {
+                    if selection == row.report.name { proxyRevision += 1 }
+                }.id(row.report.name)
+                NetworkStatusView(row: row, client: services.client, proxyRevision: proxyRevision).id(row.report.name)
                 VStack(alignment: .leading, spacing: 12) {
                     SectionLabel(text: "Overview")
                     SpecGridSpanning(specs: specs, columns: 5, wideKeys: ["UDID"])

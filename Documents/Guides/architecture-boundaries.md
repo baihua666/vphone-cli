@@ -1,6 +1,6 @@
 # GUI、CLI 与公共能力的维护边界
 
-2026-10-17：适用于 `tb_dev` monorepo。本文是后续开发规范，不表示 VPN 管理界面或新命令已经实现。构建、双上游同步见 [共同开发指南](monorepo-development.md)。
+2026-10-17：适用于 `tb_dev` monorepo。本文规定维护边界；已实现能力见下方现状表。构建、双上游同步见 [共同开发指南](monorepo-development.md)。
 
 ## 分层决策
 
@@ -65,7 +65,7 @@ flowchart TD
 | 已统一 `VMCommandContext`：单实例命令、启动与导出使用绑定宿主和真实目录 | 后续新增操作复用此入口，不绕过绑定 |
 | 新版分离式宿主走绑定 CLI 的 stop；旧版保留按 config 定位进程的兼容路径 | 两者都等待磁盘释放；后续逐步退役旧版，不把兼容逻辑复制到页面 |
 | Workstation 创建向导仍有旧版参数 | 先完成 2.x 创建流程适配，不把旧 variant 自动映射到新 preset |
-| GUI 已增加网络状态与 guest 出口检测，配置入口仍仅传 cpu/memory/network | 节点选择、外部服务写入和断线保护仍未实现；供应商业务需求确定后再加适配，不先造插件平台 |
+| GUI 已增加网络状态、guest 出口检测及每实例 Clash 节点选择；`VPhoneWSCore/Proxy` 管理供应商规则与 HTTP 接口 | 复用既有独立运行路径和订阅前置规则。CLI 不引入 Clash 配置知识；尚未实现 VPN 协议管理或断线阻断，不把本功能称为完整 VPN |
 
 证据入口：`LaunchCoordinator`、`VPhoneCLIClient.setConfig`、`VPhoneNetworking`、`VPhoneNetworkEdit`、`VPhoneUserspaceNetwork`。CodeGraph 的静态关系不能证明跨进程 argv/JSON 契约正确，需结合命令入口和测试。
 
