@@ -22,6 +22,8 @@ extension GuestAPI {
             return info
         case "device.network":
             return networkInfo()
+        case "network.egress":
+            return try GuestNetworkEgress.probe()
         case "network.ipv4.get":
             return try networkIPv4(interface: optionalString(params, "interface") ?? "en0", set: nil)
         case "network.ipv4.set":

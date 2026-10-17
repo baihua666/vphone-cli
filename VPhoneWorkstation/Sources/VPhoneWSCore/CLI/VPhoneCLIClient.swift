@@ -45,12 +45,27 @@ public struct VPhoneCLIClient: Sendable {
     }
 
     public func info(name: String) async throws -> VMReport {
-        let data = try await runJSON(["vm", "info", name, "--json"])
+        let data = Data(try await runInstance(name: name, verb: "info", options: ["--json"]).utf8)
         return try decode(VMReport.self, from: data)
     }
 
     public func stop(name: String) async throws {
-        _ = try await runText(["vm", "stop", name])
+        _ = try await runInstance(name: name, verb: "stop")
+    }
+
+    public func context(name: String) throws -> VMCommandContext {
+        try VMCommandContext(name: name, executable: executable, libraryRoot: libraryRoot)
+    }
+
+    func runInstance(name: String, verb: String, options: [String] = []) async throws -> String {
+        let context = try context(name: name)
+        if context.isAlias && ["clone", "rename", "delete"].contains(verb) {
+            throw VPhoneCLIError.decodeFailed("Manage linked instances from their real library: \(context.directory.deletingLastPathComponent().path)")
+        }
+        let result = try await runner.run(executable: context.executable,
+            arguments: context.arguments(verb, options: options), environment: nil)
+        guard result.succeeded else { throw Self.failure(result) }
+        return result.stdout
     }
 
     /// `fw catalog` takes no --library-root, so run it directly (not via runText).

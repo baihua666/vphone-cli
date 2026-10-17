@@ -21,41 +21,37 @@ public final class LaunchCoordinator {
     }
 
     public func launch(name: String) throws {
-        let disk = URL(fileURLWithPath: libraryRoot ?? AppEnvironment.defaultLibraryRoot())
-            .appendingPathComponent(name).resolvingSymlinksInPath()
-        var argv = ["vm", "launch", name]
-        if libraryRoot != nil { argv += ["--library-root", disk.deletingLastPathComponent().path] }
-        let settings = VariantStore(libraryRoot: libraryRoot ?? AppEnvironment.defaultLibraryRoot())
-        if let variant = settings.variant(forVM: name) { argv += ["--variant", variant] }
-        let host = settings.executablePath(forVM: name).map { URL(fileURLWithPath: $0) } ?? executable
-        _ = try launcher.launch(executable: host, arguments: argv, environment: nil)
+        let context = try client.context(name: name)
+        var argv = context.arguments("launch")
+        if let variant = context.variant { argv += ["--variant", variant] }
+        _ = try launcher.launch(executable: context.executable, arguments: argv, environment: nil)
     }
 
     public func stop(name: String) async throws {
-        let root = libraryRoot ?? AppEnvironment.defaultLibraryRoot()
-        let config = URL(fileURLWithPath: "\(root)/\(name)/config.plist").resolvingSymlinksInPath().path
-        // Legacy CLI stop targets lsof's XPC disk holder. Signal the AppKit host
-        // instead so its own shutdown handler flushes and stops the VM.
-        guard let pid = await probe.firstPID(commandContaining: "--config \(config)") else { return }
-        guard kill(pid, SIGINT) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let context = try client.context(name: name)
+        let config = context.directory.appendingPathComponent("config.plist").path
+        let host = context.executable.deletingLastPathComponent().appendingPathComponent("vphone-vm")
+        if FileManager.default.isExecutableFile(atPath: host.path) {
+            // The split-host CLI knows how to stop vphone-vm rather than its XPC service.
+            try await client.stop(name: name)
+        } else {
+            // Legacy compatibility: signal the AppKit host, never the XPC disk holder.
+            guard let pid = await probe.firstPID(commandContaining: "--config \(config)") else { return }
+            guard kill(pid, SIGINT) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        }
         for _ in 0..<100 {
-            if !(try await probe.isRunning(diskImagePath: "\(root)/\(name)/Disk.img")) { return }
+            if !(try await probe.isRunning(diskImagePath: context.directory.appendingPathComponent("Disk.img").path)) { return }
             try await Task.sleep(for: .milliseconds(200))
         }
         throw VPhoneCLIError.nonZeroExit(code: 1, stderr: "VM is still stopping; export is not safe yet.")
     }
 
-    /// Bring the VM's GUI window forward. The window belongs to the
-    /// `vphone-cli --config …/config.plist` process — NOT the Virtualization XPC
-    /// helper that holds Disk.img — so match on the config path, not lsof.
     public func showScreen(name: String) async {
-        let root = libraryRoot ?? AppEnvironment.defaultLibraryRoot()
-        let configPath = URL(fileURLWithPath: "\(root)/\(name)/config.plist").resolvingSymlinksInPath().path
-        guard let pid = await probe.firstPID(commandContaining: configPath),
+        guard let context = try? client.context(name: name) else { return }
+        let config = context.directory.appendingPathComponent("config.plist").path
+        guard let pid = await probe.firstPID(commandContaining: config),
               let app = NSRunningApplication(processIdentifier: pid) else { return }
         app.unhide()
-        // macOS 14+ activation is cooperative: the active app (us) must yield to
-        // the target, otherwise its own activate() is ignored.
         NSApp.yieldActivation(to: app)
         app.activate()
     }

@@ -1,5 +1,7 @@
 # GUI + CLI 共同开发
 
+跨层职责、VPN 配置归属、接口契约和 CodeGraph 使用以 [架构与维护边界](architecture-boundaries.md) 为准。
+
 本仓库是主开发仓库，统一在 `tb_dev` 开发。用户入口为 Workstation GUI；GUI 通过进程调用原生 CLI，CLI 负责实例、恢复、固件与 guest 接口。保留两个项目各自的构建工具，不复制底层逻辑进 GUI。
 
 ## 布局与职责

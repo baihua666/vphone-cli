@@ -22,8 +22,10 @@ struct VPhoneVirtualMachineNetworkCommand: ParsableCommand {
     @Argument(help: "VM name") var name: String?
     @Option(name: .long, help: "up | down") var link: String?
     @Flag(name: .shortAndLong, help: "Emit JSON") var json = false
+    @Flag(name: .long, help: "Check public IPv4 from the guest via HTTPS (api.ipify.org)") var probe = false
 
     func run() throws {
+        guard !probe || link == nil else { throw ValidationError("--probe cannot change the network link.") }
         if let link, link != "up", link != "down" {
             throw ValidationError("--link must be up or down.")
         }
@@ -36,8 +38,22 @@ struct VPhoneVirtualMachineNetworkCommand: ParsableCommand {
         guard let reply = VPhoneHostAutomationProbe.send(request, socketPath: socketPath, timeout: 10) else {
             throw ValidationError("\(name) is not running, or its control socket does not answer. Start it with vm launch.")
         }
-        guard reply["ok"] as? Bool == true, let status = reply["result"] as? [String: Any] else {
+        guard reply["ok"] as? Bool == true, var status = reply["result"] as? [String: Any] else {
             throw ValidationError(reply["error"] as? String ?? "the VM refused the request")
+        }
+
+        let guest = VPhoneHostAutomationProbe.send(
+            ["t": "rpc", "method": "device.network"], socketPath: socketPath, timeout: 3)
+        status["guest_addresses"] = (guest?["result"] as? [String: Any])?["addresses"]
+        if probe {
+            let reply = VPhoneHostAutomationProbe.send(
+                ["t": "rpc", "method": "network.egress"], socketPath: socketPath, timeout: 25)
+            if reply?["ok"] as? Bool == true, let result = reply?["result"] as? [String: Any] {
+                status["egress"] = result
+            } else {
+                status["egress_error"] = reply?["error"] as? String
+                    ?? "Guest egress check timed out or the guest disconnected."
+            }
         }
 
         if json {
@@ -51,6 +67,10 @@ struct VPhoneVirtualMachineNetworkCommand: ParsableCommand {
         }
         print("link:       \(status["link"] as? String ?? "?")")
         print("attached:   \(status["attachment"] as? String ?? "?")")
+        if let egress = status["egress"] as? [String: Any] {
+            print("public IPv4: \(egress["ip"] as? String ?? "?") (guest HTTPS)")
+        }
+        if let error = status["egress_error"] as? String { print("egress check failed: \(error)") }
         if let configured = status["configured"] as? String {
             print("configured: \(configured)")
         }

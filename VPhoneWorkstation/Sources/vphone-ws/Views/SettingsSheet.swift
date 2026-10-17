@@ -2,7 +2,7 @@ import SwiftUI
 import VPhoneWSCore
 
 struct SettingsSheet: View {
-    // vm config --network accepts only nat | bridged | none (hostOnly is rejected).
+    // Legacy modes; tunnel is added only when supported or already configured.
     static let networkOptions: [(value: String, label: String)] = [
         ("nat", "NAT"), ("bridged", "Bridged"), ("none", "None"),
     ]
@@ -14,6 +14,7 @@ struct SettingsSheet: View {
     @State private var memory: Double
     @State private var network: String
     @State private var actionError: String?
+    @State private var supportsTunnel = false
 
     init(row: VMRow, services: AppEnvironment.Services) {
         self.row = row
@@ -43,7 +44,8 @@ struct SettingsSheet: View {
                         WSStepper(value: $memory, range: 1024...65536, step: 1024) { "\($0) MB" }
                     }
                     field("Network") {
-                        wsSegmented(selection: $network, options: Self.networkOptions)
+                        wsSegmented(selection: $network, options: Self.networkOptions +
+                            (supportsTunnel || network == "tunnel" ? [("tunnel", "Tunnel")] : []))
                     }
                     VStack(alignment: .leading, spacing: 12) {
                         SectionLabel(text: "Fixed at build time")
@@ -62,6 +64,7 @@ struct SettingsSheet: View {
         .frame(width: 420)
         .background(Theme.bg)
         .focusEffectDisabled()
+        .task { supportsTunnel = (try? await services.client.supportsTunnel(name: row.report.name)) ?? false }
         .alert("Couldn't save settings", isPresented: errorPresented) {
             Button("OK") {}
         } message: {

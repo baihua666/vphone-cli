@@ -51,6 +51,7 @@ struct VMDetailView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 callout
+                NetworkStatusView(row: row, client: services.client).id(row.report.name)
                 VStack(alignment: .leading, spacing: 12) {
                     SectionLabel(text: "Overview")
                     SpecGridSpanning(specs: specs, columns: 5, wideKeys: ["UDID"])
@@ -121,8 +122,7 @@ struct VMDetailView: View {
                         kind: row.isRunning ? .running : .stopped,
                         label: row.isRunning ? "Running" : "Stopped")
                 }
-                Text(URL(fileURLWithPath: AppEnvironment.defaultLibraryRoot())
-                    .appendingPathComponent(row.report.name).resolvingSymlinksInPath().path)
+                Text((try? services.client.context(name: row.report.name).directory.path) ?? "无法解析实例目录")
                     .font(.wsMono(12)).foregroundStyle(Theme.faint)
                     .lineLimit(1).truncationMode(.middle)
             }
@@ -186,10 +186,13 @@ struct VMDetailView: View {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(row.report.name).tar.zst"
         if panel.runModal() == .OK, let out = panel.url?.path {
+            guard let context = try? services.client.context(name: row.report.name) else {
+                actionError = "Unable to resolve instance runtime"; return
+            }
             presentOperation(services.taskCenter.start(
                 title: "Export \(row.report.name)", plannedStages: [],
-                executable: services.executable,
-                arguments: services.commandBuilder.exportArgs(name: row.report.name, out: out)))
+                executable: context.executable,
+                arguments: context.arguments("export", options: ["-o", out])))
         }
     }
 }

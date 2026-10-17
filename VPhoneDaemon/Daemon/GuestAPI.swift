@@ -138,6 +138,7 @@ enum GuestAPI {
                 "device_name",
                 "network_static_names",
                 "network_resolve",
+                "network_egress",
                 "timezone",
                 "audio_host_latency",
             ],

@@ -4,6 +4,8 @@ Virtual iPhone boot tool using Apple's Virtualization.framework with PCC researc
 
 ## Monorepo development
 
+- Before cross-layer work, read `Documents/Guides/architecture-boundaries.md`: Views own presentation, VPhoneWSCore owns business orchestration/adapters, CLI exposes reusable operations, and existing kits own shared rules. VPN provider integration is not VM networking; do not duplicate either in Views.
+- Resolve the same per-machine pinned runtime and library context for every operation. Treat legacy stop/probe and creation flows as documented migration gaps, not patterns to copy. Use the root CodeGraph index; cross-process contracts also require explicit tests.
 - This fork develops Workstation GUI and the native CLI together on `tb_dev`. The GUI lives in `VPhoneWorkstation/`; edit it here, not in the old sibling checkout.
 - Use `scripts/dev.sh build|test [gui|cli|all]`. `test cli` runs CoreKit tests; also run owning target tests for specific CLI changes. The imported GUI keeps its existing SwiftPM build; do not change the CLI's Xcode architecture.
 - Product direction is GUI → native CLI → VM/guest. Keep firmware, restore and installation logic in the CLI. Existing GUI creation options are not yet fully adapted to CLI 2.x.

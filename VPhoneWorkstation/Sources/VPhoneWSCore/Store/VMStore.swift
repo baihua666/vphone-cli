@@ -20,9 +20,16 @@ public final class VMStore {
             let reports = try await client.listVMs()
             var next: [VMRow] = []
             for report in reports {
-                let disk = "\(libraryRoot)/\(report.name)/Disk.img"
+                let context = try client.context(name: report.name)
+                let resolved = context.executable != client.executable || context.isAlias
+                    ? try await client.info(name: report.name) : report
+                // Keep the library's alias as selection identity.
+                let display = VMReport(name: report.name, cpuCount: resolved.cpuCount,
+                    memoryMB: resolved.memoryMB, diskSizeBytes: resolved.diskSizeBytes,
+                    network: resolved.network, udid: resolved.udid, restoreInfo: resolved.restoreInfo)
+                let disk = context.directory.appendingPathComponent("Disk.img").path
                 let running = (try? await probe.isRunning(diskImagePath: disk)) ?? false
-                next.append(VMRow(report: report, isRunning: running))
+                next.append(VMRow(report: display, isRunning: running))
             }
             rows = next
             loadError = nil
