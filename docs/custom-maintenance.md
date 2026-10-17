@@ -2,7 +2,7 @@
 
 - `upstream`：原作者 `https://github.com/zqxwce/vphone-ws.git`。
 - `origin`：个人 fork `git@github.com:baihua666/vphone-ws.git`。
-- `main`：上游基线；`codex/custom-workstation`：定制代码和回归测试。
+- `main`：上游基线；`tb_dev`：定制代码和回归测试。
 
 日常修改在定制分支完成，执行 `swift test` 后提交并推送。
 构建 GUI 使用 `./scripts/bundle.sh`，产物为 `.build/vphone-ws.app`。
@@ -14,12 +14,12 @@
 git fetch upstream
 git switch main
 git merge --ff-only upstream/main
-git switch codex/custom-workstation
+git switch tb_dev
 git merge main
 swift test
 ```
 
-解决冲突并通过测试后，才构建和验证 GUI；最后 `git push origin codex/custom-workstation`。
+解决冲突并通过测试后，才构建和验证 GUI；最后 `git push origin tb_dev`。
 上游接口变更需核对实际绑定的 CLI 版本，不自动升级既有实例。
 
 ## 当前定制范围
