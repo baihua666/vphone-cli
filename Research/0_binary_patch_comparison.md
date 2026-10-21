@@ -1,5 +1,15 @@
 # Patch Comparison: Regular / Development / Jailbreak / Experimental
 
+## 2026-10-16 本机新版镜像重建（基础验收通过）
+
+使用当前业务源码 `4a76ffb217a059fa056cb2f35740b4ace15e735d` 完整构建的 `VPhone.bundle 2.8.0 (35)`，在独立目录 `~/.vphone/machines/official-2x-20261016` 执行官方原生 `vm create --preset standard`。输入为 iPhone17,3 iOS 26.6.2 / 23G90 与 cloudOS 26.4 / 23E5207q，ZIP/manifest/哈希已核验。未新增或改写补丁实现，未把旧 EXP 或本地 MobileGestalt 实验带入新版。
+
+临时 cloudOS 恢复及 GPU 驱动提取已完成；`fw patch` 日志记录应用 169 条 CFW 补丁记录，混合固件恢复成功。CFW 安装初次因可用空间不足 50 GiB 退出；清理获准缓存和本轮已消费的恢复输入后，续跑成功退出 0。`standard (108 patches on)`；`PatchReceipt.plist` 的 Guest 部分由 `cfw install` / bundle 2.8.0 写入，记录 21 个生效 ID、2 个不适用 ID。恢复的 d47ap 原树在日志确认读取，`preboot-cfw-devicetree_iphone_product` 在生效清单中；没有新增补丁实现。首启与普通用户冷启动的 vphoned 应答均通过，guest 哈希匹配宿主签名副本。自动锁定 Never 与超过 2 分钟空闲已通过；最终冷启动 boot_uuid 已改变，Never 与自动进入桌面持久，`official-final-cold-boot.json` 为 pass。旧两台磁盘保留，旧入口脚本以备份保留，默认入口已切换新镜像。迁移与应用验收范围见 [branch_workflow.md](branch_workflow.md)，日志在 `.build/validation/image-upgrade-20261016/`。
+
+第二台 `custom-2x-20261016` 使用同一源码和官方输入，独立 `fw patch --preset standard` 同样完成 169 条记录；DFU restore 与 `cfw install` 均已退出 0，CFW 成功部署 vphoned、重命名根快照并自动删除恢复树，签名副本 SHA-256 与首台一致。第二台 Guest receipt 同样为 bundle 2.8.0、21 个生效 ID / 2 个不适用 ID；首启 health 为 iOS 26.6.2，哈希匹配。Setup、Never 与无输入空闲均通过，原五 App 首屏/20 秒运行通过，tunnel 下两轮冷启动自动到达桌面。
+
+本轮另有宿主流程修复：`VPhoneGuestControlSystem.unlockAtStartup` 在现有启动观察窗口内重试两类明确的屏幕启动超时，不增加固件补丁、不改变 guest 密码。旧源码超时回归测试失败、新源码通过；完整 bundle 重构建与真实冷启动验收见本次验证日志。第二台曾发生 SpringBoard.migrator userspace panic，经 NAT 对照启动自然完成迁移，缓存/内核未改，原因未单独归因；不能把 CFW 成功当作首启成功。
+
 > **Patch sets and presets (2026-09-28):** every patch is now *declared*, and
 > selection happens before any byte is written. The declarations live in nine
 > bundled patch sets under `VPhoneExecutable/VPhoneCommand/FirmwarePatcher/PatchSets/`

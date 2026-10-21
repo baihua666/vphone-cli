@@ -5,13 +5,17 @@ description: Use when developing or debugging this vphone-cli repository, prepar
 
 # vphone 项目开发与排障
 
-## 当前基线（2026-10-08 同步后，优先于下面的历史流程）
+## 当前基线（2026-10-16 镜像迁移后，优先于下面的历史流程）
 
 - 官方源码基线为 `dfcfae9c608c432a9a63f846d5cda8272fde0b82`；`main` 跟踪 `upstream/main`，业务分支为 `codex/business-vm`。同步前完整代码保留在 `codex/pre-upstream-sync-20261008`（`d23154b`）。
 - 当前架构、构建和测试入口以根目录 `AGENTS.md` 为准：Xcode workspace 的 `VPhone` scheme 生成 `VPhone.bundle`。旧 `scripts/build.sh`、根目录 SwiftPM、Python 固件流水线及 `--variant exp` 已不适用；下面涉及这些内容的步骤仅供 1.0.14 历史排障。
 - 新固件按官方 patch sets/presets 选择；不得把旧 EXP 自动映射到某个新 preset。旧 MobileGestalt 可选定制尚未移植，新固件不包含该本地开关。
-- 本次仅同步源码，没有重刷或迁移 VM。`start.sh` 明确使用原有 1.0.14 运行产物，不能作为新版自动化验收；旧 `scripts/exp.sh` 仅提示迁移并拒绝执行。
+- 2026-10-16 已将两台镜像独立重建到 `~/.vphone/machines/{official,custom}-2x-20261016`，默认 `start.sh` / `workstation.command` 已切到固定 2.8.0 宿主及新镜像，包含本地启动解锁超时重试。旧镜像和旧入口备份保留，实际应用、冷启动与分流验收见 `Research/branch_workflow.md`。旧 `scripts/exp.sh` 仍仅提示迁移并拒绝执行。Workstation 已验收既有两机的启停/显示；新建向导尚未适配 2.x，创建新机使用原生 CLI。
+- 管理员认证要区分入口：`sudo -n` 失败只说明非交互 sudo 当前不可用，不能据此断言必须让用户自己执行。旧版 `--root-popup` 使用 macOS 原生 `do shell script ... with administrator privileges`；新版无内置弹窗时，已授权任务可通过同类系统认证调用固定的新 CLI。密码只由用户在系统弹窗输入，不自动控制被工具禁止的 Terminal，不读取密码。外部原生认证调用新版 root 创建器时，传递当前用户的 `SUDO_UID`/`SUDO_GID`，核对输出属主恢复。
+- 新版完整 CFW 安装有所在卷可用容量大于 50 GiB 的固定检查；开始恢复前先核对当前实现和空间，不能仅按稀疏盘占用估计，也不绕过检查。清理源 IPSW 缓存前须保留设备原树供 product/audio repair 使用；可从同次解包原树按 iPhone BuildManifest Digest 校验后保存到安装器指定的 `FirmwareOriginals` 路径。恢复成功而 CFW 未完成时，腾空间后从 `cfw install` 继续，不能重跑 `vm create` 冒充续跑。
 - 研究文档位于 `Research/`，调试记录为 `Research/debug_journal.md`。本次迁移与验收范围见 `Research/branch_workflow.md`。
+- 新版 VM 安装或恢复本地 IPA/TIPA 时使用 [vphone-app-install](../vphone-app-install/SKILL.md) 及其可执行脚本；它复用原生 API 客户端，大包安装通过 WebSocket 等待结果，不能把 HTTP 超时当作允许立即重装。
+- 宿主开机解锁流程修改后运行 `VPhoneExecutable/VPhoneVirtualization/Tests/run-startup-unlock-tests.sh`（编译实际扩展、仅替换测试传输），再用完整 bundle 冷启动验收。`Never` 持久不代表开机解锁通过；读取 `lock` 并核对真实桌面。
 - 保留的 Python 取证工具是宿主研究工具，不进入 VPhone.bundle；产品使用上游原生实现。不要恢复已删除的 Python 补丁/安装器或使用旧资源路径测试新版。
 
 ## 以下为 1.0.14 历史排障与验证记录
@@ -27,6 +31,8 @@ description: Use when developing or debugging this vphone-cli repository, prepar
 - 不创建、读取或更新项目 `TODO.md`。本轮计划和进度用对话记录，需要留存的结论写入研究日志。
 
 ## VM 存储与临时产物
+
+- 所有用于自动化的镜像（官方对照、业务定制、新建/导入/恢复后的实例）必须在 iOS「设置 → 显示与亮度 → 自动锁定」中选「永不」。这是用户于 2026-10-10 明确要求的基础验收项；应检查实际勾选状态并空闲至少 2 分钟确认不熄屏、不进入锁屏。镜像更新后重新核验，不通过时不得标为自动化就绪。此设置不等于重启后自动解锁，也不要求删除密码或改变认证；冷启动后的解锁路径须单独验证。
 
 - APFS 克隆真实已恢复镜像时，先核对运行版本的 clone 语义。本地旧实现删除 NVRAM，不应直接用于已有可启动镜像；官方 2026-10-06 `--new-identity` 仅清空配置 ECID/MAC 及冲突网络参数，保留同一停止时刻的 Disk.img、NVRAM、SEPStorage。本机真实 iOS 克隆验证见 [报告](../../Research/apfs_clone_validation_20261008.md)。新的 ECID 不代表新 IDFA、独立 SEP 根密钥或全新 App 数据。
 - 验证克隆占用应比较停机后 `F_LOG2PHYS_EXT` 的物理区间并集；`du` 会重复计算共享块。正常停止应使用 vphone Quit 或先确认实际宿主 PID 的信号入口；lsof 的磁盘持有者可能是 Virtualization XPC，直接向其发信号会造成异常停机。自动化截图复用完整 JSON 响应读取，不能只 recv 一小段就关闭连接。
@@ -142,3 +148,8 @@ VPHONE_LIBRARY_ROOT="$PWD" ./scripts/exp.sh export vm /absolute/output/exp.tzst
 - `.tzst` 是含磁盘、设备身份和客体数据的 VM 归档，不是通用可刷写 IPSW；默认按官方逻辑排除恢复中间目录。要分发干净环境，应新建专用 VM，不发布含个人数据的现用 VM。
 - 当前 `vm` 的 EXP 来自历史安装，O-2 launchdhook 和 O-3 DSC 完整性仍需独立验证。导出成功或 IPA 正常，不代表已验证干净 EXP 从零创建。不要为验证 IPA 自动重刷它；历史构建的 `DISABLE_LAUNCHD_HOOK=1` 是有记录的环境例外，不悄悄写成所有 EXP 的默认值。
 - 验证分层：完整构建 → guest 版本/哈希确认 → 原始或新编译 IPA 重装 → 冷启动、前台页面和交互 → 停机导出 → 归档完整性。新建、导出、导入、首启分别报告实际执行范围。
+
+## 现有旧实例的 Workstation 管理（2026-10-16）
+
+- `workstation.command` 使用相邻 `vphone-ws` 仓库的本地 app 和现有完整 CLI；两实例通过 `~/.vphone/workstation-library` 的目录链接汇总，sidecar 固定各自宿主及 variant，不升级 guest。验证范围见 [Workstation 报告](../../Research/workstation_validation_20261016.md)。
+- 旧 CLI 从汇总库导出前必须解析到真实目录，否则 tar 可能只打包链接。磁盘空间不足时保留“完整导出未验证”，不能以参数测试或空归档代替成功，也不为测试生成额外整机副本。

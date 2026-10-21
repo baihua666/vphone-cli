@@ -1,3 +1,71 @@
+## J-2026-10-16 — 新版镜像迁移，纠正管理员认证入口判断
+
+
+## 2026-10-16 冷启动自动解锁超时重试
+
+第二台完成 NAT 首启迁移、Never 设置和 141 秒空闲后，切回 tunnel 冷启；boot UUID 改变，Never 保留，但 77 秒仍锁定。正常停止后 stdout 明确为 `[unlock] could not unlock the guest at startup: the Lock Screen did not dismiss in time`。现有宿主 90 秒观察窗口包住单次 60 秒 RPC，但第一次此类超时会直接退出整个流程。最小改动仅在窗口内重试两种明确的屏幕启动超时；密码/其它失败仍结束。新增测试编译实际 `VPhoneGuestControlSystem.swift`，只替换测试传输，旧 HEAD 在 timeout→success 序列失败，新代码通过，完整 bundle 构建、签名与 preflight 通过，两台均实测自动解锁；随后 Workstation 再次冷启动两台，UUID 改变、桌面/未锁/亮屏/Never/新哈希均 pass。未增加固件补丁或改变用户密码。
+
+
+## 2026-10-16 第二台首启迁移 panic（已恢复，单一原因未证实）
+
+第二台 CFW 成功、health/签名哈希正确，Setup 完成，四个用户 IPA 安装读回成功，仍不能证明桌面可用。`boot-custom-setup-complete.log` 最终记录 `datamigrator plugin SpringBoard.migrator hang` userspace panic，Boot UUID A3D1B973-9E8E-4569-9294-39AA833C8A06。早前据进度变化判断继续观察，最终判为首启失败；尚无证据归因代理、应用包或 hypervisor concealment（此项 standard 关闭）。已停机留 APFS 检查点并暂用 NAT 启动取证，这是故障当时状态。后续 NAT 对照重启自然完成迁移，恢复 Idle Miner 后五 App 首屏通过，再切回 tunnel 冷启动通过；未清理图标缓存或修改内核，单一原因仍未证明。最终默认入口已切两新机，旧机与入口备份保留。
+
+## 2026-10-16 应用安装脚本与 SKILL
+
+- 用户要求把已有软件安装流程复用为脚本/技能。原应用来源是本机已有 IPA，Facebook 是从旧机导出的解密应用包，不是通过 App Store 批量下载；Instagram 仍无 IPA。
+- 新增 `skills/vphone-app-install`，全局 `~/.codex/skills/vphone-app-install` 符号链接发现；zsh 包装临时编译现有 `VPhoneAPIClient.swift` 与 167 行宿主助手，产品和 guest 不增加依赖。
+- 实测发现大包安装可超过共享 HTTP RPC 130 秒等待，超时后客体仍在执行。改用现有 WebSocket API 等待原生 `apps.install`，设 10 分钟上限，非零失败不自动重试。共享客户端用 NSString 追加 WebSocket 路径，空根 URL 会无法生成 URL；调用方把根路径规范为 `/`，不修改产品源码。错误输出保留 `VPhoneAPIError.description`，避免只显示泛化 NSError。
+- 参数、非法选项、loopback 边界、空根路径、带空格路径和结果解析 self-test 通过；实际 Subway Surf 3.69.2 完整安装、读回、启动并持续 20 秒，脚本退出 0。前台截图年龄页正确，未提交年龄或接受条款。证据在 `.build/validation/image-upgrade-20261016/install-skill-subway-websocket.log` 与 `install-skill-subway-front.png`。URI 错误残留的两个本轮上传文件已精确删除；不删除旧应用数据。
+
+用户授权从当前新版源码重建两台镜像，保留应用，登录状态无需迁移。按官方 schema 2 边界保留旧镜像并准备独立新机，未修改旧配置冒充升级。当前源码完整构建为 `VPhone.bundle 2.8.0 (35)`，固定 runtime、固件版本/校验、应用来源及剩余验收见 [分支与运行边界](branch_workflow.md)。构建/签名/bundle admission/host preflight 均通过，两份官方 IPSW 完整性通过。
+
+旧 official 的 Subway Surf 与旧 custom 的五个应用均已找到可重装包；其中 Facebook 581.0.0 从旧 guest 导出应用目录，确认 cryptid 0，只恢复 Mach-O 执行权限后打包，IPA SHA-256 为 `7c7e4e771b5469f9260ff2f6d01b551a98db7c8b734c0980b93fe41cc0cff83f`，ZIP 校验通过。应用尚未在新版安装或启动，不能称为迁移成功。
+
+首次尝试固定 runtime 的完整 `sudo -n ... vm create official-2x-20261016` 命令退出 1：`sudo: a password is required`，当时目标目录不存在。现场无 Launchpad 已安装特权 helper 或 bundle store。**后续纠正：不能由此断言必须由用户去终端执行，也没有证据证明“旧认证过期”就是过去成功而现在失败的原因。**
+
+用户质疑后，复核 J-2026-09-22-16 与旧官方 `1.0.14` 创建器（GitHub MCP 同版本源码佐证）：旧流程使用 `cfw install --root-popup`，实现是 `osascript` 的 `do shell script ... with administrator privileges`。它使用系统认证弹窗，不是自动操作 Terminal。新版 CLI 移除此内置提权入口但支持以 root 运行。已通过同类原生认证调用新版固定 CLI，显式传入当前用户 `SUDO_USER=tubao/SUDO_UID=501/SUDO_GID=20`；现场确认 root 的 `vm create` PID 75298 和新目录已出现，创建实际开始。没有读取或输入密码，没有操作被 CUA 禁止的 Terminal。错误在于此前只验证 sudo、未复核旧系统认证入口便向用户报告终端是唯一方法。
+
+两台旧宿主已按精确命令行发送 SIGINT 正常停机，旧盘无持有进程；不直接终止 Virtualization XPC。第一台为 `official-2x-20261016` / `standard`，串行创建并监控空间；恢复日志 `.build/validation/image-upgrade-20261016/create-official.log`。此时仅创建进行中，未证明恢复/CFW/首启成功。旧启动入口和 Workstation 映射仍保留，未宣称已切换。
+
+首台日志确认 `fw patch` 应用 169 条 CFW 补丁，已进入混合固件恢复并完成系统文件传输。主机交换空间同期增长到约 29 GiB，卷空闲降至约 11 GiB；只清理本轮新下载、已完整解包的 iPhone IPSW 缓存（11,254,382,122 字节），回到约 23 GiB，未删除旧镜像、应用包或当前恢复树。第二台创建前需重新下载并校验同一官方源。
+
+混合固件恢复随后成功（`Status: Restore Finished / DONE`），版本已落盘；CFW 安装因新版要求卷可用容量大于 50 GiB 而停止，整体退出 64，未首启、无 `PatchReceipt.plist`。先前只按稀疏盘估计空间，没有提前核对安装器这一固定要求，是本轮准备不足。停止后卷空闲回升至约 36 GiB，全部 VM 进程已退出。应腾出空间后续跑同一新机的 `cfw install`，保留已经成功的恢复结果。
+
+用户确认清理列明缓存并继续。已用官方 `uv cache prune`（不强制、不直接删除 uv 缓存文件）清理未使用项，报告 326,229 文件 / 11.0 GiB；清空获准的 Homebrew/pip 下载缓存内容。受 APFS 共享影响，真实可用容量仍不足 50 GiB。继续定向核对 CFW 消费路径，清理本轮已成功 DFU 恢复使用的独立 `OS` 大镜像（7.625 GiB，保留 CFW 使用的两个 Cryptex 文件）、已消费的 cloudOS 压缩包与导出 Facebook 的重复 Payload（保留校验通过的最终 IPA）。未删除旧镜像或其它工具缓存。Foundation 的安装器同款容量指标达到约 51.25 GiB 后，系统认证续跑 `cfw install`，已通过空间检查并开始挂载；日志 `cfw-official.log`，此时安装仍未完成。
+
+随后 `cfw install` 成功退出 0，快照切换、guest receipt 与恢复树清理完成。普通用户启动和一次冷启动均连接 vphoned，哈希匹配签名副本。`setup.skip` 的 respring 返回缺少 entitlement，写入的 setup 偏好经正常冷启动实际生效；未扩大权限或改源码。Never 页面勾选、退出 Settings 后 API 读回与 134 秒无输入亮屏/未锁定均通过，最后的冷启动持久性另测。
+
+原 Subway 3.69.2 IPA 已装入新容器。首次启动在 Metal 编译等待上触发 FrontBoard 11.70 秒 scene-create watchdog（`0x8BADF00D`，不是 EXC_GUARD）；同次开机再启动 PID 658 持续运行并显示年龄输入页。未代填年龄或接受条款，未宣称全新开机首次启动或跑酷已通过。原始两份 crash、安装响应、前台进程与截图保存在本轮验证目录。
+
+CFW 同时提示因缓存 IPSW 已清理，缺少 iPhone product repair 的 d47ap 原树。已从本轮解包树的原件验证 SHA-384 与 iPhone 原 BuildManifest 的 Digest 完全一致（63,949 字节），按安装器提示保存到 `FirmwareOriginals` 下，结果在 `board-tree-recovery.json`；未伪造或修改设备树，也未将修复准备当作 guest 安装成功。只读盘点发现其它用户缓存可腾出空间，清理范围需单独确认，不能删除旧镜像替代。
+
+## J-2026-10-16 — 两台旧 VM 的 Mac 代理入口（仅宿主完成）
+
+用户要求复用 Mac 代理，让 official/custom 内的 Instagram 使用不同出口，尽量不在 guest 安装软件；地区不限。现场客户端是 Clash Verge 2.5.8 / Mihomo v1.19.32，当前 Bitz+Net 订阅、rule 模式和 TUN 已启用。两台仍是 1.0.14 旧宿主和 NAT，未迁移到 2.x。
+
+- 当前订阅的扩展覆写 `~/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev/profiles/mV3VtfToOedl.yaml` 增加两个 mixed listeners，仅绑定 Mac 虚拟网络地址 `192.168.64.1`：`17891/vphone-official` 固定选择“🇯🇵 日本-广东专线 BGP”，`17892/vphone-custom` 固定选择“🇺🇸 美国-广东专线 BGP 1”。用现有内核 `-t` 校验成功，再经 Clash Verge“重新激活订阅”确认生成配置仍包含两个入口。未改变原 7890 端口、568 条规则、主策略组选择或 `allow-lan: false`。
+- **验证仅在 Mac 发起**：分别显式经过两个代理入口访问 ipify，观察到 `178.249.213.185` 与 `79.127.245.214`，重新激活后为 `178.249.213.185` 与 `79.127.245.215`。节点出口会变化，不能称为静态独享 IP，也不能据此声称 guest 或 Instagram 已走代理。
+- **guest 未配置、Instagram 未验收**：官方实例用户应用只有 Subway Surf；定制实例为 VPHONE Probe、Facebook、Subway Surf、wooshort、Idle Miner，两台均无 Instagram。Downloads 未找到 Instagram IPA。官方实例停留锁屏，自动手势及键盘未能进入桌面；已请用户手动解锁并提供既有 IPA 本机路径。未修改 guest 代理、网络配置、认证、身份或固件。
+- 验证期间另一个 vphone-ws 生命周期任务曾重启两台；原测试日志明确记录 SIGINT，不能归因于 VM 崩溃。用户随后确认已暂停其它操作；保留当前运行实例，未再关闭它们。
+- 原始配置与候选完整配置备份在 `~/.vphone/network-backups/proxy-20261016/`（目录 0700、文件 0600，含订阅凭据，不提交）。宿主结果在 `.build/validation/vm-proxy-20261016/result.json`。回退：恢复目录中的 `mV3VtfToOedl.yaml.original` 到同名订阅扩展文件，再点“重新激活订阅”。监听地址依赖 VM 创建的 bridge100；Mac 重启后应先启动 VM，再重新激活订阅，未验证无 VM 时的自动恢复。
+- 下一步：在真实以太网设置中核对能否分别指定 HTTP 代理 `192.168.64.1:17891/17892`；检查 guest 公网 IP 和 Mihomo 的入站/节点记录；安装并启动同一 Instagram 原始 IPA 后观察其真实连接。HTTP 代理不能证明接管绕过系统代理的 TCP 或 UDP 流量；未通过 App 验收前不能交付为两台全流量隔离完成。
+
+官方依据：[Mihomo listeners](https://wiki.metacubex.one/config/inbound/listeners/)、[API](https://wiki.metacubex.one/api/)、[Apple HTTP 代理范围](https://support.apple.com/id-id/guide/deployment/dep1129ff8d2/web)；项目 NAT/TUN 边界见 `Documents/Guides/networking.md`，不可把当前源码的 `tunnel` 能力直接套给旧镜像宿主。
+
+## J-2026-10-13-43 — 当前旧 VM 的中文 ⌘V 粘贴
+
+## J-2026-10-16 — vphone-ws 生命周期验证
+
+采用相邻仓库 vphone-ws + 两台现有完整旧宿主。实例发现、GUI 同时启动、双向独立停机、窗口切换均实测；新增 variant/宿主路径透传、宿主 SIGINT 停机、链接导出路径解析。63 项测试通过。完整归档因本卷仅剩约 17 GiB 暂未执行，没有生成大文件。入口 `workstation.command`；完整边界与证据见 [验证报告](workstation_validation_20261016.md)。未改原 start.sh、guest 固件或 IPA 安装流程。
+
+当前 `stock-regular-guard-20261008` 用官方 1.0.14 基线的本地兼容宿主补齐文本粘贴：在 `NSApplication.sendEvent` 中先于 `capturesSystemKeys` 拦截 ⌘V，通过已有 vphoned v1 剪贴板接口确认文本后发送 HID 粘贴键。视图覆写和普通菜单单独无法拦截，是两次真实失败验证后的定位结果。最终 Safari 完整显示两组中文，第二组含中文标点与 emoji；捕获系统按键的 AppKit 回归测试通过。`start.sh official` 已切换，原官方包保留；未更新 guest daemon、固件或配置，未重刷或改变身份。2.x 完整构建虽成功，但官方明确不支持旧 schema 就地升级，未绕过版本检查。提交、哈希、证据和回滚见 [验收记录](Host/legacy_clipboard_20261013.md)。
+
+## J-2026-10-10-42 — 清理、官方 APFS 重排与自动化镜像不锁屏基线
+
+按用户授权清理旧整机备份、固件中间文件与可重建缓存，卷净回收约 43.21 GiB。复用官方 2.9.2 rebase 离线算法，在临时 schema 2 包装内重排旧版定制盘；两盘全量 SHA-256 与 10 个身份/启动文件在启动前均不变，新增共享约 12.31 GB，临时包装及硬链接全部移除。两份盘去重物理占用约 30.08 GiB，仓库与 ~/.vphone 最终约 34.79 GiB。
+
+两台原 1.0.14 VM 并发启动、独立 ECID 与 vphoned 连接正常，Settings 可操作。用户新增基础要求：所有镜像自动锁定设为 Never。现有官方/定制两份已设置并经超过 2 分钟无输入的真实窗口检查，均保持亮屏未锁定；开发 skill 和 branch_workflow 已加入新建/导入/恢复后的同等验收要求。未改变密码；未再次重启验证偏好，也未实现开机自动解锁。Subway 既有花屏仍未通过。完整证据与限制见 [报告](storage_sharing_20261010.md)。
+
 ## J-2026-10-08：同步官方主线至 dfcfae9c（仅源码）
 
 - 来源：GitHub MCP 核实 `Lakr233/vphone-cli/main` 为 `dfcfae9c608c432a9a63f846d5cda8272fde0b82`；fetch 与其一致。旧官方基线为 `9c23c8a`，相差 636 个提交。原业务 HEAD `d23154b` 已保存为 `codex/pre-upstream-sync-20261008`。
