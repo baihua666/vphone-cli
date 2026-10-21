@@ -98,6 +98,14 @@ do {
         .wait()
     vp_native_confirm_cached_binary()
     NSLog("vphoned: HTTP/WebSocket API listening on vsock 1339")
+    // UIPasteboard caches state and receives change notifications on the main
+    // run loop. Blocking this thread on closeFuture leaves subsequent copies
+    // invisible (or refers to an item UUID that pasted has already replaced).
+    let keepAlive = Port()
+    RunLoop.main.add(keepAlive, forMode: .default)
+    server.closeFuture.whenComplete { _ in CFRunLoopStop(CFRunLoopGetMain()) }
+    CFRunLoopRun()
+    keepAlive.invalidate()
     try server.closeFuture.wait()
 } catch {
     NSLog("vphoned: HTTP/WebSocket API failed: %@", String(describing: error))

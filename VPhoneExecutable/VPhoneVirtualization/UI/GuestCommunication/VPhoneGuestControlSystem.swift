@@ -73,7 +73,18 @@ extension VPhoneGuestControl {
         let window = ContinuousClock.now + .seconds(90)
         do {
             while true {
-                let result = try await call("screen.unlock", params: ["timeout": 60])
+                let result: [String: Any]
+                do {
+                    result = try await call("screen.unlock", params: ["timeout": 60])
+                } catch let ControlError.guestError(message)
+                    where ContinuousClock.now < window
+                    && (message == "the Lock Screen did not dismiss in time"
+                        || message.hasPrefix("the display did not turn on within "))
+                {
+                    // SpringBoard may become interactive just after the first RPC deadline.
+                    print("[unlock] waiting for guest startup; retrying the timed-out unlock")
+                    continue
+                }
                 if result["was_locked"] as? Bool == true {
                     print("[unlock] dismissed the Lock Screen at startup")
                     return
