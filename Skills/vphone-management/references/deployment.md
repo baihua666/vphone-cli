@@ -4,11 +4,11 @@
 
 在目标 Mac 的本项目 checkout 拉取包含本次修改的业务分支。先检查工作区；已有修改时不要 reset/clean。整个 monorepo 必须一起拉取：Launchpad 通过本地 Swift package 依赖 `VPhoneWorkstation` 的 `VPhoneWSCore`，不能只复制 Launchpad 目录。依赖版本由 Package.resolved 固定。
 
-在 checkout 中直接让 Codex 读取 `skills/vphone-management/SKILL.md` 即可使用。需要自动发现时，先确认目标不存在，再执行（在仓库根目录）：
+在 checkout 中直接让 Codex 读取 `Skills/vphone-management/SKILL.md` 即可使用。需要自动发现时，先确认目标不存在，再执行（在仓库根目录）：
 
 ```sh
 mkdir -p "$HOME/.codex/skills"
-ln -s "$PWD/skills/vphone-management" "$HOME/.codex/skills/vphone-management"
+ln -s "$PWD/Skills/vphone-management" "$HOME/.codex/skills/vphone-management"
 ```
 
 存在同名 Skill 时核对其来源；不要覆盖不相关内容。Skill 随 checkout 更新。不要同步本机 `.local/`、`.build/`、VM 磁盘、Clash 私有文件或签名配置。

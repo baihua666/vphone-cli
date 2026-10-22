@@ -35,4 +35,4 @@ git ls-files -- .local/decodo.json
 
 “换新 IP”和“修改账号”会保留已有中转字段。中转节点配置属于 Clash；迁移电脑或订阅节点改名时需要重新核对，当前表单不提供中转选择器。五分钟是供应商的会话参数，不是本程序的定时器；随机重复 IP 可再次手动换新，不能保证每次都不同。
 
-实测记录见 [两台 VM 独立出口验收](../../research/Host/decodo_live_validation_20261021.md)。
+实测记录见 [两台 VM 独立出口验收](../../Research/Host/decodo_live_validation_20261021.md)。

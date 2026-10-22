@@ -17,4 +17,4 @@
 - 2026-10-22 本次只修改源码并构建测试，**没有替换 /Applications app、启停 VM、修改实际代理或凭据文件**。另一会话正在操作现有两台机器，真实新 UI 验收留待维护窗口；不能复用旧 Workstation 的实测结果当新界面验收。
 - 自定义 app 需要正确 Developer ID 和 Helper 互信配置，源码构建不继承官方签名。不要直接覆盖正在使用的官方 app。
 
-其他 Mac 的安装、签名、接入、验收及 Workstation 备用步骤统一见 [vphone-management Skill](../../skills/vphone-management/SKILL.md)。真实凭据和机器数据不经 Git 同步。
+其他 Mac 的安装、签名、接入、验收及 Workstation 备用步骤统一见 [vphone-management Skill](../../Skills/vphone-management/SKILL.md)。真实凭据和机器数据不经 Git 同步。

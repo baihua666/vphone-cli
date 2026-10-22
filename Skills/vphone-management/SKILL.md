@@ -25,4 +25,4 @@ description: 配置和升级 vphone Launchpad 管理界面、Decodo 美国 ZIP �
 
 Launchpad 的客户端环境/启动链显示“未知”可能只是历史 VM 未记录来源；不要为去掉提示执行 restore 或 CFW 更新。切换运行时后在允许的维护窗口重启再验收代理，不能只看新的磁盘绑定认为运行中进程也已切换。
 
-当前代码验证与部署边界见 `Documents/Guides/launchpad-decodo.md`；真实现场记录在 `research/Host/`。测试通过不等于已部署，构建 app 不等于有可用 Helper 签名。
+当前代码验证与部署边界见 `Documents/Guides/launchpad-decodo.md`；真实现场记录在 `Research/Host/`。测试通过不等于已部署，构建 app 不等于有可用 Helper 签名。
