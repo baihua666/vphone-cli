@@ -78,6 +78,7 @@ struct VPhoneLaunchpadMachineInspector: View {
     let onOpenConsole: (VPhoneLaunchpadMachinePath) -> Void
     var onChangeBundle: (VPhoneLaunchpadMachine) -> Void = { _ in }
     @Environment(VPhoneLaunchpadModel.self) private var model
+    @State private var showsDecodo = false
     @State private var showsCommands = false
     @State private var patchCatalog: VPhoneLaunchpadPatchCatalog?
     @State private var patchCatalogError: String?
@@ -123,6 +124,15 @@ struct VPhoneLaunchpadMachineInspector: View {
                 } else {
                     Text("Not restored").foregroundStyle(.secondary)
                 }
+            }
+
+            Section("代理出口") {
+                Button("Decodo 配置与换 IP…") { showsDecodo = true }
+                    .sheet(isPresented: $showsDecodo) {
+                        VPhoneLaunchpadDecodoView(machine: machine, roots: library.roots,
+                            isRunning: library.state(of: machine.path) == .running)
+                            .id(machine.path)
+                    }
             }
 
             coreBundleSection

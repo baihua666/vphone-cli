@@ -28,6 +28,7 @@ public actor ClashProxyService {
     struct Snapshot {
         let profile: String
         let process: String
+        let managedProxyName: String
         let profiles: Data
         let sourceURL: URL
         let runtimeURL: URL
@@ -42,23 +43,7 @@ public actor ClashProxyService {
     func snapshot(context: VMCommandContext) throws -> Snapshot {
         do {
             let process = context.executable.deletingLastPathComponent().appendingPathComponent("vphone-vm").path
-            // Process-path rules cannot isolate two VMs sharing the same runtime binary.
-            let siblings = try FileManager.default.contentsOfDirectory(at: context.directory.deletingLastPathComponent(), includingPropertiesForKeys: nil)
-            for sibling in siblings where sibling.resolvingSymlinksInPath() != context.directory {
-                let sidecar = sibling.appendingPathComponent(".vphone-ws.json")
-                guard FileManager.default.fileExists(atPath: sibling.appendingPathComponent("config.plist").path)
-                        || FileManager.default.fileExists(atPath: sidecar.path) else { continue }
-                guard FileManager.default.fileExists(atPath: sidecar.path) else {
-                    throw ProxyRouteError("库中存在未绑定运行程序的实例，无法验证出口隔离")
-                }
-                let binding = try JSONSerialization.jsonObject(with: Data(contentsOf: sidecar)) as? [String: Any]
-                guard let bound = binding?["executablePath"] as? String, bound.hasPrefix("/") else {
-                    throw ProxyRouteError("库中存在未绑定运行程序的实例，无法验证出口隔离")
-                }
-                if URL(fileURLWithPath: bound).resolvingSymlinksInPath() == context.executable.resolvingSymlinksInPath() {
-                    throw ProxyRouteError("多个实例共用此运行程序，无法按进程路径隔离出口")
-                }
-            }
+            try context.validateProxyIsolation()
             let profiles = try Data(contentsOf: directory.appendingPathComponent("profiles.yaml"))
             let index = try Yams.load(yaml: String(decoding: profiles, as: UTF8.self)) as? [String: Any]
             guard let current = index?["current"] as? String, let items = index?["items"] as? [[String: Any]],
@@ -77,7 +62,7 @@ public actor ClashProxyService {
             }
             let serviceSocket = "/var/run/clash-verge-service/users/\(getuid())/verge-mihomo.sock"
             let socket = FileManager.default.fileExists(atPath: serviceSocket) ? serviceSocket : configuredSocket
-            return Snapshot(profile: current, process: process, profiles: profiles, sourceURL: sourceURL,
+            return Snapshot(profile: current, process: process, managedProxyName: DecodoProxy.name(for: context), profiles: profiles, sourceURL: sourceURL,
                             runtimeURL: runtimeURL, source: try String(contentsOf: sourceURL, encoding: .utf8),
                             runtime: runtime, socket: socket, secret: config?["secret"] as? String ?? "")
         } catch let error as ProxyRouteError { throw error }
@@ -107,7 +92,7 @@ public actor ClashProxyService {
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let proxies = object?["proxies"] as? [String: [String: Any]] ?? [:]
         let choices = proxies.filter { name, value in
-            value["all"] == nil && !["Reject", "RejectDrop", "Pass", "PassRule", "Compatible"].contains(value["type"] as? String ?? "")
+            (!DecodoProxy.isManagedName(name) || name == snapshot.managedProxyName) && value["all"] == nil && !["Reject", "RejectDrop", "Pass", "PassRule", "Compatible"].contains(value["type"] as? String ?? "")
                 && !name.contains(",") && !name.contains(where: { $0.isNewline })
         }.keys.sorted()
         return VMProxyRoute(profile: snapshot.profile, process: snapshot.process, selected: selected, choices: choices)
@@ -144,8 +129,8 @@ public actor ClashProxyService {
         }
         var phase = "写入规则"
         do {
-            try source.write(to: snapshot.sourceURL, atomically: true, encoding: .utf8)
-            try runtime.write(to: snapshot.runtimeURL, atomically: true, encoding: .utf8)
+            try Self.writeProxyFile(source, to: snapshot.sourceURL)
+            try Self.writeProxyFile(runtime, to: snapshot.runtimeURL)
             phase = "重载 Mihomo"
             _ = try await request(snapshot, "PUT", "/configs?force=false", ["payload": runtime])
             phase = "核对生效规则"
@@ -165,11 +150,15 @@ public actor ClashProxyService {
             // Restore only files still equal to our write; never overwrite a concurrent external edit.
             let unchangedSource = (try? String(contentsOf: snapshot.sourceURL, encoding: .utf8)) == source
             let unchangedRuntime = (try? String(contentsOf: snapshot.runtimeURL, encoding: .utf8)) == runtime
-            if unchangedSource { try? snapshot.source.write(to: snapshot.sourceURL, atomically: true, encoding: .utf8) }
-            if unchangedRuntime { try? snapshot.runtime.write(to: snapshot.runtimeURL, atomically: true, encoding: .utf8) }
+            if unchangedSource { try? Self.writeProxyFile(snapshot.source, to: snapshot.sourceURL) }
+            if unchangedRuntime { try? Self.writeProxyFile(snapshot.runtime, to: snapshot.runtimeURL) }
             if unchangedRuntime { _ = try? await request(snapshot, "PUT", "/configs?force=false", ["payload": snapshot.runtime]) }
             throw ProxyRouteError("出口切换失败（\(phase)），已尝试恢复未被其它操作改动的规则；请刷新核对状态")
         }
+        try await disconnect(snapshot)
+    }
+
+    func disconnect(_ snapshot: Snapshot) async throws {
         // Keep other VMs and host traffic connected. Existing target flows otherwise keep their old route.
         struct Connections: Decodable {
             struct Connection: Decodable { let id: String; let metadata: Metadata }

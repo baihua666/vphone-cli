@@ -27,7 +27,7 @@ flowchart TD
 | 虚拟网卡、用户态转发、VM 生命周期与 guest 通信 | `VPhoneVirtualization`、`VPhoneKit`、`VPhoneDaemon` 的现有模块 | 私有虚拟化能力不进入管理 GUI；按现有所有权实现 |
 | 第三方代理服务 API、配置格式转换 | 优先作为 `VPhoneWSCore` 内独立服务/适配文件 | 不放 View，不把供应商字段塞入通用 VM manifest；有第二个真实调用方再提取共享模块 |
 
-已有 `VPhoneLaunchpad` 是上游独立客户端，继续保留，不与 Workstation 合并成两个并行实现的业务入口。VM 屏幕窗口及其 guest 菜单仍由 `VPhoneVirtualMachineKit` 管理；管理 GUI 并不意味着搬迁所有现有窗口。
+`VPhoneLaunchpad` 是统一主入口，Workstation 保留为备用。Launchpad 通过现有 Swift package 的 `VPhoneWSCore` library 复用代理业务服务；原生界面只负责表单和动作入口，不复制供应商/Clash 逻辑。Launchpad 按 launchpad.json 解析实例上下文，Workstation 保持原 sidecar；共享服务检查资料库中的运行路径隔离。VM 屏幕窗口及其 guest 菜单仍由 `VPhoneVirtualMachineKit` 管理；管理 GUI 并不意味着搬迁所有现有窗口。
 
 ## VPN：按能力拆分，不按“有没有界面”拆分
 
@@ -65,7 +65,7 @@ flowchart TD
 | 已统一 `VMCommandContext`：单实例命令、启动与导出使用绑定宿主和真实目录 | 后续新增操作复用此入口，不绕过绑定 |
 | 新版分离式宿主走绑定 CLI 的 stop；旧版保留按 config 定位进程的兼容路径 | 两者都等待磁盘释放；后续逐步退役旧版，不把兼容逻辑复制到页面 |
 | Workstation 创建向导仍有旧版参数 | 先完成 2.x 创建流程适配，不把旧 variant 自动映射到新 preset |
-| GUI 已增加网络状态、guest 出口检测及每实例 Clash 节点选择；`VPhoneWSCore/Proxy` 管理供应商规则与 HTTP 接口 | 复用既有独立运行路径和订阅前置规则。CLI 不引入 Clash 配置知识；尚未实现 VPN 协议管理或断线阻断，不把本功能称为完整 VPN |
+| GUI 已增加网络状态、guest 出口检测、每实例 Clash 节点选择及手动录入已购 HTTP(S)/SOCKS5 代理；`VPhoneWSCore/Proxy` 管理规则、代理扩展与 HTTP 接口 | 复用既有独立运行路径和订阅前置规则。CLI 不引入 Clash 配置知识；尚未实现自动采购/续租、VPN 协议管理或断线阻断，不把本功能称为完整 VPN |
 
 证据入口：`LaunchCoordinator`、`VPhoneCLIClient.setConfig`、`VPhoneNetworking`、`VPhoneNetworkEdit`、`VPhoneUserspaceNetwork`。CodeGraph 的静态关系不能证明跨进程 argv/JSON 契约正确，需结合命令入口和测试。
 

@@ -15,4 +15,5 @@ LIBRARY="${VPHONE_LIBRARY_ROOT:-$HOME/.vphone/machines}"
   print -u2 -- 'Workstation、CLI 或实例库缺失；请先构建 GUI，再按 Documents/Guides/monorepo-development.md 配置本机。'
   exit 1
 }
-exec open "$APP" --env "VPHONE_CLI_PATH=$CLI" --env "VPHONE_LIBRARY_ROOT=$LIBRARY"
+DECODO="${VPHONE_DECODO_CONFIG:-$ROOT/.local/decodo.json}"
+exec open "$APP" --env "VPHONE_CLI_PATH=$CLI" --env "VPHONE_LIBRARY_ROOT=$LIBRARY" --env "VPHONE_DECODO_CONFIG=$DECODO"

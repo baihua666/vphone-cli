@@ -22,23 +22,27 @@ import Yams
     #expect(throws: (any Error).self) { try rule.replacing(target: "bad,node") }
 }
 
-private actor MockMihomo: MihomoTransport {
+actor MockMihomo: MihomoTransport {
     var rules: [[String: String]]
     var calls: [String] = []
     var failReload = false
     var externalEdit: URL?
+    var nodes: [String: [String: Any]] = ["JP": ["type": "Shadowsocks"], "US": ["type": "Shadowsocks"],
+        "GLOBAL": ["type": "Selector", "all": ["JP", "US"], "now": "JP"]]
     init(process: String) {
         rules = [["type": "Domain", "payload": "example.org", "proxy": "DIRECT"],
                  ["type": "ProcessPath", "payload": process, "proxy": "JP"],
                  ["type": "ProcessPath", "payload": "/other/vphone-vm", "proxy": "US"]]
     }
     func failNextReload(edit: URL? = nil) { failReload = true; externalEdit = edit }
+    func addSelector(_ name: String) { nodes[name] = ["type": "Selector", "all": ["JP", "US"], "now": "US"] }
+    func selection(_ name: String) -> String? { nodes[name]?["now"] as? String }
     func request(socket: String, secret: String, method: String, path: String, body: Data?) async throws -> Data {
         calls.append(method + " " + path)
         switch path {
         case "/configs": return Data(#"{"mode":"rule","tun":{"enable":true},"find-process-mode":"strict"}"#.utf8)
         case "/rules": return try JSONSerialization.data(withJSONObject: ["rules": rules])
-        case "/proxies": return Data(#"{"proxies":{"JP":{"type":"Shadowsocks"},"US":{"type":"Shadowsocks"},"GLOBAL":{"type":"Selector","all":["JP","US"]}}}"#.utf8)
+        case "/proxies": return try JSONSerialization.data(withJSONObject: ["proxies": nodes])
         case "/configs?force=false":
             if failReload {
                 failReload = false
@@ -47,6 +51,9 @@ private actor MockMihomo: MihomoTransport {
             }
             let json = try JSONSerialization.jsonObject(with: body!) as! [String: String]
             let config = try Yams.load(yaml: json["payload"]!) as! [String: Any]
+            for proxy in config["proxies"] as? [[String: Any]] ?? [] {
+                nodes[proxy["name"] as! String] = ["type": proxy["type"] as! String]
+            }
             rules = (config["rules"] as! [String]).map {
                 let fields = $0.components(separatedBy: ",")
                 return ["type": fields[0] == "PROCESS-PATH" ? "ProcessPath" : "Domain", "payload": fields[1], "proxy": fields[2]]
@@ -57,12 +64,18 @@ private actor MockMihomo: MihomoTransport {
                 ["id": "00000000-0000-0000-0000-000000000001", "metadata": ["processPath": rules[1]["payload"]!]],
                 ["id": "00000000-0000-0000-0000-000000000002", "metadata": ["processPath": "/other/vphone-vm"]]
             ]])
-        default: return Data()
+        default:
+            if method == "PUT", path.hasPrefix("/proxies/"),
+               let name = String(path.dropFirst("/proxies/".count)).removingPercentEncoding,
+               let body, let selection = try JSONSerialization.jsonObject(with: body) as? [String: String] {
+                nodes[name]?["now"] = selection["name"]
+            }
+            return Data()
         }
     }
 }
 
-private struct ClashFixture {
+struct ClashFixture {
     let root: URL
     let source: URL
     let runtime: URL
@@ -78,7 +91,8 @@ private struct ClashFixture {
         let process = exe.deletingLastPathComponent().appendingPathComponent("vphone-vm").path
         source = root.appendingPathComponent("profiles/r.yaml")
         runtime = root.appendingPathComponent("clash-verge.yaml")
-        try "current: active\nitems:\n- uid: active\n  option: {rules: r}\n- uid: r\n  type: rules\n  file: r.yaml\n".write(to: root.appendingPathComponent("profiles.yaml"), atomically: true, encoding: .utf8)
+        try "current: active\nitems:\n- uid: active\n  option: {rules: r, proxies: p}\n- uid: r\n  type: rules\n  file: r.yaml\n- uid: p\n  type: proxies\n  file: p.yaml\n".write(to: root.appendingPathComponent("profiles.yaml"), atomically: true, encoding: .utf8)
+        try "# preserve proxy comments\nprepend: []\nappend: []\ndelete: []\n".write(to: root.appendingPathComponent("profiles/p.yaml"), atomically: true, encoding: .utf8)
         try "prepend:\n- PROCESS-PATH,\(process),JP\n- PROCESS-PATH,/other/vphone-vm,US\nappend: []\ndelete: []\n".write(to: source, atomically: true, encoding: .utf8)
         try "external-controller-unix: /tmp/test.sock\nsecret: test-only\nrules:\n- DOMAIN,example.org,DIRECT\n- PROCESS-PATH,\(process),JP\n- PROCESS-PATH,/other/vphone-vm,US\n".write(to: runtime, atomically: true, encoding: .utf8)
         transport = MockMihomo(process: process)

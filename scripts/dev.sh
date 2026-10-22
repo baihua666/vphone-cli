@@ -5,11 +5,16 @@ ROOT="${0:A:h:h}"
 cd "$ROOT"
 
 usage() {
-  print -- '用法：./scripts/dev.sh build|test [gui|cli|all]'
+  print -- '用法：./scripts/dev.sh build|test [gui|launchpad|cli|all]'
   print -- '      ./scripts/dev.sh run      # 管理现有实例，沿用固定 CLI'
   print -- '      ./scripts/dev.sh run-dev  # GUI + 本仓库 CLI 构建，使用独立开发实例库'
 }
 build_gui() { "$ROOT/VPhoneWorkstation/scripts/bundle.sh"; }
+build_launchpad() {
+  xcodebuild -project VPhoneLaunchpad/VPhoneLaunchpad.xcodeproj -scheme VPhoneLaunchpad \
+    -configuration Debug -derivedDataPath .build/LaunchpadDecodo -jobs 4 build
+}
+test_launchpad() { test_gui; }
 build_cli() {
   xcodebuild -workspace VPhone.xcworkspace -scheme VPhone -configuration Debug \
     -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/XcodeBundle -jobs 4 build
@@ -24,7 +29,7 @@ case "${1:---help}" in
   build|test)
     action="$1"
     case "${2:-all}" in
-      gui|cli) "${action}_${2}" ;;
+      gui|launchpad|cli) "${action}_${2}" ;;
       all) "${action}_gui"; "${action}_cli" ;;
       *) usage; exit 2 ;;
     esac

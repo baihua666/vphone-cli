@@ -5,6 +5,10 @@ description: Use when developing or debugging this vphone-cli repository, prepar
 
 # vphone 项目开发与排障
 
+## 管理入口与跨 Mac 同步（2026-10-22）
+
+Launchpad 为统一主入口，Workstation 保留为备用。Decodo 配置、安装与同步使用 [vphone-management](../vphone-management/SKILL.md)；先区分源码构建、签名产物和已安装 app。另一会话使用机器时不部署或操作运行态。以下历史 Workstation 入口不是新部署首选。
+
 ## 当前基线（2026-10-16 镜像迁移后，优先于下面的历史流程）
 
 - 官方源码基线为 `dfcfae9c608c432a9a63f846d5cda8272fde0b82`；`main` 跟踪 `upstream/main`，业务分支为 `codex/business-vm`。同步前完整代码保留在 `codex/pre-upstream-sync-20261008`（`d23154b`）。

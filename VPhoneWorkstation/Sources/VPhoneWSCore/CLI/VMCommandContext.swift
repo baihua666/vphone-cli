@@ -7,12 +7,16 @@ public struct VMCommandContext: Sendable {
     public let libraryRoot: String?
     public let variant: String?
     public let isAlias: Bool
+    let launchpadStore: URL?
+    let isolationRoots: [String]
     public var name: String { directory.lastPathComponent }
 
-    public init(name: String, executable: URL, libraryRoot: String?) throws {
+    public init(name: String, executable: URL, libraryRoot: String?, launchpadStore: URL? = nil, isolationRoots: [String] = []) throws {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
             throw VPhoneCLIError.decodeFailed("Invalid instance name")
         }
+        self.launchpadStore = launchpadStore
+        self.isolationRoots = isolationRoots
         let root = libraryRoot ?? AppEnvironment.defaultLibraryRoot()
         let requested = URL(fileURLWithPath: root).resolvingSymlinksInPath().appendingPathComponent(name)
         directory = requested.resolvingSymlinksInPath()
@@ -20,7 +24,10 @@ public struct VMCommandContext: Sendable {
         self.libraryRoot = libraryRoot == nil && !isAlias ? nil : directory.deletingLastPathComponent().path
         struct Binding: Decodable { let variant: String?; let executablePath: String? }
         let sidecar = directory.appendingPathComponent(".vphone-ws.json")
-        if FileManager.default.fileExists(atPath: sidecar.path) {
+        if let launchpadStore {
+            self.executable = try Self.launchpadExecutable(directory: directory, store: launchpadStore)
+            variant = nil
+        } else if FileManager.default.fileExists(atPath: sidecar.path) {
             // Corrupt bindings must never silently select the default runtime.
             let binding = try JSONDecoder().decode(Binding.self, from: Data(contentsOf: sidecar))
             if let path = binding.executablePath {

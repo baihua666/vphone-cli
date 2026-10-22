@@ -32,11 +32,15 @@ public struct VPhoneCLIClient: Sendable {
     let executable: URL
     let libraryRoot: String?
     let runner: CLIRunner
+    let launchpadStore: URL?
+    let isolationRoots: [String]
 
-    public init(executable: URL, libraryRoot: String?, runner: CLIRunner) {
+    public init(executable: URL, libraryRoot: String?, runner: CLIRunner, launchpadStore: URL? = nil, isolationRoots: [String] = []) {
         self.executable = executable
         self.libraryRoot = libraryRoot
         self.runner = runner
+        self.launchpadStore = launchpadStore
+        self.isolationRoots = isolationRoots
     }
 
     public func listVMs() async throws -> [VMReport] {
@@ -54,7 +58,7 @@ public struct VPhoneCLIClient: Sendable {
     }
 
     public func context(name: String) throws -> VMCommandContext {
-        try VMCommandContext(name: name, executable: executable, libraryRoot: libraryRoot)
+        try VMCommandContext(name: name, executable: executable, libraryRoot: libraryRoot, launchpadStore: launchpadStore, isolationRoots: isolationRoots)
     }
 
     func runInstance(name: String, verb: String, options: [String] = []) async throws -> String {
