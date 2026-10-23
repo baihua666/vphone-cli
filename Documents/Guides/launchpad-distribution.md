@@ -171,3 +171,16 @@ swift run --package-path Integrations/Distribution distribution-publisher \
 
 该验收使用与 App 相同的匿名目录和下载模块，不读取 gh Token，强制新缓存，真实下载 App/Core，再核对大小、SHA-256、签名、修订和 Core seal，不安装或修改 Core。
 GitHub 对附件/CDN 的网络限制仍可能存在；本改动消除的是 REST 匿名 API 配额依赖，不承诺无限制网络访问。
+
+### 2026-10-24 r2 已发布与真实下载验收
+
+- 用户授权发布的内部版：[launchpad-2.8.0-r2](https://github.com/baihua666/vphone-cli/releases/tag/launchpad-2.8.0-r2)。Release 非 draft、非 prerelease，并设为 latest；tag 精确指向 `87169bd0abb1ca570cb0ceb868f3baae9c129437`。这仍是 Apple Development 签名、未公证的内部包。
+- App：基线 2.8.0 / revision 2，10,813,066 字节，SHA-256 `4a2d572a2c0af6b7987dfe61561764d1738f7c62d7426d15b28d1b5c696446b9`。
+- Core：`2.8.0-local.199abaf3`，18,468,317 字节，SHA-256 `26f315c874b0df4c9e62acf5470466ab1039352d79981eb25d72e3366e6c45fa`。复用原 ZIP，无 Core 源码、签名或绑定改动。
+- 只有上述两份包和 `launchpad-catalog.json` 三个附件，images 为空。未发布任何现用虚拟机、账号或业务数据。
+- 14 项模块测试通过，分发宏开启 Release 打包、关闭 Debug 构建通过。正常版本检查不再请求 REST API；latest 下载和 previousTags 历史清单均固定在本仓库。
+- `--check-download` 使用全新 `.build/distribution-online-acceptance-r2-final` 缓存、无 Token 真实下载 App/Core，大小、SHA-256、App/Helper 签名、修订和 Core seal 全部通过。首次并行验收时与安装操作同时挂载同一 DMG 导致资源忙；分开执行并用新缓存重新完整下载后通过，未将失败算作成功。
+- 当前 Mac 已从实际下载的 DMG 安装修订 2；主机/Helper ready (15)，APP 内成功获取 `launchpad-2.8.0-r2` 并显示“当前修订 2，未发现更新”、未公证提示和无镜像说明。
+- 原运行实例正常停止后恢复，guest 在 8 秒响应；Core/guestEnvironment 绑定仍为 `2.8.0-local.199abaf3`、内存 4096 MB，Core seal 与安装前一致。旧 r1 App 备份在 `.build/distribution-install-backup-r2/vphone-launchpad.app`。
+- 另一台干净 Mac 的首装与镜像导入仍未验收；本次结果覆盖本机真实发行下载、升级和原实例恢复，不扩大为跨 Mac 全链路结论。
+- 真实 APP 内点击「下载 App 更新安装包」后完成独立网络下载，页面显示「App 安装包已校验」及「在 Finder 中显示安装包」。App 缓存文件再次核对 SHA-256 与发布附件相同。
