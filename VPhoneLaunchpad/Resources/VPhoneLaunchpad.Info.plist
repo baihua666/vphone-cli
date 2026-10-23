@@ -22,6 +22,10 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>VPhoneDistributionSigning</key>
+	<string>$(VPHONE_DISTRIBUTION_SIGNING)</string>
+	<key>VPhoneDistributionRevision</key>
+	<string>$(VPHONE_DISTRIBUTION_REVISION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>

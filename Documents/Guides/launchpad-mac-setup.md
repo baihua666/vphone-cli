@@ -1,5 +1,7 @@
 # Launchpad：其它 Mac 获取、构建与使用
 
+提供已签名发行包后的普通用户路径见 [下载分发与首次使用](launchpad-distribution.md)。本页仍用于源码构建。
+
 适用分支：`origin/tb_dev`。近期功能见 [更新摘要](launchpad-updates-20261023.md)。
 这是本地定制源码的部署说明，不是官方公证发行包的安装说明。
 更新源码、构建 Launchpad、安装 Core、更新 guest 是四件独立的事；普通应用管理更新只需部署 Launchpad。
@@ -56,7 +58,7 @@ zsh VPhoneLaunchpad/Tests/FlywheelWebActionTests.sh \
 Xcode 构建不签名。部署前，在本机 gitignored 的
 `VPhoneLaunchpad/Configuration/Developer.xcconfig` 设置 `VPHONE_LAUNCHPAD_TEAM = <自己的团队 ID>`，
 然后重新构建。已有文件只编辑必要字段，不覆盖其它设置；团队、证书私钥不提交。
-使用与该团队一致、钥匙串中有效的 Apple Development 证书供本机测试，或 Developer ID 供分发；跨 Mac 分发还需正常公证流程。
+使用与该团队一致、钥匙串中有效的 Apple Development 证书供本机及受控内部测试；内部 DMG 可不公证，但目标 Mac 可能需手动允许打开，必须验证 Helper 授权。具体见 [内部版打包与分发](launchpad-distribution.md)。面向默认 Gatekeeper 准入的分发使用 Developer ID 并公证。
 
 ```sh
 zsh VPhoneLaunchpad/Build/SignLaunchpad.sh \

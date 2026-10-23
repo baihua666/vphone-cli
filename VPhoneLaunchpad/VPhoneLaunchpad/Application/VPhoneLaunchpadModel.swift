@@ -39,6 +39,10 @@ final class VPhoneLaunchpadModel {
     let applications = VPhoneLaunchpadApplicationsModel()
     #endif
 
+    #if VPHONE_CUSTOM_DISTRIBUTION
+    let distribution = VPhoneDistributionModel()
+    #endif
+
     var panel: Panel?
     /// The panel to open once the sheet on screen has closed.
     private var queuedPanel: Panel?
@@ -141,7 +145,13 @@ final class VPhoneLaunchpadModel {
         // An unfinished install reopens its own sheet instead.
         if panel == nil {
             if bundles.progress == nil || bundles.progress?.isFinished == true {
+                #if VPHONE_CUSTOM_DISTRIBUTION
+                if UserDefaults.standard.bool(forKey: "distribution.setupSeen") {
+                    panel = !host.requiredPassed ? .hostSetup : !bundles.isReady ? .coreBundle : nil
+                }
+                #else
                 panel = !host.requiredPassed ? .hostSetup : !bundles.isReady ? .coreBundle : nil
+                #endif
             } else {
                 panel = .bundleInstall
             }

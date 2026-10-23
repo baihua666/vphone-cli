@@ -15,6 +15,9 @@ struct VPhoneLaunchpadRootView: View {
                     #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT
                     Button { openWindow(id: "applications") } label: { Label("应用管理", systemImage: "app.badge") }
                     #endif
+                    #if VPHONE_CUSTOM_DISTRIBUTION
+                    Button { openWindow(id: "distribution") } label: { Label("版本与镜像", systemImage: "arrow.down.circle") }
+                    #endif
                     panelButton(.hostSetup, systemImage: "checklist", needsAttention: model.hostNeedsAttention)
                     panelButton(.coreBundle, systemImage: "shippingbox", needsAttention: model.bundleNeedsAttention)
                     Button {
@@ -27,7 +30,12 @@ struct VPhoneLaunchpadRootView: View {
                 }
             }
             .navigationTitle(String(localized: "Machines"))
-            .task { await model.start() }
+            .task {
+                #if VPHONE_CUSTOM_DISTRIBUTION
+                if !UserDefaults.standard.bool(forKey: "distribution.setupSeen") { openWindow(id: "distribution") }
+                #endif
+                await model.start()
+            }
             // Free space changes as machines restore and IPSWs download; the
             // Host Setup row follows it.
             .task {

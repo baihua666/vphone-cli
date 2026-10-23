@@ -1,0 +1,13 @@
+{
+  "tag": "launchpad-2.8.0-r1",
+  "baseline": "2.8.0",
+  "appRevision": 1,
+  "minimumMacOS": 15,
+  "appDMG": "/absolute/path/to/vphone-launchpad-internalDevelopment-r1.dmg",
+  "coreVersion": "2.8.0-local.1234abcd",
+  "coreZIP": "/absolute/path/to/approved/VPhone-2.8.0-local.1234abcd.zip",
+  "images": [
+
+  ],
+  "signing": "internalDevelopment"
+}

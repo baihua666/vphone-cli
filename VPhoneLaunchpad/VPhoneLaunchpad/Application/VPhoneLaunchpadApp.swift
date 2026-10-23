@@ -53,6 +53,15 @@ struct VPhoneLaunchpadApp: App {
         .restorationBehavior(.disabled)
         #endif
 
+        #if VPHONE_CUSTOM_DISTRIBUTION
+        Window("开始使用与版本更新", id: "distribution") {
+            VPhoneDistributionView().environment(model)
+        }
+        .defaultSize(width: 800, height: 760)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        #endif
+
         Settings { DecodoAccountSettingsView() }
 
         MenuBarExtra(isInserted: $showsInMenuBar) {
@@ -95,6 +104,15 @@ final class VPhoneLaunchpadAppDelegate: NSObject, NSApplicationDelegate {
             if VPhoneLaunchpadPreview.isActive {
                 return .terminateNow
             }
+        #endif
+        #if VPHONE_CUSTOM_DISTRIBUTION
+        if model?.distribution.busy == true {
+            let alert = NSAlert()
+            alert.messageText = "版本下载或镜像导入正在进行"
+            alert.informativeText = "请先暂停下载，或等待 Core 安装／镜像导入完成后再退出。"
+            alert.runModal()
+            return .terminateCancel
+        }
         #endif
         if confirmedClose {
             return .terminateNow
