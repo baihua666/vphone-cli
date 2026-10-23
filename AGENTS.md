@@ -4,6 +4,7 @@ Virtual iPhone boot tool using Apple's Virtualization.framework with PCC researc
 
 ## Monorepo development
 
+- 版本声明与本地构建命名必须遵守下方「官方基线版本与本地标识」规范。
 - Before cross-layer work, read `Documents/Guides/architecture-boundaries.md`: Views own presentation, VPhoneWSCore owns business orchestration/adapters, CLI exposes reusable operations, and existing kits own shared rules. VPN provider integration is not VM networking; do not duplicate either in Views.
 - Resolve the same per-machine pinned runtime and library context for every operation. Treat legacy stop/probe and creation flows as documented migration gaps, not patterns to copy. Use the root CodeGraph index; cross-process contracts also require explicit tests.
 - This fork develops Workstation GUI and the native CLI together on `tb_dev`. The GUI lives in `VPhoneWorkstation/`; edit it here, not in the old sibling checkout.
@@ -11,6 +12,50 @@ Virtual iPhone boot tool using Apple's Virtualization.framework with PCC researc
 - Product direction is GUI → native CLI → VM/guest. Keep firmware, restore and installation logic in the CLI. Existing GUI creation options are not yet fully adapted to CLI 2.x.
 - `workstation.command` uses the in-repository GUI with the existing pinned runtime configuration. Building is not deploying: do not replace pinned hosts, VM data or proxy-path settings as part of routine development.
 - CLI updates merge from `upstream/main`; GUI updates use `git subtree pull --prefix=VPhoneWorkstation workstation-upstream main`. Keep `main` as the CLI upstream baseline. See `Documents/Guides/monorepo-development.md`.
+
+## 官方基线版本与本地标识
+
+2026-10-22 用户明确要求：
+
+- Core Bundle 与 Launchpad 的产品版本号必须使用实际合入的官方基线版本。例如 `2.8.0` 表示基于官方 2.8.0 修改，属于不可由本地开发改动的基线标识；本地新增功能、修复、重构或构建都不得修改其 major/minor/patch，也不得借用尚未合入的官方新版本号。
+- 只有实际同步并核对了新的官方代码基线，才随该基线采用对应的官方版本号；同时记录官方 commit SHA 与本地改动，不能仅凭官方发布了新版就改版本声明。
+- 必须保留官方本地构建身份机制 `<官方版本>-local.<内容哈希>`，不得用时间、`test`、流水号或人工名称替代、删去或伪造内容哈希。官方实现取包内签名 seal（`Contents/_CodeSignature/CodeResources`）的 SHA-256 前 8 位；缺少 seal 时沿用官方归档 SHA-256 回退。同一包重复安装应保持同一身份，不能仅因安装时间变化生成另一身份。
+- `test`、构建时间和用户发布确认属于附加信息，不能替代官方版本或内容哈希。AI 自行创建且未经用户明确确认发布的产物默认标记为测试，测试通过不等于获准发布。优先在产物说明或展示标签中记录，例如核心身份 `2.8.0-local.199abaf3`、附加标签 `test / 2026-10-22 22:30 北京时间`；若以后扩展机器可解析的版本字符串，必须同时保留官方基线及内容哈希，并先实现安装器、版本解析与实例绑定兼容测试。当前仍沿用官方字符串格式，未实现自动追加 `test` 或时间。
+- 下文上游 minor/series 规则描述官方升级契约，不授权本地另起版本系列。本地可选扩展通过能力探测和明确的缺能力错误保持兼容；Helper 的独立内部构建号仍按既有安装校验规则维护，不用它冒充官方产品版本。
+- 已安装的历史错误命名不得直接改目录、receipt 或 VM 绑定来伪装修正；应后续按正确官方基线重新构建、安装并单独迁移验收。历史研究记录保留当时真实包名，注明错误命名，避免丢失追溯关系。
+
+## Launchpad 业务优先与底层修改确认（2026-10-23）
+
+- 应用管理、在线服务接入、下载、安装编排、业务状态及验收流程优先在 Launchpad 和 `Integrations/<Feature>/` 实现；先复用现有 CLI／HTTP／RPC 能力，尽量避免修改 CLI、Core Bundle、VM 宿主、guest、固件及 helper。
+- 开发新业务不能默认要求升级实例绑定的 Core。保持每台实例原 library 与 pinned bundle；不因管理界面新增功能自动迁移运行时或更新 guest 环境。
+- 确实缺少必要底层能力时，实施前必须向用户说明现有接口为何不足、尝试过的复用方案、最小修改范围、兼容与部署影响，并取得用户明确确认。一般性的“实现功能／继续／部署”不等于同意修改底层。
+- 未获确认时继续完成可独立完成的 Launchpad 工作，明确报告缺失能力，不以动态注入、协议绕过或新增替代 CLI 规避确认。用户明确要求撤销本次底层改动时，可撤销本任务自身的改动，不触碰其它改动。
+- 本规则是开发行为约束，不表示已实现自动拦截。
+
+## Business customization boundaries
+
+- 2026-10-23 用户要求：所有本地定制能力和实验功能（包括 Apple Wallet／Apple Pay／NFC／SE 相关实现）必须使用具名编译宏／Swift 编译条件控制，不能只加注释或运行时布尔值。定制用 `VPHONE_CUSTOM_<FEATURE>`，实验用 `VPHONE_EXPERIMENTAL_<FEATURE>`；可独立回退的功能分别命名，不借用 `DEBUG` 一次开启全部实验。实验默认关闭，启用须显式声明。
+- 宏定义在所属 target 的既有构建配置中集中维护；实现隔离在独立目录／模块，上游入口只保留窄的条件组装点。关闭宏必须使该功能入口、注册、后台任务及副作用不可达，并恢复基础路径；删除功能时应能一并删除隔离实现、组装点与宏定义，不留下伪成功占位实现。跨 target／进程的定义与能力检测须一致，不能假定 Swift 条件会自动传给 C 或另一个 package。
+- 实现或改造定制功能必须验证开启／关闭两种构建与相关行为，记录宏名、定义位置、默认值、影响范围和删除／回退步骤。已有定制未逐项完成宏改造时必须明确列为未覆盖，不得仅因更新规范就宣称已经隔离；纯离线研究报告不需要创建未使用的产品宏。
+- 编译宏不能自动撤销已安装的 guest／内核／DSC／固件补丁或已写入的数据。补丁还须保留 patch-set／preset 开关，并记录原始输入恢复、重新生成／部署和验收办法；不得把关闭宿主宏冒充现有系统已回退。具体语言及构建接入见 [定制与实验功能的编译开关](Documents/Guides/architecture-boundaries.md#定制与实验功能的编译开关)。
+- 业务定制必须以减少上游升级和合并成本为目标。优先复用已有插件/扩展入口、依赖注入或独立业务模块；没有现成扩展机制时，先采用独立目录/文件和一个窄的组装入口，不为单个需求创建通用插件平台。
+- 通用核心只承载与业务无关的原子能力和公共规则。业务默认值、流程顺序、验收时长、供应商策略及业务数据放在业务模块；不因“多处可调用”就把业务编排放进 CoreKit、guest 或 privileged helper。
+- 新增业务模块与测试优先放在 `Integrations/<Feature>/`，实际有跨 target 复用需求时再建立独立 library；小型单 target 定制可先使用清晰隔离的业务目录。上游拥有的入口只保留必要的组装/适配代码，依赖方向为业务模块 → 通用接口，核心不得反向依赖业务模块。
+- 业务流程通过明确的扩展点接入。启用定制时保持用户要求的行为；未启用时保留基础产品路径。业务功能缺失或不兼容时给出该功能的具体失败，不应仅为可选定制扩大到全局 runtime 拒绝或迫使所有已有实例升级。真正修改公共 CLI/协议/布局时仍遵守本项目既有版本系列规则。
+- 复用实例的 library 与 pinned bundle。业务配置和状态由业务模块独立维护，不向 VM manifest、guest 协议或 helper 添加供应商/业务字段；底层确实缺少通用能力时，单独说明最小新增接口及其兼容影响。
+- 评审需列明：通用能力与业务策略的划分、触及的上游文件和必要性、停用定制后的基础行为、升级/合并影响，以及能力缺失、独立重试和真实环境验证。不得以动态注入绕过签名、helper 校验、权限边界或飞书禁令。
+- 详细维护规则及设备初始化案例见 [业务定制隔离](Documents/Guides/architecture-boundaries.md#业务定制隔离)。这些是开发约束，不代表已经实现插件系统或工具层隔离。
+
+## FLYWHEEL business integration
+
+- Launchpad is the management entry for the FLYWHEEL integration. The related backend repository is `/Users/tubao/code/private/flywheel/JeecgBoot_flywheel`; this path is a local source reference, never a build or runtime dependency.
+- Before integration work, read [FLYWHEEL integration boundaries](Documents/Guides/flywheel-integration.md) and the other repository's `AGENTS.md`. Keep the repositories, build systems and release processes independent.
+- Keep FLYWHEEL client/business code in the independent `Integrations/Flywheel/` library and tests, outside upstream-owned VM/CLI/guest code and the Workstation subtree. Launchpad owns only UI composition and the adapter to existing machine operations.
+- Do not add FLYWHEEL fields to VM manifests, `launchpad.json`, firmware, daemon or privileged helper protocols. Reuse existing machine operations with the selected machine's library and pinned bundle.
+- Scope expanded on 2026-10-22: local business device CRUD in Launchpad, using an independent SwiftData store for numeric device numbers, regions, notes and platform references. Reuse platform names and start/stop operations. Deleting a business record must never delete the VM. Backend APIs, remote synchronization and business task execution remain deferred.
+- FLYWHEEL opens in a separate single-instance native window. Do not replace the platform main page. Repeated entry clicks focus the existing business window; platform actions open/focus the main window and select the machine. Keep business window composition under `Flywheel/` and share the existing platform model.
+
+- FLYWHEEL lifecycle regression is mandatory for association/list/persistence changes: test rename, delete, both clone modes, clone-then-delete-source, same-name replacement, explicit clone binding and database reopen. See the lifecycle matrix in `Documents/Guides/flywheel-integration.md`. Never infer identity from UDID alone (ordinary clones retain it); use local directory identity, and require explicit confirmation for legacy references without it. Platform deletion must retain business metadata and disable unresolved actions. Tests must use isolated stores/directories, never delete user VMs. Debug deployment must include the app's debug dylib as well as its launcher executable.
 
 ## Quick Reference
 

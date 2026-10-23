@@ -11,6 +11,8 @@ Launchpad 为统一主入口，Workstation 保留为备用。Decodo 配置、安
 
 ## 当前基线（2026-10-16 镜像迁移后，优先于下面的历史流程）
 
+- 业务定制先按根 `AGENTS.md` 的 Business customization boundaries 和 [业务定制隔离](../../Documents/Guides/architecture-boundaries.md#业务定制隔离) 划分通用能力与业务策略。优先已有扩展点、依赖注入或独立业务目录，核心不反向依赖业务；不要把自动化默认值、初始化顺序和验收时长放进 CoreKit，也不要为单个定制预建动态插件平台。评审同时核对停用后的基础路径、旧 pinned runtime 的影响和业务步骤独立重试。
+
 - 官方源码基线为 `dfcfae9c608c432a9a63f846d5cda8272fde0b82`；`main` 跟踪 `upstream/main`，业务分支为 `codex/business-vm`。同步前完整代码保留在 `codex/pre-upstream-sync-20261008`（`d23154b`）。
 - 当前架构、构建和测试入口以根目录 `AGENTS.md` 为准：Xcode workspace 的 `VPhone` scheme 生成 `VPhone.bundle`。旧 `scripts/build.sh`、根目录 SwiftPM、Python 固件流水线及 `--variant exp` 已不适用；下面涉及这些内容的步骤仅供 1.0.14 历史排障。
 - 新固件按官方 patch sets/presets 选择；不得把旧 EXP 自动映射到某个新 preset。旧 MobileGestalt 可选定制尚未移植，新固件不包含该本地开关。
@@ -31,7 +33,7 @@ Launchpad 为统一主入口，Workstation 保留为备用。Decodo 配置、安
 - 项目根目录以本 skill 的 `../..` 为准，不依赖用户当前目录。
 - 先读项目 `AGENTS.md` 与 [调试日志](../../Research/debug_journal.md) 中相关事件。旧日志是线索，需区分已观察事实、假设、已验证结论和已被推翻的判断。
 - 存在 `.codegraph/` 时先用 CodeGraph 定位符号、调用路径，再补充定向文件检索；不要自动重建索引。
-- 涉及 vphone600 内核分析时转读 [kernel-analysis-vphone600](../kernel-analysis-vphone600/SKILL.md)，并遵守项目内核 patch guardrails。新增二进制补丁需同步 `research/0_binary_patch_comparison.md`；普通安装器修改不增加固件补丁计数。
+- 涉及 vphone600 内核分析时转读 [kernel-analysis-vphone600](../../Skills/kernel-analysis-vphone600/SKILL.md)，并遵守项目内核 patch guardrails。新增二进制补丁需同步 `research/0_binary_patch_comparison.md`；普通安装器修改不增加固件补丁计数。
 - 不创建、读取或更新项目 `TODO.md`。本轮计划和进度用对话记录，需要留存的结论写入研究日志。
 
 ## VM 存储与临时产物

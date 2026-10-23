@@ -34,7 +34,7 @@ struct VPhoneLaunchpadChangeBundleView: View {
                 Section("Current") {
                     ForEach(machines) { machine in
                         LabeledContent(machine.name) {
-                            Text(verbatim: library.bundleVersion(for: machine.path) ?? "—")
+                            Text(verbatim: library.bundleVersion(for: machine.path).map(VPhoneLaunchpadNames.displayVersion) ?? "—")
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
@@ -44,9 +44,9 @@ struct VPhoneLaunchpadChangeBundleView: View {
                     Picker("Core Bundle", selection: $version) {
                         ForEach(model.bundles.selectableVersions, id: \.self) { version in
                             if version == model.bundles.defaultVersion {
-                                Text("\(version) (Default)").tag(version)
+                                Text("\(VPhoneLaunchpadNames.displayVersion(version)) (Default)").tag(version)
                             } else {
-                                Text(verbatim: version).tag(version)
+                                Text(verbatim: VPhoneLaunchpadNames.displayVersion(version)).tag(version)
                             }
                         }
                     }

@@ -1,3 +1,5 @@
+> 本 fork 的 `tb_dev` 定制功能：[近期更新](Documents/Guides/launchpad-updates-20261023.md) · [其它 Mac 构建部署](Documents/Guides/launchpad-mac-setup.md)。下文为上游产品说明，官方下载安装不会自动包含本 fork 的本地定制。
+
 <div align="right"><a href="Documents/README.md">Docs</a> · <strong>English</strong> · <a href="Documents/README_zh.md">中文</a> · <a href="Documents/README_ja.md">日本語</a> · <a href="Documents/README_ko.md">한국어</a></div>
 
 # vphone-cli

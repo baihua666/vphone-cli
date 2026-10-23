@@ -127,13 +127,16 @@ struct VPhoneLaunchpadMachineInspector: View {
             }
 
             Section("代理出口") {
-                Button("Decodo 配置与换 IP…") { showsDecodo = true }
+                Button("ISP / Decodo 出口与换 IP…") { showsDecodo = true }
+                    .disabled(VPhoneLaunchpadFlywheelWebAction.shared.active != nil)
                     .sheet(isPresented: $showsDecodo) {
                         VPhoneLaunchpadDecodoView(machine: machine, roots: library.roots,
                             isRunning: library.state(of: machine.path) == .running)
                             .id(machine.path)
                     }
             }
+
+            VPhoneLaunchpadFlywheelWebSection(machine: machine)
 
             coreBundleSection
 

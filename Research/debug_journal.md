@@ -1,6 +1,316 @@
 ## J-2026-10-16 — 新版镜像迁移，纠正管理员认证入口判断
 
 
+## 2026-10-23 本地应用版本状态读回与部署
+
+原应用管理只保存 Bundle ID 集合且每行固定「安装」。改为读回 guest apps.list 的版本和构建号，
+本地读取 CFBundleVersion，先比较数字版本再比较构建。相同显示「已是最新版本」（仅相对于本地包），
+本地新显示升级、guest 新明确提示，未知不误报最新；右侧菜单保留确认重装/降级。
+选目标、打开窗口、实例启动、安装完成及刷新时读取；目标路径/请求ID排除迟到响应，读取错误不视为空列表。
+只改 Launchpad 与 ApplicationManagement，不改 Core。11 项测试及启用/禁用构建通过。
+已部署到 /Applications/vphone-launchpad.app，原 helper 保留；1-20261023 原配置逐字节一致、4 GB 运行。
+真实 UI 选择该实例后自动显示 TikTok 47.4.0 / build 474032「已是最新版本」，不再显示普通安装按钮；
+未重装任何应用。证据 .build/validation/application-versions-20261023/。
+
+## 2026-10-23 Launchpad 临时增配安装恢复集成并部署
+
+应用管理在已提交安装失败/读回未确认且原内存低于 8 GB 时提供显式确认，固定失败时的
+library/name 目标。确认后复用机器启停、原 pinned CLI 的 vm config 和现有安装 workflow；
+无论安装结果如何都恢复实际原内存并启动。恢复记录在首次停机前落入 Launchpad support
+目录，包含目录身份/原绑定/原内存；重开只恢复不重装，失败留记录与恢复按钮。
+只在 Launchpad/独立 Integration 实现，Core、guest、helper 未修改。目标操作保留锁，
+目录或 Core 变化拒绝操作；关闭应用管理窗口不取消流程。新增独立编译条件
+VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY，停用前须先完成待恢复记录。
+9 个 package 测试和实际 adapter 隔离测试通过；覆盖成功、每阶段失败、取消、恢复失败、
+记录重开、同名不同库、绑定变化及同名目录替换。开启、单独关闭恢复、全部关闭应用管理
+三种构建通过。已签名部署 /Applications/vphone-launchpad.app，保留原 helper 字节，ready (15)。
+部署后 1-20261023 原配置逐字节一致、4 GB 运行，UI 已读回 TikTok 已安装，其它实例仍停止。
+本轮未再次触发真实安装失败；新异常路径为隔离自动测试，真实增配安装为前轮验收，不能混称。
+构建及部署证据：.build/validation/install-memory-integration-20261023/。
+入口、回退与限制见 [应用管理指南](../Documents/Guides/launchpad-applications.md)。
+
+## 2026-10-23 TikTok 临时增配安装验收通过
+
+用户授权后仅对 1-20261023 临时调为 8 GB，在原 2.8.0-local.199abaf3 上使用 Launchpad
+相同业务 workflow 完成 TikTok 47.4.0 真安装。随后正常停机恢复 4 GB，config.plist 和
+launchpad.json 与原备份逐字节一致。重启后 TikTok 启动、六次 5 秒间隔采样与前台验证通过，
+截图显示登录页；未验证账号登录、视频和长期稳定性。未升级或修改 Core/guest/Launchpad，
+未触碰其它实例；当前保留 4 GB 运行。详见 [验收](Host/launchpad_tiktok_install_failure_20261023.md)。
+
+## 2026-10-23 TikTok 安装内存调查（保持 4 GB）
+
+用户暂停增配后，仅在宿主临时副本上用原 Core 签名器实测：TikTok 单个 arm64 framework
+约 840 MiB，签名峰值 RSS 约 1.58 GiB。源码存在完整 slice 复制及完整输出缓冲；与此前
+guest Jetsam 相符，但未采集客体分配栈，不把宿主数据冒充客体峰值。上传、解包已流式，
+安装已串行；现有 apps.install 强制客体重签，宿主预签无法绕过。apps.register 不等同完整
+容器安装，不能伪造标记绕行。当前第三方主进程总 footprint 仅约 3.5 MiB，清后台无明显收益证据。
+未改 Core、内存、运行应用、未部署或重试；详见 [调查](Host/launchpad_tiktok_install_failure_20261023.md)。
+
+## 2026-10-22 五台迁移到官方 2.8.0 基线的本地测试核心
+
+用户明确授权重新构建最新本地核心、迁移五台、验证应用与数据后删除错误版本。
+在实际合入的官方 `dfcfae9c608c432a9a63f846d5cda8272fde0b82` / 2.8.0
+基线上构建当前 `b4f124b-dirty` 工作区，完整 VPhone 构建、bundle admission、
+deep strict 签名、正常 install-local 和主机预检通过。新核心为
+`2.8.0-local.199abaf3`；seal SHA-256 前八位确为 199abaf3，未人工改哈希。
+vphoned SHA-256 为 `93863283706957ecf7e0dc1309548340b187a28be6fd5f89245b19716dd26501`。
+本地和 CI 构建的 test 展示标签保持，用户授权迁移不等于确认发布。
+
+开始时五台均已停止。各自原 pinned CLI 创建 APFS 停机快照
+`before-core-280-20261022`；另备份配置及绑定。带 test 标签的 Launchpad
+按已安装应用同一 Apple 开发签名重新构建、验签，在全部停机时整体替换，
+旧应用保存在本轮验证目录的 installed-before。Helper 重新安装由系统管理员
+认证完成，没有绕过签名检查；后续授权过期也通过原生认证继续。
+
+逐台记录旧核心的应用、容器及数据，正常停机，set-bundle 更新，再启动验证。
+native-https-test-a/b 缺少 restore-info.json，set-bundle 的客体更新被现有
+条件跳过，因此显式调用既有 `cfw update-environment`，不伪造恢复元数据。
+两次均退出 0；日志提示缺原始 DeviceTree.d47ap.im4p，iPhone product repair
+跳过，Siri/Camera Control/Action Button/Model Name 不在本次硬件验收范围。
+未执行 restore、vm create、内核更新或重建身份。
+
+| 实例 | 应用条目（前后相同） | 第三方应用 | 对比文件摘要 |
+| --- | --- | --- | --- |
+| init-check-01 | 246 | 0 | 0 |
+| official-2x-20261016 | 248 | 2 | 17 |
+| custom-2x-20261016 | 252 | 6 | 77 |
+| native-https-test-a | 250 | 4 | 0 |
+| native-https-test-b | 250 | 4 | 0 |
+
+94 个文件为 Documents、Library/Preferences、DCIM 和录音目录下可用文件，
+86 个完整文件 SHA-256、8 个较大文件的前 64 KiB SHA-256，均相同；不是全盘
+逐字节校验。两台测试克隆机对应 Documents/Preferences 原本为空，录音目录
+原本不存在，未把这些情况冒充有用户内容的文件校验。五台应用版本、数据容器
+和共享组容器关联保持；每个第三方应用启动后等待 15 秒，PID 和前台身份确认，
+另检查真实截图。空闲观察每台超过 120 秒，均保持亮屏解锁，Never 两个有效值
+均为 2147483647。未提交年龄、条款、注册、登录或游戏/业务操作。
+
+五台 config.plist SHA-256 均与迁移前一致，各自 .vphoned.signed 完整摘要均与
+新核心一致；所有主机和客体环境绑定均为新核心，启动链历史来源不伪改。补充的
+12 MB daemon 全文件 RPC 读取未完成，仅中止该只读查询，未以它声称客体完整
+哈希验证；最终以成功的客体部署和同一部署暂存文件摘要核对。该查询期间 custom
+空闲采样出现间隔，实际总观察 202 秒，其余各台约 126–129 秒。
+
+全部通过后将默认核心设为新核心，通过正常 bundle remove 删除
+`2.9.0-local.f9f452dc`、`2.10.0-local.9740edc6`、`2.10.0-local.199abaf3`。
+商店剩新核心及两份原有正确命名的 2.8 本地核心。真实 Core Bundle 界面确认
+新核心有 test、默认和五台使用标签。五台最终均停止，与本轮开始状态一致；
+五份快照和配置备份保留。原 Workstation 备用 sidecar/分流配置未改，仍为其
+原独立入口；本轮统一的是 Launchpad 的实例绑定。
+
+证据位于 `.build/validation/core-280-migration-20261022/`，包括
+`migration-verification-summary.json`、逐台前后记录、截图、更新日志和
+`cleanup-summary.json`；验证目录为 0700，数据记录为 0600。版本/绑定及 test
+标签、Auto-Lock 原生 setter、迟到锁屏、宿主开机解锁回归均通过。
+
+## 2026-10-22 清理错误版本号的未使用核心包
+
+用户授权整理本地核心，不能原地改版本时删除错误命名；延续不更换现有实例
+核心的约束。通过已安装 Launchpad 的 `bundle remove` 删除
+`2.10.0-local.0f9d0a78` 与 `2.10.0-local.36ee25a1`，两次返回 removed，
+复查目录均不存在。代码核对 bootChain 仅为历史来源记录，后者不再被运行核心
+绑定使用；init-check-01 的历史字段保留，不伪造为新版本。
+
+保留仍被绑定的错误版本 `2.9.0-local.f9f452dc`、`2.10.0-local.9740edc6`、
+`2.10.0-local.199abaf3`，以及两份正确命名的 2.8 本地包，商店共剩五份。
+五台 VM 的 launchpad.json/config.plist SHA-256 逐项保持不变，默认核心不变。
+本轮未发送 VM 启停命令；前后只读列表中 init-check-01 从 running 变为
+正在关机，原因未核实，不声称全部运行状态保持不变。删除核心包不涉及 VM 磁盘。
+
+## 2026-10-22 本地核心测试构建展示标签
+
+用户要求 AI 测试构建展示 `test`，保留官方基线版本和内容哈希，暂不更换现有
+虚拟机核心。复用官方 `-local.<内容哈希>` / `-ci.<commit>` 解析，在 Launchpad
+核心包列表、新建机器和更换核心包菜单增加展示标签；Picker 的 tag 继续使用
+原始版本字符串。官方发行版不加标签；本地及 CI 构建默认按测试产物展示，
+预检通过或设为默认不会被视为用户发布确认。当前没有发布确认持久化记录或
+发布提升入口，未据此推断具体构建者，也未添加新的版本字符串格式。
+
+BundleNamesTests 的 14 个原有版本用例、测试标签分类（local、CI、legacy、
+官方发行与无效名称）、标签不作为存储身份及实例绑定往返测试通过。
+完整 Launchpad Debug 构建通过，输出 `.build/LaunchpadTestLabels/`，
+日志 `/tmp/vphone-launchpad-test-labels-build.log`。未部署、打开候选 app 或
+操作 VM，未修改已安装包、receipt、实例绑定或 guest 环境；实际界面未运行验收。
+
+## 2026-10-22 本地版本号恢复官方基线
+
+用户明确要求版本号表示实际合入的官方基线，本地改动由 `local.<构建标识>` 区分。
+当前 upstream 基线为 `dfcfae9c608c432a9a63f846d5cda8272fde0b82`，官方
+Core Bundle 和 Launchpad 均为 2.8.0；同 SHA 的官方 Info.plist 已经 MCP 核对。
+工作区此前为原生代理、设备初始化自行改为 2.9/2.10，混淆了代码来源，
+不是同步了相应官方版本。现恢复 Core Bundle Info.plist 和 Launchpad
+MARKETING_VERSION 为 2.8.0，并将约束写入 AGENTS.md。
+原生代理已检查 CLI 选项和运行核心能力，初始化已检查 guest 写能力，
+不依赖本地 2.9/2.10 数字放行。历史验收包名保持原样，仅作追溯。
+本次不构建、部署、删除或重命名已安装包，不改 receipt、VM 绑定或客体环境。
+
+## 2026-10-22 现有五台初始化检查与旧镜像清理
+
+用户要求检查现有机器，补齐启动解锁和 Never，保留数据、不重建；另明确授权
+删除旧 1.x 备份。Launchpad 清单为 custom/official-2x-20261016、
+native-https-test-a/b、init-check-01。五台 `unlocksAtStartup` 均为 true，
+guest 的 `never=true`、`auto_lock_seconds` 与 `lock_screen_minimum_seconds`
+均为 2147483647。没有缺项需要写入，没有执行 restore、CFW 安装、重新绑定、
+密码修改或输入保活；沿用每台 library/pinned bundle。
+
+本次实际复现了配置齐全仍冷启锁定：五机并行期间，init-check-01 超过三分钟
+仍 locked=true、screen_off=false、passcode_enabled=false。正常关机后日志为
+`[unlock] could not unlock the guest at startup: the Lock Screen did not dismiss in time`。
+当时宿主交换内存使用约 24 GiB。降低并发后该机 16 秒 vphoned 连通、自动进入
+桌面，随后与 custom 一起无输入观察 125 秒通过；official 连通耗时 134 秒，
+自动进入桌面且只读采样跨度约 138 秒未锁。压力是相关线索，未进行独立变量
+对照，不据此宣称确定根因或底层超时已修复。所有四个绑定宿主二进制均含现有
+启动超时重试逻辑，不把此次情况误判为缺少该代码。
+
+首次验收与“查明虚拟机 IP 与 VPN 决策 (2)”聊天发生 A/B 启停重叠；发现后
+停止争用，等待其完成并停机后重新独立验收。不能将重叠时段当作两台无输入
+空闲验证。原始状态、采样、截图、配置/绑定哈希与删除记录保存在
+`.build/validation/existing-vm-initialization-20261022/`。检查期间曾采到锁屏和
+纯黑启动画面，均不作为桌面成功证据。
+
+另一聊天完成后，A 独立冷启动 131 秒连通、自动解锁，无输入观察 121.8 秒；
+B 独立冷启动 15 秒连通、自动解锁，无输入观察 121.6 秒；两台均最终读回
+Never 和两个 Int32.max 值，A 实际截图为桌面，B 为桌面上的 Trust This Computer
+提示；未点击信任或拒绝，也未改变配对。A/B 验后正常停止，以保留另一
+聊天明确选择的释放内存状态；official 恢复原停止状态，custom 和 init-check-01
+保持运行且最终只读复核 unlocked/lit。五份 config.plist 和五份 launchpad.json
+SHA-256 与检查前均一致。init-check-01 重启前后 246 个已安装应用的标识、
+版本与容器路径一致（不是完整业务数据校验）。最终结果是五台配置完整、
+低并发冷启与至少 120 秒空闲复测通过；并发负载下的启动超时仍是已知限制，
+不能写成所有启动场景均已修复。
+
+旧镜像删除前用 lsof 确认两个 Disk.img 没有打开句柄，核对实际目录和两个管理
+链接的真实目标后删除。范围仅 `~/.vphone/VMs/stock-regular-guard-20261008`、
+项目 `vm-fresh` 及对应 workstation-library 链接；当前五台目录保留。
+历史回滚说明已在 branch_workflow.md 顶部纠正。未增加固件补丁。
+
+## 2026-10-22 初始化策略隔离（替代下条初版架构）
+
+按新增业务隔离规范，将 Never、解锁顺序和 120 秒验收策略移出 CoreKit，
+放入 Launchpad 的 Business/DeviceInitialization 独立目录；删除初版
+vm initialize 入口和 CoreKit 业务测试。应用组装处默认注入异步闭包，
+pipeline 只负责扩展步骤生命周期、展示和重试；无注入时以 firstBoot 完成。
+薄适配器复用现有 guest socket 与绑定 CLI，成功验证后才开启已有启动解锁选项。
+旧 guest 缺能力时只在初始化失败；全局 bundle 下限恢复为此前 2.9.0，
+不自动改动实例绑定。通用 guest 设置能力保留，未增加固件补丁。
+
+策略测试、真实 pipeline/适配器测试和版本绑定测试已通过；测试覆盖停用基础
+路径、firstBoot ping、初始化失败后单独重试、2.9 上下文和响应格式错误。
+native setter 测试、Launchpad 构建、完整 Core Bundle 构建均通过；原生 CLI
+已移除业务 initialize 命令。构建日志为 `.build/initialization-isolation-*-build.log`。
+2.10.0 bundle 的 deep strict 签名与准入检查通过，CLI help 确认不再暴露 initialize。
+未部署到现有 app / pinned VM，未进行真实 guest 设置写入、空闲与冷启动验收。
+
+## 2026-10-22 Launchpad 创建后初始化设备（初版，架构已被上条替代）
+
+用户要求在首次启动后自动设置 Never、验证并支持单独重试。原 firstBoot
+仅等待 vphoned ping；追加 initializeDevice 后，完成状态必须等该步骤通过。
+复用实例绑定 CLI、screen.unlock、GuestLockScreenIdle 和失败步骤重试入口，
+新增 vm initialize 执行系统设置写入、读回、respring、再次解锁和至少 120 秒
+无输入屏幕状态观察；Launchpad 成功后启用既有 unlock-at-startup。
+旧 guest 无写能力时在修改前拒绝，不重新恢复或安装固件。
+
+8 项 CoreKit 测试、实际流水线单独重试测试、native setter 测试、版本/绑定
+测试通过；Launchpad 与完整 Core Bundle 构建通过，2.10.0 bundle deep strict
+签名检查通过。新增 CLI 契约按规则提升 minor 和最低 bundle 版本。构建日志
+在 `.build/initialization-*.log`。未部署到已有 app / pinned VM，未验证实际
+guest 的 profiled 接受写入、Settings 页面、真实空闲和冷启动持久性。
+接口来源、步骤和验收边界见 [设备初始化](../Documents/Guides/launchpad-device-initialization.md)。
+
+## J-2026-10-22 — Launchpad 基础操作被可选代理版本门槛拦截
+
+用户创建/启动时收到“需要 VPhone.bundle 2.9.0 或更新版本”。本机默认仍为
+`2.8.0-local.b0ffd6cc`；本地原生代理改动把全局最低版本从 2.8.0 提到
+2.9.0，导致 `CoreBundle.prepare` 在基础操作前拒绝旧绑定。原生代理已有
+CLI 选项和运行核心能力检查，因此恢复全局 2.8.0 下限，保留功能自己的检查。
+不改 VM 绑定、默认 bundle、guest 或固件；初始化仍按 guest 写能力独立报错。
+
+回归先在 `BundleNamesTests.sh` 复现 `isCompatibleBundleVersion("2.8.0")`
+失败，修复后 14 个版本/绑定用例通过。创建流水线、初始化策略及原生代理
+旧核心拒绝修改/可选能力解码测试通过；完整 Launchpad Xcode 构建和同身份签名、
+deep strict 验证通过。产物为 `.build/LaunchpadDecodo/Build/Products/Debug/vphone-launchpad.app`。
+安装前发现另一会话已启动管理器并在恢复原有 VM，因此本轮未覆盖已安装 app，
+也未停止或启动任何 VM。需该会话结束后部署管理器，再验收原创建/启动路径。
+
+## J-2026-10-22 — 初始化部署实测中的权限和迟到锁屏
+
+本会话获授权部署并新建一台测试机，要求不影响旧机。证据位于忽略目录
+`.build/validation/device-initialization-20261022/`。新测试机为
+`~/.vphone/init-test-20261022/init-check-01`，独立库、NAT、2 CPU、3072 MB，
+使用缓存 iOS 26.6.2 / cloudOS 26.4，未克隆用户现用镜像。
+
+部署发生了中断事件：退出并替换管理器期间，原四台 VM 和 launcher 的 PID
+全部退出。具体由退出还是替换触发未定位，不能声称“无影响”。已向用户说明，
+按原绑定、原库和原启动参数恢复四台。此后两台 2.8 VM 又报告 VZErrorDomain 1
+“内部虚拟化错误”并退出；未再次自动启动。两台 2.9 仍运行。检查时原四台
+launchpad.json/config.plist 哈希未变化。原已停止的 test_11 后来目录消失，
+本会话未执行删除，原因未核实；没有擅自重建。管理器不再退出或替换，Skill
+已纠正“只更新管理器不会影响 VM”的未经验证假设。
+
+测试机恢复首轮 iBSS 重连超时；一次重试期间误停止仍在进行恢复的测试 DFU
+进程，导致中断。取消该测试任务并确认其进程退出后，从 bootDFU 干净重试，
+恢复 586 秒、CFW 771 秒、firstBoot 67 秒通过；prepare 118 秒、patch 75 秒
+未重跑。没有为恢复重试修改旧机。默认 bundle 保持 2.9.0-local.f9f452dc，
+新增核心均并列安装，仅修改测试机绑定；中间测试版本不是正式发行标签。
+
+真实 guest 暴露了仅靠 mock 测试未发现的问题：
+
+- profiled 日志明确要求 `com.apple.managedconfiguration.feature-setting.maxInactivity`。
+  缺该权限时 setter/flush 不抛错，有效值仍为 60；写后读回使初始化正确失败。
+  补充 daemon 权限后，读回 Never 和锁屏空闲值均为 2147483647。
+- 现有 IcliKit respring 的 FrontBoard 路径没有完成，launchd stop 回退报 144。
+  固定依赖 icli 0.7.17 的 Docs/entitlements.md 指定服务修改需
+  `com.apple.private.xpc.service-configure`；补充后 respring 成功。
+  两项均校验源码声明及最终 guest 签名，原生测试增加声明断言。
+- 新 SpringBoard PID 出现后，旧 unlocked 通知可能短暂保留；单次解锁过早
+  返回后又出现锁屏，120 秒观察正确失败。`system.respring` 成功后标记下一次
+  `GuestScreenUnlock` 在原超时内等待新锁屏，再调用原按键解锁路径；不在观察期
+  保活或重新解锁。实际解锁源码的立即/延迟锁屏回归、原宿主 startup-unlock
+  回归通过。业务目录及已运行管理器不需要为此改动。
+
+为桌面和冷启动测试，仅对该测试机调用现有 setup.skip；三个 setup 偏好已写入，
+其 respring 当时权限不足，正常停止/启动后 setup.status.pending=false。业务
+初始化没有加入跳过设置。首次黑屏截图不算桌面通过；后续已实际截到 Home Screen。
+独立重试报告比较证明，先前九个创建阶段的状态和耗时完全一致。
+最终使用 `2.10.0-local.199abaf3`，运行中 daemon 哈希与 bundle 内文件一致
+（`93863283706957ecf7e0dc1309548340b187a28be6fd5f89245b19716dd26501`）。
+初始化约 151 秒通过，Launchpad 十个步骤全绿；120 秒只读空闲观察未锁屏或
+熄屏，Settings 的 Auto-Lock 列表截图明确勾选 Never。多次真实失败后仅重试
+initializeDevice，前九阶段状态及耗时不变；成功后配置自动启用 unlocksAtStartup。
+
+随后只停止/启动测试机，未发送手动 unlock、Home 或 Power；约 48 秒 vphoned
+回应，宿主日志出现 `[unlock] dismissed the Lock Screen at startup`，实际截图
+为 Home Screen。每 5 秒只读记录 180 秒，连接就绪后的连续约 156 秒均为
+locked=false/screen_off=false，Never 两项值重启后仍为 2147483647。
+证据：test-cold-screen-timeline.json、test-cold-desktop.jpg、test-never-checkmark.jpg。
+测试完成后正常停止并保留新测试机，释放资源，再按原 bundle 和原参数恢复
+两台异常退出的 2.8 旧机；四台旧机均重新显示 running。本次验收通过不抹去
+部署中断事件，不能报告为“完全不影响已有运行态”。
+最终四台旧机的 device.screen 均可读取，locked=false/screen_off=false；
+launchpad.json/config.plist 再次逐文件比较均与部署前一致。全局默认仍为
+2.9.0-local.f9f452dc，测试机正常停止，卷剩余约 93 GiB。最终核心 deep strict
+验签通过；初始化策略、流水线独立重试、原生 setter、延迟锁屏和宿主开机解锁
+测试通过。完整结果索引为 validation-results.json；未提交或混入其他会话改动。
+
+## J-2026-10-22 — 部署 Launchpad 2.8 基础兼容修复
+
+等待初始化验收会话完成后，从当前源码重新构建 Launchpad，保留其后续业务修改；
+未使用此前冻结的候选覆盖新代码。版本门槛维持 2.8.0，原生代理和设备初始化
+仍分别检查实际功能能力。版本/绑定、创建流水线、初始化策略和原生代理旧核心
+拒绝修改测试通过，完整 Xcode 构建及同身份 Apple Development 签名验证通过。
+
+部署前确认没有创建/恢复任务；四台旧机的 launcher 均独立运行，标准输出写入
+日志文件。仅向管理器主 PID 发送 SIGTERM，未用应用级 Quit；移动并保留旧 app
+全部文件后部署新 app（包含 debug dylib），不就地覆盖运行中的 launcher 文件。
+部署前后四台 VM 和四个 launcher 的八个 PID 全部一致；五台机器的 config.plist、
+launchpad.json 摘要均未改变，全局默认保持 2.9.0-local.f9f452dc。
+
+新版 Launchpad 对两份 2.8.0-local bundle 执行 verify 均为 passed，不再报告
+“需要 VPhone.bundle 2.9.0”。Helper 因二进制变化需重新安装，用户在系统弹窗
+完成管理员认证后显示 ready，主机检查通过。未启停任何 VM；test_11 已由用户
+确认删除，因此取消其启动验收，不重建、不改用其他实例。旧 app 备份及部署、
+检查证据位于 `.build/validation/launchpad-version-compat-20261022/`，旧 app
+为该目录下 `installed-before/vphone-launchpad.app`。本轮不修改固件补丁。
 ## 2026-10-16 冷启动自动解锁超时重试
 
 第二台完成 NAT 首启迁移、Never 设置和 141 秒空闲后，切回 tunnel 冷启；boot UUID 改变，Never 保留，但 77 秒仍锁定。正常停止后 stdout 明确为 `[unlock] could not unlock the guest at startup: the Lock Screen did not dismiss in time`。现有宿主 90 秒观察窗口包住单次 60 秒 RPC，但第一次此类超时会直接退出整个流程。最小改动仅在窗口内重试两种明确的屏幕启动超时；密码/其它失败仍结束。新增测试编译实际 `VPhoneGuestControlSystem.swift`，只替换测试传输，旧 HEAD 在 timeout→success 序列失败，新代码通过，完整 bundle 构建、签名与 preflight 通过，两台均实测自动解锁；随后 Workstation 再次冷启动两台，UUID 改变、桌面/未锁/亮屏/Never/新哈希均 pass。未增加固件补丁或改变用户密码。

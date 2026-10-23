@@ -31,24 +31,26 @@ extension ClashProxyDocument {
         if let dialer = current["dialer-proxy"] as? String, !dialer.isEmpty, dialer != proxy.name {
             replacementConfiguration["dialer-proxy"] = dialer
         }
-        for key in ["username", "password"] { fields[key] = proxy.configuration[key] }
+        let changedFields = proxy.host == "isp.decodo.com" ? ["username", "password", "port"] : ["username", "password"]
+        for key in changedFields { fields[key] = proxy.configuration[key] }
         guard NSDictionary(dictionary: fields) == NSDictionary(dictionary: replacementConfiguration) else {
             throw ProxyRouteError("此入口只允许更新专属节点的认证与会话参数")
         }
-        for field in ["username", "password"] {
+        for field in changedFields {
             let root = try Yams.compose(yaml: result)!
             guard let node = root[key]?.sequence?.first(where: { $0["name"]?.string == proxy.name }),
                   let mapping = node.mapping, mapping.anchor == nil,
                   mapping.filter({ $0.key.string == field }).count == 1,
-                  let scalar = node[field], let replacement = proxy.configuration[field] as? String else {
+                  let scalar = node[field], let replacementValue = proxy.configuration[field] else {
                 throw ProxyRouteError("代理认证字段重复或无效")
             }
+            let replacement = String(describing: replacementValue)
             guard let mark = node.mark else { throw ProxyRouteError("代理节点缺少源码位置") }
             let lines = result.split(separator: "\n", omittingEmptySubsequences: false)
             let offset = lines.prefix(mark.line - 1).reduce(0) { $0 + $1.unicodeScalars.count + 1 } + mark.column - 1
             // Like sequence styles, Yams reads mapping.style from the end event.
             let flow = Array(result.unicodeScalars)[offset] == "{"
-            result = try ClashYAMLScalar.replacing(in: result, node: scalar, with: replacement, flow: flow)
+            result = try ClashYAMLScalar.replacing(in: result, node: scalar, with: replacement, flow: flow, integer: field == "port")
         }
         expectedRoot[key] = (expectedRoot[key] as! [[String: Any]]).map { $0["name"] as? String == proxy.name ? replacementConfiguration : $0 }
         guard let actual = try Yams.load(yaml: result) as? [String: Any],

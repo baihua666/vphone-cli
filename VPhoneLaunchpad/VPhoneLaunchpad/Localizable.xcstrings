@@ -4802,6 +4802,12 @@
         }
       }
     },
+    "Initialize device" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Initialize device" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "初始化设备" } }
+      }
+    },
     "First boot" : {
       "localizations" : {
         "en" : {

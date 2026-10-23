@@ -2,6 +2,7 @@ import SwiftUI
 
 struct VPhoneLaunchpadRootView: View {
     @Environment(VPhoneLaunchpadModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         @Bindable var model = model
@@ -11,11 +12,21 @@ struct VPhoneLaunchpadRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
+                    #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT
+                    Button { openWindow(id: "applications") } label: { Label("应用管理", systemImage: "app.badge") }
+                    #endif
                     panelButton(.hostSetup, systemImage: "checklist", needsAttention: model.hostNeedsAttention)
                     panelButton(.coreBundle, systemImage: "shippingbox", needsAttention: model.bundleNeedsAttention)
+                    Button {
+                        openWindow(id: "flywheel")
+                    } label: {
+                        Label("FLYWHEEL", systemImage: "square.grid.2x2")
+                    }
+                    .labelStyle(.titleAndIcon)
+                    .help("打开 FLYWHEEL 业务窗口")
                 }
             }
-            .navigationTitle("Machines")
+            .navigationTitle(String(localized: "Machines"))
             .task { await model.start() }
             // Free space changes as machines restore and IPSWs download; the
             // Host Setup row follows it.

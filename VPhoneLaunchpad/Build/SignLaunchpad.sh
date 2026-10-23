@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Sign a built vphone-launchpad.app for distribution. The Xcode build never
-# signs; run this afterwards with a Developer ID Application identity from the
+# signs; use Developer ID Application for distribution, or Apple Development
+# for local use. Both must match the
 # team the app was built for (VPHONE_LAUNCHPAD_TEAM in the gitignored
 # Configuration/Developer.xcconfig).
 #

@@ -8,6 +8,9 @@ public struct VMNetworkStatus: Decodable, Sendable {
     public let guestIPv4: String?
     public let guestAddresses: [String]?
     public let egress: Egress?
+    public let nativeProxySupported: Bool?
+    public let nativeProxyEnabled: Bool?
+    public let nativeProxyEndpoint: String?
     public var egressError: String?
     public var guestInterfaceIPv4: String? {
         guestAddresses?.first { $0.hasPrefix("en0 ") && !$0.contains(":") }
@@ -25,10 +28,21 @@ public struct VMNetworkStatus: Decodable, Sendable {
         case device, link, attachment, configured, egress
         case guestIPv4 = "guest_ipv4", egressError = "egress_error"
         case guestAddresses = "guest_addresses"
+        case nativeProxySupported = "native_proxy_supported", nativeProxyEnabled = "native_proxy_enabled"
+        case nativeProxyEndpoint = "native_proxy_endpoint"
     }
 }
 
 extension VPhoneCLIClient {
+    public func setNativeProxy(name: String, path: String?) async throws {
+        let help = try await runInstance(name: name, verb: "network", options: ["--help"])
+        guard help.contains("--native-proxy-file"),
+              try await networkStatus(name: name).nativeProxySupported == true else {
+            throw ProxyRouteError("当前运行核心不支持原生代理，原有出口未改变；请在独立测试实例使用新版核心。")
+        }
+        _ = try await runInstance(name: name, verb: "network", options: ["--native-proxy-file", path ?? "", "--json"])
+    }
+
     public func networkStatus(name: String, probe: Bool = false) async throws -> VMNetworkStatus {
         var options = ["--json"]
         var unsupported = false

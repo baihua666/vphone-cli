@@ -36,6 +36,11 @@ final class VPhoneLaunchpadMachineLibrary {
     private(set) var addedRoots: [String]
     var selection: Set<Path> = []
     var actionError: VPhoneLaunchpadError?
+    /// Set only by the application's business composition.
+    var deviceInitializer: VPhoneLaunchpadCreationPipeline.DeviceInitializer?
+    #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+    var installMemoryOwners: [Path: UUID] = [:]
+    #endif
 
     /// The default library, canonical. Import writes here.
     let libraryRoot: String
@@ -99,6 +104,9 @@ final class VPhoneLaunchpadMachineLibrary {
     }
 
     func state(of machine: Path) -> RunState {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        if installMemoryLocked(machine) { return .busy("临时增配安装／恢复原内存") }
+        #endif
         if let creation = creations[machine], creation.isRunning, let step = creation.current {
             return .busy(String(localized: "Creating: \(step.title)"))
         }
@@ -315,6 +323,9 @@ final class VPhoneLaunchpadMachineLibrary {
 
     /// Writes a machine's binding and keeps the listed copy in step.
     func bind(_ machine: Path, _ binding: VPhoneLaunchpadMachineBinding) throws {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        try checkInstallMemoryAccess(machine)
+        #endif
         try binding.save(to: machine)
         bindings[machine] = binding
     }
@@ -404,6 +415,10 @@ final class VPhoneLaunchpadMachineLibrary {
     /// Starts a machine with its own bundle, after checking that bundle in
     /// this session (policy exception, host preflight and AMFI admission).
     func start(_ machine: Path, headless: Bool = false) async {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        do { try checkInstallMemoryAccess(machine) }
+        catch { actionError = VPhoneLaunchpadError(actionFailure: error); return }
+        #endif
         guard let version = bundleVersion(for: machine) else {
             actionError = VPhoneLaunchpadError(String(localized: "No Core Bundle version is installed. Install one in Core Bundle."))
             return
@@ -442,6 +457,15 @@ final class VPhoneLaunchpadMachineLibrary {
         if headless {
             arguments.append("--headless")
         }
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT
+        // Existing Core API; credentials stay in this machine's private launch log.
+        arguments += ["--api-listen", "127.0.0.1:0"]
+        do { try VPhoneLaunchpadApplicationConnection.prepareLog(Self.consoleLog(machine)) }
+        catch {
+            actionError = VPhoneLaunchpadError("无法准备应用管理的私有连接日志")
+            return
+        }
+        #endif
         panicked.remove(machine)
         do {
             let child = try commandLine.start(arguments, logFile: Self.consoleLog(machine)) { [weak self] line in
@@ -468,6 +492,10 @@ final class VPhoneLaunchpadMachineLibrary {
     /// Runs `cfw install` again through the helper, for a machine whose last
     /// install did not finish. Output goes to the machine's console log.
     func installCustomFirmware(_ machine: Path) async {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        do { try checkInstallMemoryAccess(machine) }
+        catch { actionError = VPhoneLaunchpadError(actionFailure: error); return }
+        #endif
         guard let version = bundleVersion(for: machine) else {
             actionError = VPhoneLaunchpadError(String(localized: "No Core Bundle version is installed. Install one in Core Bundle."))
             return
@@ -506,6 +534,10 @@ final class VPhoneLaunchpadMachineLibrary {
     /// and nothing else. This is how a machine created by an older bundle
     /// gets newer hooks, since its restore tree is gone after the first boot.
     func updateGuestEnvironment(_ machine: Path) async {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        do { try checkInstallMemoryAccess(machine) }
+        catch { actionError = VPhoneLaunchpadError(actionFailure: error); return }
+        #endif
         guard let version = bundleVersion(for: machine) else {
             actionError = VPhoneLaunchpadError(String(localized: "No Core Bundle version is installed. Install one in Core Bundle."))
             return
@@ -542,6 +574,10 @@ final class VPhoneLaunchpadMachineLibrary {
     /// patch selection resolves to, keeping the guest's data (no restore). The
     /// data-preserving way to apply a kernel patch change to an installed VM.
     func updateKernel(_ machine: Path) async {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        do { try checkInstallMemoryAccess(machine) }
+        catch { actionError = VPhoneLaunchpadError(actionFailure: error); return }
+        #endif
         guard let version = bundleVersion(for: machine) else {
             actionError = VPhoneLaunchpadError(String(localized: "No Core Bundle version is installed. Install one in Core Bundle."))
             return
@@ -577,6 +613,10 @@ final class VPhoneLaunchpadMachineLibrary {
     /// machine the way cutting the power would, follows only when the guest
     /// cannot be asked or has not stopped in time.
     func stop(_ machine: Path) async {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        do { try checkInstallMemoryAccess(machine) }
+        catch { actionError = VPhoneLaunchpadError(actionFailure: error); return }
+        #endif
         if await shutDownGuest(machine) {
             await refresh()
             return
@@ -803,6 +843,9 @@ final class VPhoneLaunchpadMachineLibrary {
         anyBundle: Bool = false,
         onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async throws {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        if let machine { try checkInstallMemoryAccess(machine) }
+        #endif
         // A machine's commands run with its own bundle; `anyBundle` lets one
         // that needs no particular version fall back to the default.
         let commandLine: VPhoneLaunchpadCommandLine? = if let machine {
@@ -914,6 +957,7 @@ final class VPhoneLaunchpadMachineLibrary {
             bundles: bundles,
             helper: helper,
             library: self,
+            deviceInitializer: deviceInitializer,
         )
         creations[pipeline.machine] = pipeline
         UserDefaults.standard.set(options.libraryRoot, forKey: Self.lastRootKey)

@@ -190,12 +190,11 @@ struct VPhoneLaunchpadNewMachineView: View {
             } else {
                 Picker("Core Bundle", selection: versionBinding) {
                     ForEach(model.bundles.selectableVersions, id: \.self) { version in
-                        // Store names keep their `-local.` and `-ci.` suffixes,
-                        // so a build that is not a release reads as one.
+                        // Labels add test status; picker tags keep the original store identity.
                         if version == model.bundles.defaultVersion {
-                            Text("\(version) (Default)").tag(Optional(version))
+                            Text("\(VPhoneLaunchpadNames.displayVersion(version)) (Default)").tag(Optional(version))
                         } else {
-                            Text(verbatim: version).tag(Optional(version))
+                            Text(verbatim: VPhoneLaunchpadNames.displayVersion(version)).tag(Optional(version))
                         }
                     }
                 }
@@ -503,7 +502,7 @@ struct VPhoneLaunchpadCreationView: View {
         VPhoneLaunchpadSheet(Text("Creating \(creation.options.name)")) {
             Form {
                 Section {
-                    ForEach(VPhoneLaunchpadCreationPipeline.Step.allCases) { step in
+                    ForEach(creation.steps) { step in
                         stepRow(step)
                     }
                 } footer: {
@@ -548,7 +547,8 @@ struct VPhoneLaunchpadCreationView: View {
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
-                VPhoneLaunchpadCommandInfoButton(command: "vphone-cli \(creation.command(for: step))")
+                VPhoneLaunchpadCommandInfoButton(command: step == .initializeDevice
+                    ? creation.command(for: step) : "vphone-cli \(creation.command(for: step))")
             }
         } label: {
             Label {

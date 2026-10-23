@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import VPhoneWSCore
 
 @main
 struct VPhoneLaunchpadApp: App {
@@ -34,6 +35,25 @@ struct VPhoneLaunchpadApp: App {
                 Button("Core Bundle…") { model.present(.coreBundle) }
             }
         }
+
+        Window("FLYWHEEL", id: "flywheel") {
+            VPhoneLaunchpadFlywheelWindow()
+                .environment(model)
+        }
+        .defaultSize(width: 1100, height: 650)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT
+        Window("应用管理", id: "applications") {
+            VPhoneLaunchpadApplicationsView().environment(model)
+        }
+        .defaultSize(width: 900, height: 650)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        #endif
+
+        Settings { DecodoAccountSettingsView() }
 
         MenuBarExtra(isInserted: $showsInMenuBar) {
             VPhoneLaunchpadMenuBarMenu()
@@ -177,4 +197,69 @@ private struct VPhoneLaunchpadWindowCloseInstaller: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+struct DecodoAccountSettingsView: View {
+    @State private var account = DecodoAccount()
+    @State private var source = ""
+    @State private var message = ""
+    @State private var busy = false
+    var body: some View {
+        Form {
+            Section("Decodo 账号") {
+                TextField("网站登录邮箱", text: $account.email)
+                SecureField("网站登录密码", text: $account.password)
+                SecureField("Public API Key（可选）", text: $account.apiKey)
+                Text(DecodoAuthorizationPolicy.explanation).font(.caption).foregroundStyle(.secondary)
+            }
+            Section("授权会话（可选）") {
+                SecureField("JWT-AUTH", text: $account.accessToken)
+                SecureField("refresh_token", text: $account.refreshToken)
+                Text("请求时优先使用现有会话；401 后刷新一次，再尝试账号登录。验证码或二次验证需在官网完成。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("配置文件") {
+                Text("当前来源：" + source).font(.caption).textSelection(.enabled)
+                Text("用户设置优先；没有用户文件时读取：" + DecodoAccount.fallbackPath).font(.caption).textSelection(.enabled)
+                Text("明文文件，仅本机用户可读写。请单独复制到其它设备，不提交 Git。网站账号与代理账号分别管理。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Button("保存用户设置") { save() }
+                Button("保存并验证 / 续期") {
+                    guard save() else { return }
+                    busy = true
+                    Task { @MainActor in
+                        defer { busy = false }
+                        do {
+                            let data = try await DecodoAccountSession.shared.subscriptions()
+                            let locations = try DecodoLocations.decode(data)
+                            account = try DecodoAccount.load().account
+                            message = "授权成功，读取 \(locations.count - 1) 个 ISP 地区。未修改虚拟机出口。"
+                        } catch { message = error.localizedDescription }
+                    }
+                }
+                Button("重新读取") { load() }
+            }
+            if busy { ProgressView() }
+            Text(message).font(.callout).textSelection(.enabled)
+        }.formStyle(.grouped).padding().frame(width: 620, height: 590).disabled(busy).onAppear { load() }
+    }
+    private func load() {
+        do { let loaded = try DecodoAccount.load(); account = loaded.account; source = loaded.path; message = "已读取配置。" }
+        catch { message = error.localizedDescription }
+    }
+    @discardableResult private func save() -> Bool {
+        do {
+            // An account change must not reuse the old account's authorized session.
+            if let old = try? DecodoAccount.load().account,
+               (old.email != account.email || old.password != account.password),
+               old.accessToken == account.accessToken, old.refreshToken == account.refreshToken {
+                account.accessToken = ""; account.refreshToken = ""
+            }
+            try account.save(); source = DecodoAccount.userPath
+            message = "用户设置已保存；尚未验证授权。"
+            return true
+        } catch { message = error.localizedDescription; return false }
+    }
 }

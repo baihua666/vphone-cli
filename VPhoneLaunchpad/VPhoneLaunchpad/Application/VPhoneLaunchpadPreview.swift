@@ -34,6 +34,7 @@
                 bundles: model.bundles,
                 helper: model.helper,
                 library: model.machines,
+                deviceInitializer: model.machines.deviceInitializer,
             )
             creation.applyPreview()
             model.machines.applyPreview(creation: creation)

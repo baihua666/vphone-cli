@@ -210,7 +210,17 @@ final nonisolated class VPhoneLaunchpadChildProcess: @unchecked Sendable {
         let argv = ([executable.path] + arguments).map { strdup($0) } + [nil]
         defer { argv.forEach { free($0) } }
         var pid: pid_t = 0
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT
+        // The existing Core prints its API endpoint/token. Flush those lines
+        // immediately into the private per-machine log, without changing Core.
+        var environment = ProcessInfo.processInfo.environment
+        if arguments.contains("--api-listen") { environment["NSUnbufferedIO"] = "YES" }
+        let envp = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+        defer { envp.forEach { free($0) } }
+        let result = posix_spawn(&pid, executable.path, &actions, &attributes, argv, envp)
+        #else
         let result = posix_spawn(&pid, executable.path, &actions, &attributes, argv, environ)
+        #endif
         guard result == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: result) ?? .EINVAL)
         }

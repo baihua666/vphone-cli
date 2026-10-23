@@ -50,7 +50,7 @@ actor ProxyNetworkRunner: CLIRunner {
     let f = try ClashFixture(); defer { f.cleanup() }
     let runner = ProxyNetworkRunner()
     let client = VPhoneCLIClient(executable: f.context.executable, libraryRoot: f.context.libraryRoot, runner: runner)
-    let controller = DecodoProxyController(client: client, proxy: f.service, name: "a")
+    let controller = DecodoProxyController(client: client, proxy: f.service, name: "a", lookupLocation: { _ in throw ProxyRouteError("test offline") }, lookupProvider: { _, _ in throw ProxyRouteError("test offline") })
     await controller.refresh()
     #expect(await f.transport.calls.allSatisfy { $0.hasPrefix("GET") })
     #expect(await runner.calls.isEmpty)
@@ -71,7 +71,7 @@ actor ProxyNetworkRunner: CLIRunner {
     let f = try ClashFixture(); defer { f.cleanup() }
     let runner = ProxyNetworkRunner(); await runner.setAttachment("nat")
     let client = VPhoneCLIClient(executable: f.context.executable, libraryRoot: f.context.libraryRoot, runner: runner)
-    let controller = DecodoProxyController(client: client, proxy: f.service, name: "a")
+    let controller = DecodoProxyController(client: client, proxy: f.service, name: "a", lookupLocation: { _ in throw ProxyRouteError("test offline") }, lookupProvider: { _, _ in throw ProxyRouteError("test offline") })
     await controller.refresh()
     controller.username = "test"; controller.password = "test-only"; controller.zip = "10001"
     await controller.apply(rotate: false)

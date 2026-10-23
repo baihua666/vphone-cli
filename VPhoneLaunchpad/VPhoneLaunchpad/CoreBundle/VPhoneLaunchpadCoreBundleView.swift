@@ -100,6 +100,12 @@ struct VPhoneLaunchpadCoreBundleView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(verbatim: "VPhone.bundle \(bundle.version)")
+                    if VPhoneLaunchpadNames.isTestBuild(bundle.version) {
+                        Text(verbatim: "test")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .help("测试构建，尚未经用户确认发布；核心版本号和内容哈希保持不变。")
+                    }
                     if isDefault {
                         Text("Default")
                             .foregroundStyle(.green)

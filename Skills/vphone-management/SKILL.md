@@ -7,9 +7,15 @@ description: 配置和升级 vphone Launchpad 管理界面、Decodo 美国 ZIP �
 
 优先使用本仓库扩展的 **Launchpad** 作为统一入口；官方发行版没有本地增加的 Decodo 页面。复用 `VPhoneWSCore`，不复制供应商认证、Clash 配置编辑或会话轮换逻辑。Workstation 是同一服务的备用客户端。
 
+## 真实界面操作
+
+- 用户要求后续统一使用真实 Launchpad，不添加只读预览、独立演示 app 或伪造运行状态。
+- 打开管理界面不等于授权换 IP、应用代理或重启 VM；检测当前 IP 是独立只读动作。
+- 更新前检查创建、恢复和运行中的 VM。2026-10-22 实测退出并替换管理 app 期间四台既有 VM/launcher 全部退出，具体由退出还是替换触发尚未定位；不能再假定仅更新管理 app 不影响 VM。用户要求不中断时，有运行实例就先完成构建和验签，保留安装产物，待维护窗口再替换；不得通过重启旧机冒充无影响更新。
+
 ## 开始前
 
-- 先确认本机仓库、已安装 app 签名、核心 Bundle、实例库、`launchpad.json` 与正在运行的实例。用户说不影响其它操作时，只构建测试，不退出管理器、替换 app、启停 VM 或重载 Clash。
+- 先确认本机仓库、已安装 app 签名、核心 Bundle、实例库、`launchpad.json` 与正在运行的实例。用户说不影响其它操作时，不启停 VM 或重载 Clash；若明确要求更新并打开真实 UI，可按上述流程仅更新管理 app。
 - 读 [跨 Mac 部署与备用方案](references/deployment.md)。涉及源码变更时还读仓库 `AGENTS.md` 和 `Documents/Guides/architecture-boundaries.md`。
 - 源码位于 `VPhoneLaunchpad/`；共享服务在 `VPhoneWorkstation/Sources/VPhoneWSCore/Proxy/`。CLI 与 VM 网络层不应引入 Decodo/Clash 配置知识。
 - 不把本机 ZIP、节点名、runtime 哈希、用户名或目录当成别的 Mac 的默认事实。先读取目标机配置，再选兼容的 2.x 版本。

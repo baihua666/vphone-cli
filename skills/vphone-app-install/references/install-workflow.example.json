@@ -1,0 +1,14 @@
+{
+  "ipa": "/absolute/path/Instagram.ipa",
+  "source": {
+    "appID": "389801252",
+    "bundleID": "com.burbn.instagram",
+    "version": "452.0.0",
+    "country": "us"
+  },
+  "launch": true,
+  "targets": [
+    {"name": "official-2x-20261016", "apiURL": "http://127.0.0.1:18761", "tokenFile": "/absolute/path/official.token"},
+    {"name": "custom-2x-20261016", "apiURL": "http://127.0.0.1:18762", "tokenFile": "/absolute/path/custom.token"}
+  ]
+}

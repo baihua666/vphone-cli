@@ -102,6 +102,36 @@ version while a machine is bound to it; rebind or delete those machines first.
 
 ## Commands
 
+### Business device initialization
+
+This business build injects **Initialize device** after First boot. Without
+the injected extension, the base pipeline still ends at First boot. It unlocks
+through `screen.unlock`, sets Auto-Lock to Never through ManagedConfiguration,
+restarts SpringBoard so the Lock Screen idle setting takes effect, unlocks
+again, and checks screen state without input for at least 120 seconds. The
+step passes only when the display stays on, the device stays unlocked, and
+both Auto-Lock and the Lock Screen preference read back as Never. Launchpad
+then enables the existing `vm config --unlock-at-startup on` option for later
+boots. No passcode is removed or changed.
+
+A failure stays on **Initialize device**. **Retry from Initialize device**
+reruns only that step, preserving the restored disk and completed firmware
+stages. It requires a guest environment with writable `display.auto_lock`
+support. This capability check belongs to the initialization step; the global
+Core Bundle minimum remains 2.8.0, so this extension does not block older
+supported bundles from performing existing operations. An older guest environment
+fails before setting changes, with an update instruction. If the machine has
+stopped, start it before retrying. Complete Setup Assistant or unlock a
+passcode-protected guest manually if the error calls for it.
+
+`vphone-launchpad-cli vm create <name> --from initializeDevice` also retries
+the extension in the existing creation pipeline, while the same Launchpad
+session is open. `vm create --no-wait` reports only the steps enabled for that
+pipeline. The native CLI's separate `vm create` keeps its existing first-boot
+flow. The earlier business-specific `vphone-cli vm initialize` command has
+been removed; this policy now lives entirely in Launchpad's isolated business
+directory. See [implementation boundaries](launchpad-device-initialization.md).
+
 | Command | Does |
 | --- | --- |
 | `status` | Host checks, helper, default bundle, machine counts |

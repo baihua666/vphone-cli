@@ -1,5 +1,7 @@
 # 跨 Mac 部署与 Workstation 备用
 
+完整最新步骤以 [Launchpad 跨 Mac 部署指南](../../../Documents/Guides/launchpad-mac-setup.md) 为准；包含应用管理、FLYWHEEL、签名与本机凭据配置。下文保留代理及备用入口注意事项。
+
 ## 同步代码与 Skill
 
 在目标 Mac 的本项目 checkout 拉取包含本次修改的业务分支。先检查工作区；已有修改时不要 reset/clean。整个 monorepo 必须一起拉取：Launchpad 通过本地 Swift package 依赖 `VPhoneWorkstation` 的 `VPhoneWSCore`，不能只复制 Launchpad 目录。依赖版本由 Package.resolved 固定。
@@ -22,7 +24,7 @@ ln -s "$PWD/Skills/vphone-management" "$HOME/.codex/skills/vphone-management"
 
 产物在 `.build/LaunchpadDecodo/Build/Products/Debug/vphone-launchpad.app`。这不会安装或重启任何应用。`test launchpad` 运行共享代理/CLI 回归测试；Xcode build 校验实际 Launchpad UI 集成。
 
-**本地编译版不是官方公证发行版。** 不可用 ad-hoc 重签官方 app 后声称原 Helper 仍可用。部署自定义 Launchpad 必须按 `VPhoneLaunchpad/Build/SignLaunchpad.sh` 使用有效 Developer ID，并以相同开发团队构建 app 与 Helper 的互信要求（本机 gitignored `VPhoneLaunchpad/Configuration/Developer.xcconfig` 中配置 `VPHONE_LAUNCHPAD_TEAM`）。团队标识、私钥和证书不要提交。跨 Mac 分发需要正常签名/公证流程；没有签名条件时保留官方 app 与 Workstation，不绕过 Helper 的客户端校验。
+**本地编译版不是官方公证发行版。** 不可用 ad-hoc 重签官方 app 后声称原 Helper 仍可用。对外分发使用 Developer ID；仅本机使用可按 `VPhoneLaunchpad/Build/SignLaunchpad.sh` 使用有效 Apple Development 证书。实际校验要求是 Apple 签名链、应用标识和团队 ID，并未限定 Developer ID 类型。必须以所选证书的同一开发团队构建 app 与 Helper 的互信要求（本机 gitignored `VPhoneLaunchpad/Configuration/Developer.xcconfig` 中配置 `VPHONE_LAUNCHPAD_TEAM`）。团队标识、私钥和证书不要提交。跨 Mac 分发需要正常签名/公证流程；没有签名条件时保留官方 app 与 Workstation，不绕过 Helper 的客户端校验。
 
 用户允许维护窗口后才退出旧管理器、保留原 app、安装新 app；由用户完成 macOS 开发者工具权限和 Helper 管理员认证。不要让两个相同 bundle ID 的管理器同时运行。原虚拟机磁盘可继续保留，禁止用重建替代接入。
 

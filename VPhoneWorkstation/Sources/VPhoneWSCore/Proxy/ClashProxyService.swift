@@ -6,6 +6,8 @@ public struct VMProxyRoute: Sendable {
     public let process: String
     public let selected: String
     public let choices: [String]
+    public var ispChoices: [String] = []
+    public var endpoint: String? = nil
 }
 
 /// Clash-specific persistence and routing belong to the workstation, not the VM CLI.
@@ -92,10 +94,17 @@ public actor ClashProxyService {
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let proxies = object?["proxies"] as? [String: [String: Any]] ?? [:]
         let choices = proxies.filter { name, value in
-            (!DecodoProxy.isManagedName(name) || name == snapshot.managedProxyName) && value["all"] == nil && !["Reject", "RejectDrop", "Pass", "PassRule", "Compatible"].contains(value["type"] as? String ?? "")
+            (!DecodoProxy.isManagedName(name.replacingOccurrences(of: "IP · ISP ", with: "IP · Decodo ")) || name == snapshot.managedProxyName || name == snapshot.managedProxyName.replacingOccurrences(of: "IP · Decodo ", with: "IP · ISP ")) && value["all"] == nil && !["Reject", "RejectDrop", "Pass", "PassRule", "Compatible"].contains(value["type"] as? String ?? "")
                 && !name.contains(",") && !name.contains(where: { $0.isNewline })
         }.keys.sorted()
-        return VMProxyRoute(profile: snapshot.profile, process: snapshot.process, selected: selected, choices: choices)
+        let config = try Yams.load(yaml: snapshot.runtime) as? [String: Any]
+        let node = (config?["proxies"] as? [[String: Any]])?.first { $0["name"] as? String == selected }
+        let endpoint: String?
+        if let server = node?["server"] as? String, let port = node?["port"] as? Int {
+            endpoint = "\(server):\(port)"
+        } else { endpoint = nil }
+        return VMProxyRoute(profile: snapshot.profile, process: snapshot.process, selected: selected, choices: choices,
+                            ispChoices: try ISPProxyPool.names(runtime: snapshot.runtime).filter { choices.contains($0) }, endpoint: endpoint)
     }
 
     struct Rule: Decodable, Equatable { let type: String; let payload: String; let proxy: String }

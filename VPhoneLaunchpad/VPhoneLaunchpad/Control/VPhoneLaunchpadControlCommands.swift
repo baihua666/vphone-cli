@@ -606,7 +606,7 @@ struct VPhoneLaunchpadControlCommands {
             "bundle": pipeline.options.bundleVersion,
             "running": pipeline.isRunning,
             "log": pipeline.logFile.path,
-            "steps": VPhoneLaunchpadCreationPipeline.Step.allCases.map { step -> [String: Any] in
+            "steps": pipeline.steps.map { step -> [String: Any] in
                 var item: [String: Any] = ["step": "\(step)", "status": pipeline.status(step).rawValue]
                 if let duration = pipeline.durations[step] {
                     item["seconds"] = Int(duration)
@@ -811,6 +811,16 @@ struct VPhoneLaunchpadControlCommands {
     /// command on one machine should name that machine's own version, which
     /// `vm list` reports.
     private func exec(_ request: VPhoneLaunchpadControlRequest, emit: @escaping Emit) async throws -> Any {
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        let arguments = request.arguments
+        if arguments.count >= 3, ["vm", "cfw", "fw"].contains(arguments[0]),
+           !["info", "list"].contains(arguments[1]) {
+            let rootIndex = arguments.firstIndex(of: "--library-root")
+            let root = rootIndex.flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil } ?? library.libraryRoot
+            let path = VPhoneLaunchpadMachinePath(libraryRoot: VPhoneLaunchpadMachineLocations.canonical(URL(fileURLWithPath: root)), name: arguments[2])
+            try library.checkInstallMemoryAccess(path)
+        }
+        #endif
         guard let version = request.option("bundle") ?? bundles.defaultVersion else {
             throw VPhoneLaunchpadError("No Core Bundle version is installed. Run bundle install-local or bundle install-release.")
         }

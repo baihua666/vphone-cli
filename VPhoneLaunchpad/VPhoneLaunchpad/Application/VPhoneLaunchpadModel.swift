@@ -35,6 +35,9 @@ final class VPhoneLaunchpadModel {
     let bundles: VPhoneLaunchpadCoreBundle
     let machines: VPhoneLaunchpadMachineLibrary
     let leases: VPhoneLaunchpadLeases
+    #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT
+    let applications = VPhoneLaunchpadApplicationsModel()
+    #endif
 
     var panel: Panel?
     /// The panel to open once the sheet on screen has closed.
@@ -46,6 +49,7 @@ final class VPhoneLaunchpadModel {
         host = VPhoneLaunchpadHostSetup(helper: helper, libraryRoot: libraryRoot)
         bundles = VPhoneLaunchpadCoreBundle(helper: helper, history: history)
         machines = VPhoneLaunchpadMachineLibrary(bundles: bundles, helper: helper)
+        machines.deviceInitializer = VPhoneLaunchpadDeviceInitializationAdapter.make(bundles: bundles)
         leases = VPhoneLaunchpadLeases(bundles: bundles, machines: machines, helper: helper)
         bundles.boundMachines = { [machines] version in machines.machineNames(boundTo: version) }
     }
@@ -131,6 +135,9 @@ final class VPhoneLaunchpadModel {
             await bundles.checkDefault()
         }
         await listed
+        #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT && VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
+        applications.recoverInstallMemory(using: machines)
+        #endif
         // An unfinished install reopens its own sheet instead.
         if panel == nil {
             if bundles.progress == nil || bundles.progress?.isFinished == true {

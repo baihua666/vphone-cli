@@ -1,5 +1,17 @@
 # Patch Comparison: Regular / Development / Jailbreak / Experimental
 
+## 2026-10-22 现有五台的客体环境迁移
+
+五台 Launchpad 实例迁移到正确官方基线命名的 `2.8.0-local.199abaf3` 测试核心，
+通过既有 `cfw update-environment` 按当前选择重部署客体组件与既有补丁；没有
+新增补丁实现，也没有运行固件恢复或内核更新，不把此操作记为新固件重建。
+原磁盘、身份配置和启动链历史保留，迁移前五份 APFS 停机快照保留。
+native-https-test-a/b 缺少历史恢复记录，使用独立更新入口；因缺少原始
+DeviceTree.d47ap.im4p，iPhone product repair 按现有规则跳过，不宣称 Siri、
+Camera Control、Action Button 或 Model Name 修复已通过。本轮通过范围为
+应用启动、应用及容器清单、数据抽查和空闲状态，详见
+[调试日志](debug_journal.md#2026-10-22-五台迁移到官方-280-基线的本地测试核心)。
+
 ## 2026-10-16 本机新版镜像重建（基础验收通过）
 
 使用当前业务源码 `4a76ffb217a059fa056cb2f35740b4ace15e735d` 完整构建的 `VPhone.bundle 2.8.0 (35)`，在独立目录 `~/.vphone/machines/official-2x-20261016` 执行官方原生 `vm create --preset standard`。输入为 iPhone17,3 iOS 26.6.2 / 23G90 与 cloudOS 26.4 / 23E5207q，ZIP/manifest/哈希已核验。未新增或改写补丁实现，未把旧 EXP 或本地 MobileGestalt 实验带入新版。

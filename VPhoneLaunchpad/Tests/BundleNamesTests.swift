@@ -17,13 +17,18 @@ struct BundleNamesTests {
         // `-local` (legacy), `-local.<8+ lowercase hex>` or `-ci.<7+ hex>`.
         // Anything else is kept whole, so it never parses as a version.
         let expectations: [Expectation] = [
-            Expectation(name: "2.8.2", bundleVersion: "2.8.2", isLocalBuild: false, isCompatible: true, isValid: true),
-            Expectation(name: "2.8.2-local", bundleVersion: "2.8.2", isLocalBuild: true, isCompatible: true, isValid: true),
-            Expectation(name: "2.8.2-local.ab12cd34", bundleVersion: "2.8.2", isLocalBuild: true, isCompatible: true, isValid: true),
+            Expectation(name: "2.9.9", bundleVersion: "2.9.9", isLocalBuild: false, isCompatible: true, isValid: true),
+            Expectation(name: "2.8.0", bundleVersion: "2.8.0", isLocalBuild: false, isCompatible: true, isValid: true),
+            Expectation(name: "2.8.0-local.b0ffd6cc", bundleVersion: "2.8.0", isLocalBuild: true, isCompatible: true, isValid: true),
+            Expectation(name: "2.8.0-local.55bcfe1a", bundleVersion: "2.8.0", isLocalBuild: true, isCompatible: true, isValid: true),
+            Expectation(name: "2.8.9", bundleVersion: "2.8.9", isLocalBuild: false, isCompatible: true, isValid: true),
+            Expectation(name: "2.10.2", bundleVersion: "2.10.2", isLocalBuild: false, isCompatible: true, isValid: true),
+            Expectation(name: "2.10.2-local", bundleVersion: "2.10.2", isLocalBuild: true, isCompatible: true, isValid: true),
+            Expectation(name: "2.10.2-local.ab12cd34", bundleVersion: "2.10.2", isLocalBuild: true, isCompatible: true, isValid: true),
             // The build identifier is lowercase hex; uppercase is no build.
-            Expectation(name: "2.8.2-local.AB12CD34", bundleVersion: "2.8.2-local.AB12CD34", isLocalBuild: false, isCompatible: false, isValid: true),
-            Expectation(name: "2.8.2-local.ab12", bundleVersion: "2.8.2-local.ab12", isLocalBuild: false, isCompatible: false, isValid: true),
-            Expectation(name: "2.8.2-ci.abcdef1", bundleVersion: "2.8.2", isLocalBuild: false, isCompatible: true, isValid: true),
+            Expectation(name: "2.10.2-local.AB12CD34", bundleVersion: "2.10.2-local.AB12CD34", isLocalBuild: false, isCompatible: false, isValid: true),
+            Expectation(name: "2.10.2-local.ab12", bundleVersion: "2.10.2-local.ab12", isLocalBuild: false, isCompatible: false, isValid: true),
+            Expectation(name: "2.10.2-ci.abcdef1", bundleVersion: "2.10.2", isLocalBuild: false, isCompatible: true, isValid: true),
             Expectation(name: "2.7.9-local.ab12cd34", bundleVersion: "2.7.9", isLocalBuild: true, isCompatible: false, isValid: true),
             Expectation(name: "../x", bundleVersion: "../x", isLocalBuild: false, isCompatible: false, isValid: false),
             Expectation(name: "", bundleVersion: "", isLocalBuild: false, isCompatible: false, isValid: false),
@@ -37,6 +42,19 @@ struct BundleNamesTests {
             precondition(VPhoneLaunchpadNames.isValidVersion(name) == expected.isValid, "isValidVersion(\"\(name)\")")
         }
         print("Bundle name tests passed: \(expectations.count) store names")
+
+        // Display labels must never become machine-readable store identities.
+        for name in ["2.8.0-local", "2.8.0-local.b0ffd6cc", "2.8.0-ci.abcdef1", "2.7.9-local.ab12cd34"] {
+            precondition(VPhoneLaunchpadNames.isTestBuild(name))
+            precondition(VPhoneLaunchpadNames.displayVersion(name) == "\(name) [test]")
+            precondition(!VPhoneLaunchpadNames.isValidVersion(VPhoneLaunchpadNames.displayVersion(name)))
+        }
+        for name in ["2.8.0", "2.10.1", "2.8.0-local.ab12", "2.8.0-local.AB12CD34", "../x", ""] {
+            precondition(!VPhoneLaunchpadNames.isTestBuild(name))
+            precondition(VPhoneLaunchpadNames.displayVersion(name) == name)
+        }
+        precondition(VPhoneLaunchpadNames.bundleVersion(of: "2.8.0-local.b0ffd6cc") == "2.8.0")
+        print("Test build display labels passed: local, CI, legacy, release and invalid names")
 
         // MARK: - Machine binding
 

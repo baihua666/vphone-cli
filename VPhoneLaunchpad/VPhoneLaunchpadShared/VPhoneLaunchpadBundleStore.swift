@@ -81,6 +81,8 @@ nonisolated enum VPhoneLaunchpadNames {
     /// added `vm clone --new-identity`, which Clone passes, and
     /// `vm snapshot`, which the Snapshots sheet runs. 2.8.0 added `vm config
     /// --sync-host-location`, which a machine's Settings pass.
+    // Native proxy and business initialization check their capabilities at use;
+    // optional features must not block existing 2.8 machine operations.
     private static let minimumBundleComponents = (2, 8, 0)
     static let minimumBundleVersion =
         "\(minimumBundleComponents.0).\(minimumBundleComponents.1).\(minimumBundleComponents.2)"
@@ -109,6 +111,16 @@ nonisolated enum VPhoneLaunchpadNames {
 
     static func isLocalBuild(_ value: String) -> Bool {
         value.range(of: localSuffixPattern, options: .regularExpression) != nil
+    }
+
+    /// Local and CI builds default to test status; preflight is not release approval.
+    /// Presentation only: store names, receipts and machine bindings keep their original value.
+    static func isTestBuild(_ value: String) -> Bool {
+        isValidVersion(value) && bundleVersion(of: value) != value
+    }
+
+    static func displayVersion(_ value: String) -> String {
+        isTestBuild(value) ? "\(value) [test]" : value
     }
 
     static func isCompatibleBundleVersion(_ value: String) -> Bool {

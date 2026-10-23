@@ -1,8 +1,10 @@
 # GUI + CLI 共同开发
 
-跨层职责、VPN 配置归属、接口契约和 CodeGraph 使用以 [架构与维护边界](architecture-boundaries.md) 为准。
+Launchpad 首次安装或跨 Mac 更新请先读 [部署指南](launchpad-mac-setup.md)，近期功能见 [更新摘要](launchpad-updates-20261023.md)。
 
-本仓库是主开发仓库，统一在 `tb_dev` 开发。用户入口为 Workstation GUI；GUI 通过进程调用原生 CLI，CLI 负责实例、恢复、固件与 guest 接口。保留两个项目各自的构建工具，不复制底层逻辑进 GUI。
+跨层职责、VPN 配置归属、接口契约和 CodeGraph 使用以 [架构与维护边界](architecture-boundaries.md) 为准。FLYWHEEL 关联工程、业务代码归属和升级检查见 [FLYWHEEL 与 Launchpad 接入边界](flywheel-integration.md)。
+
+本仓库是主开发仓库，统一在 `tb_dev` 开发。Launchpad 为统一管理主入口，Workstation 保留为备用；管理 GUI 通过原生 CLI 执行实例、恢复、固件与 guest 操作。保留现有构建工具，不复制底层逻辑进 GUI。下述 `scripts/dev.sh` 的 `gui` 仍特指 Workstation，不代表 Launchpad 的构建或部署入口。
 
 ## 布局与职责
 
@@ -12,12 +14,14 @@
 | `VPhoneExecutable/` | 原生 CLI、VM 宿主、固件、恢复与权限工具 |
 | `VPhoneKit/` | 原生公共组件 |
 | `VPhoneDaemon/`、`VPhoneGuestComponents/` | 客体服务和系统组件 |
-| `VPhoneLaunchpad/` | 上游自带应用，保留以便同步；本 fork 当前产品入口仍为 Workstation |
+| `VPhoneLaunchpad/` | 原生管理主入口；FLYWHEEL 接入仅在此保留界面组装与实例适配，主体业务代码独立维护 |
 | `scripts/dev.sh` | 统一构建、测试与开发启动入口 |
 
 CLI 的 Xcode 工程及根目录布局保持不变。GUI 源码直接纳入同一个 Git 仓库，不是 submodule，也没有嵌套 `.git`。原 vphone-ws 提交历史作为导入合并的第二父历史保留，迁入基线为 `7ab3fdb`。旧相邻 vphone-ws 仓库与远端 fork 保留作历史参考，不再作为日常编辑位置。
 
 ## 日常开发
+
+产品版本号表示实际合入的官方代码基线，本地开发不得更改；本地构建必须保留官方 `-local.<内容哈希>` 身份机制。`test`、时间与用户发布确认只能作为附加信息，不能替代哈希；AI 自行构建默认作为测试产物，不能自行转为发布。完整约束见根 [AGENTS.md 的官方基线版本与本地标识](../../AGENTS.md#官方基线版本与本地标识)。Launchpad 核心包列表及新建/更换核心包菜单将本地与 CI 构建默认展示为 `test`；官方发行版不加标签，检查通过或设为默认也不会去掉标签。当前没有用户发布确认的持久化记录或提升为发布版的操作，不根据 `local` 推断是谁构建。机器可解析的版本、安装目录、receipt 和实例绑定保持原格式，未往版本字符串自动追加 `test` 或时间。
 
 ```sh
 ./scripts/dev.sh test gui
@@ -67,7 +71,8 @@ CLI 的 Xcode 工程及根目录布局保持不变。GUI 源码直接纳入同�
 ```sh
 git clone -b tb_dev git@github.com:baihua666/vphone-cli.git
 cd vphone-cli
-./scripts/dev.sh build all
+./scripts/dev.sh build launchpad
+# 签名、安装、账号与实例接入继续按部署指南操作。
 ```
 
 每次换 Mac 工作先检查工作区，再更新。存在未完成修改时先整理，不能直接覆盖：
@@ -146,7 +151,7 @@ git fetch upstream
 git branch --track main upstream/main
 ```
 
-无需克隆相邻 vphone-ws，也无需复制它的 `.build`。本机 `workstation.command` 是已配置实例的便捷入口；新机器请先用 `build all`，再 `run-dev`，按正式 host setup 和原生 CLI 创建开发实例。
+无需克隆相邻 vphone-ws，也无需复制它的 `.build`。本机 `workstation.command` 是已配置实例的便捷入口；新机器以 Launchpad 部署指南为主；只有测试备用 Workstation 时才使用 `build all` / `run-dev`，按正式 host setup 创建独立开发实例。
 
 ## 本次迁入验证（2026-10-17）
 

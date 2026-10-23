@@ -14,6 +14,10 @@ import Observation
 @MainActor
 @Observable
 final class VPhoneLaunchpadCreationPipeline {
+    typealias DeviceInitializer = @MainActor (
+        VPhoneLaunchpadMachinePath, String, @escaping @Sendable (String) -> Void
+    ) async throws -> Void
+
     struct Options: Sendable {
         var name: String
         /// The canonical library the machine is created in.
@@ -49,6 +53,7 @@ final class VPhoneLaunchpadCreationPipeline {
         case stopDFU
         case installCFW
         case firstBoot
+        case initializeDevice
 
         var id: Int {
             rawValue
@@ -69,6 +74,7 @@ final class VPhoneLaunchpadCreationPipeline {
             case .stopDFU: String(localized: "Stop machine")
             case .installCFW: String(localized: "Install custom firmware")
             case .firstBoot: String(localized: "First boot")
+            case .initializeDevice: String(localized: "Initialize device")
             }
         }
 
@@ -97,17 +103,20 @@ final class VPhoneLaunchpadCreationPipeline {
     private var task: Task<Void, Never>?
     private var dfu: VPhoneLaunchpadChildProcess?
     private var dfuPanicked = false
+    private let deviceInitializer: DeviceInitializer?
 
     init(
         options: Options,
         bundles: VPhoneLaunchpadCoreBundle,
         helper: VPhoneLaunchpadHelperClient,
         library: VPhoneLaunchpadMachineLibrary,
+        deviceInitializer: DeviceInitializer? = nil,
     ) {
         self.options = options
         self.bundles = bundles
         self.helper = helper
         self.library = library
+        self.deviceInitializer = deviceInitializer
         log = VPhoneLaunchpadLogWriter(url: VPhoneLaunchpadMachineLibrary.consoleLog(options.machine, suffix: "-create"))
     }
 
@@ -120,7 +129,13 @@ final class VPhoneLaunchpadCreationPipeline {
     }
 
     var isFinished: Bool {
-        statuses[.firstBoot] == .passed
+        statuses[steps.last ?? .firstBoot] == .passed
+    }
+
+    /// A base build finishes at first boot; business composition may append
+    /// an initialization operation without changing the firmware stages.
+    var steps: [Step] {
+        Step.allCases.filter { $0 != .initializeDevice || deviceInitializer != nil }
     }
 
     func status(_ step: Step) -> VPhoneLaunchpadStatus {
@@ -129,7 +144,7 @@ final class VPhoneLaunchpadCreationPipeline {
 
     /// The step a retry starts from: the one that failed.
     var failedStep: Step? {
-        Step.allCases.first { statuses[$0] == .failed }
+        steps.first { statuses[$0] == .failed }
     }
 
     /// `fw patch`, as both the step's log line and the run build it. One array so
@@ -154,6 +169,7 @@ final class VPhoneLaunchpadCreationPipeline {
         case .stopDFU: "vm stop \(name)"
         case .installCFW: "cfw install \(name)"
         case .firstBoot: "vm launch \(name)"
+        case .initializeDevice: "Injected device initialization (guest RPC)"
         }
     }
 
@@ -163,8 +179,12 @@ final class VPhoneLaunchpadCreationPipeline {
         guard !isRunning else {
             return
         }
+        guard steps.contains(first) else {
+            failure = VPhoneLaunchpadError(String(localized: "Device initialization is not enabled in this build."))
+            return
+        }
         failure = nil
-        for step in Step.allCases where step >= first {
+        for step in steps where step >= first {
             statuses[step] = .pending
             durations[step] = nil
         }
@@ -184,7 +204,7 @@ final class VPhoneLaunchpadCreationPipeline {
             dfu?.terminate()
             dfu = nil
         }
-        for step in Step.allCases where step >= first {
+        for step in steps where step >= first {
             current = step
             statuses[step] = .running
             let began = Date()
@@ -410,6 +430,12 @@ final class VPhoneLaunchpadCreationPipeline {
 
         case .firstBoot:
             try await firstBoot()
+        case .initializeDevice:
+            guard let deviceInitializer else {
+                throw VPhoneLaunchpadError(String(localized: "Device initialization is not enabled in this build."))
+            }
+            try await deviceInitializer(machine, version, output)
+            await self.library?.refresh()
         }
     }
 

@@ -2,6 +2,10 @@
 
 2026-10-17：适用于 `tb_dev` monorepo。本文规定维护边界；已实现能力见下方现状表。构建、双上游同步见 [共同开发指南](monorepo-development.md)。
 
+## Launchpad 优先（2026-10-23）
+
+业务逻辑和编排优先放在 Launchpad／独立 Integrations 模块，先复用已安装 Core 的现有 CLI、HTTP 和 RPC。尽量避免修改 CLI 或底层；确实需要时，先说明接口缺口、复用方案为何不足、最小改动、兼容及部署影响，经用户明确确认后再实施。普通功能实现或部署授权不涵盖底层修改。不得为管理功能自动升级实例的 pinned Core 或 guest。具体约束见根 AGENTS.md「Launchpad 业务优先与底层修改确认」。
+
 ## 分层决策
 
 用户通过 GUI 完成业务操作；CLI 提供可独立执行、可验证的实例能力；Core 保存公共模型与规则。CLI 是入口，不是所有实现的堆放处。业务服务也不是 SwiftUI View。
@@ -28,6 +32,100 @@ flowchart TD
 | 第三方代理服务 API、配置格式转换 | 优先作为 `VPhoneWSCore` 内独立服务/适配文件 | 不放 View，不把供应商字段塞入通用 VM manifest；有第二个真实调用方再提取共享模块 |
 
 `VPhoneLaunchpad` 是统一主入口，Workstation 保留为备用。Launchpad 通过现有 Swift package 的 `VPhoneWSCore` library 复用代理业务服务；原生界面只负责表单和动作入口，不复制供应商/Clash 逻辑。Launchpad 按 launchpad.json 解析实例上下文，Workstation 保持原 sidecar；共享服务检查资料库中的运行路径隔离。VM 屏幕窗口及其 guest 菜单仍由 `VPhoneVirtualMachineKit` 管理；管理 GUI 并不意味着搬迁所有现有窗口。
+
+## 业务定制隔离
+
+2026-10-22 用户要求：业务定制通过插件、注入或代码隔离减少与上游的耦合，
+降低后续升级维护成本。选择当前需求所需的最小隔离方式，不预建扩展平台。
+
+### 选择与依赖方向
+
+1. 上游已有插件或扩展入口时优先复用，保持其生命周期、失败处理和版本约定。
+2. 没有扩展入口时，把策略实现放入独立业务目录，通过一个窄的参数、闭包或
+   协议接入已有流程。先使用编译期组合；运行时加载插件只在确有独立分发、
+   热加载等需求时引入，不默认使用 method swizzling 或二进制注入。
+3. 已有多个 target 共用业务逻辑时，再提取独立 library。新增业务模块与测试
+   优先放在 `Integrations/<Feature>/`，不放入 Workstation 上游 subtree。
+   小型单 target 定制可先隔离为业务子目录，不能只换文件名仍依赖全部 UI 内部类型。
+
+业务模块依赖通用操作接口；Launchpad 负责把选中的实例、library 和 pinned
+bundle 传给它。核心不导入业务模块，不识别业务账号、供应商和业务默认策略。
+外部仓库可以提供源码背景，不能成为本项目本地路径构建或运行依赖。
+
+| 通用能力，留在原归属 | 业务策略，放入隔离模块 |
+| --- | --- |
+| guest 读取/设置自动锁定，解锁，SpringBoard 重启，读取屏幕状态 | 自动化实例默认设为 Never、初始化顺序、观察 120 秒、业务就绪判定 |
+| CLI 的单实例操作、参数校验、返回状态 | 创建后是否执行某套业务初始化、批量任务与业务重试策略 |
+| 通用网络配置、guest 出口检测 | Decodo 采购/地区选择、代理轮换、FLYWHEEL 任务和绑定 |
+
+### 接入、兼容与验收
+
+- 上游流程只保留必要的扩展点与组装代码，不能为每个业务增加散落的条件分支。
+  不复制上游创建/恢复流水线到业务模块；调用现有操作，业务部分可独立替换和测试。
+- 隔离不改变已授权的产品行为。例如本业务版本仍需在首次启动后显示并执行
+  “初始化设备”；应由业务组合启用该步骤，而不是把 Never 策略变成所有基础版本的规则。
+- 停用定制后基础路径应保持可用；启用定制却缺少必要能力时应明确失败并保留
+  重试入口，不静默跳过后宣称业务就绪。基础 VM 已创建和业务初始化已完成应可区分。
+- 兼容检查应与实际需要的功能绑定。业务可选功能不支持时，不应仅因此阻止旧
+  pinned bundle 执行已有的启停等操作。需要改变公共 CLI/协议/布局时，按既有
+  minor 版本规则设计和记录；不要以业务隔离为由省略真实的兼容性约束。
+- 业务配置、任务状态和凭据由业务模块持有；不向通用 manifest、launchpad.json、
+  guest 或 helper 协议加入业务字段。已有通用配置通过原接口使用，不维护第二份权威值。
+- 新定制交付说明触及哪些上游文件、为什么必须改、停用后行为、升级冲突面、
+  缺能力的结果，以及失败后能否只重试业务步骤。测试覆盖启用/停用、实例隔离、
+  能力缺失和失败恢复；涉及私有系统 API 的实际写入仍需目标 guest 验收。
+
+这些规定不要求现阶段引入动态插件框架，也不宣称已有强制依赖检查。
+FLYWHEEL 的具体隔离位置继续遵循下节；已有代理模块不因本规范自动迁移。
+设备初始化的注入入口、业务目录与验收见 [设备初始化实现](launchpad-device-initialization.md)。
+
+### 定制与实验功能的编译开关
+
+2026-10-23 用户要求：所有本地定制和实验实现都能通过修改宏定义停用，
+并能完整移除。宏是实际编译条件，不是注释标签或单纯隐藏界面的运行时开关。
+
+- 定制功能命名 `VPHONE_CUSTOM_<FEATURE>`，实验功能命名
+  `VPHONE_EXPERIMENTAL_<FEATURE>`。独立功能使用独立宏；例如未来钱包实验可用
+  `VPHONE_EXPERIMENTAL_APPLE_WALLET`，这只是命名示例，不表示已实现或已启用。
+- 实验宏默认不定义；不能通过 `DEBUG`、本地构建或安装诊断 App 自动打开。
+  已投入使用的定制在接入宏时保留其约定默认行为，并明确记录启用配置。
+- Swift 使用 `#if VPHONE_CUSTOM_<FEATURE>` 一类编译条件，在所属 Xcode target
+  的既有 xcconfig 中通过 `SWIFT_ACTIVE_COMPILATION_CONDITIONS` 定义；SwiftPM
+  target 则用其现有 Package.swift 的 `swiftSettings: [.define(...)]`。
+  Swift 关闭条件靠移除定义，不能传 `FLAG=0` 当作关闭。
+- C／Objective-C 使用 `#if defined(FLAG) && FLAG`，定义集中放在所属构建配置或
+  现有 Makefile，取0或移除定义均应关闭；不在多个源码中重复写默认启用定义。
+  只把需要该能力的 target 接入开关，不修改无关模块或新增通用开关框架。
+- 一个功能的 UI、命令／RPC 注册、后台任务、适配入口和有副作用的实现必须
+  一致受控。优先在独立模块与窄组装入口设条件，不把宏散布到所有通用方法。
+  未启用时走基础产品路径；显式调用已关闭的扩展能力应报告具体不可用，不能假成功。
+- 多语言、多 target、guest／host 各自编译，不能假定某处 `-D` 会自动传播。
+  仍须通过既有能力检测处理旧 pinned bundle；宏不替代真实版本／能力校验。
+- 每项功能在所属文档记录宏名、定义位置、默认值、覆盖的组件、开启／关闭行为、
+  状态／数据影响和删除步骤。修改交付前验证两种构建及相关行为；单独确认关闭后
+  不注册入口、不执行副作用且基础流程可用，不能只测试开启分支。
+- 固件补丁同时遵守 patch-set／preset 声明。关闭编译条件只影响新产物，已应用的
+  guest／内核／DSC补丁、持久配置或数据不会自动还原；必须另列原始输入恢复、
+  重新生成／部署与验收办法，保留数据的处理也要写清楚。
+- 删除功能时连同其隔离实现、条件组装点、资源／注册、宏定义及专属依赖清理，
+  保留必要的数据兼容／恢复步骤。只删宏而遗留始终执行的注册或补丁不算完成。
+
+本规则覆盖已有与新增定制；已有功能需逐项核对、补齐，不能将规范更新当作已完成
+全库宏改造。纯离线分析、研究文档与取证副本不增加空的产品开关。
+目前钱包相关新增研究未实现或部署 Wallet／SE 支持；已有可选 Wallet 设置行隐藏
+补丁与钱包支持实验分开核对，不能按名称误归为同一功能。
+
+语法参考：[Swift 条件编译](https://docs.swift.org/latest/documentation/the-swift-programming-language/statements/)、
+[Xcode 构建设置](https://developer.apple.com/documentation/xcode/build-settings-reference)、
+[SwiftPM 构建条件](https://docs.swift.org/package-manager/PackageDescription/PackageDescription.html)。
+
+## FLYWHEEL 业务接入
+
+关联工程与升级约束见 [FLYWHEEL 与 Launchpad 接入边界](flywheel-integration.md)。Launchpad 是业务管理入口；FLYWHEEL 业务服务是业务数据和权限的权威来源。
+
+客户端业务逻辑、SwiftData 存储与测试放在 Workstation subtree 之外的 `Integrations/Flywheel/` 独立 library，Launchpad 的 `Flywheel/` 目录维护原生表格、编辑表单和实例操作适配。这是针对跨项目业务接入的隔离边界；已有 `VPhoneWSCore` 代理服务保持原归属，不迁移或复制。业务 library 不依赖 Launchpad 内部模型，VM/CLI/guest 不依赖 FLYWHEEL。
+
+2026-10-22 用户扩展范围为本地业务设备 CRUD。业务编号、地区、备注与实例关联保存在独立 SwiftData 数据库，名称和运行状态来自平台；启停调用已有实例方法，详情返回已有平台页面。业务记录的删除仅解除关联，VM manifest、`launchpad.json`、privileged helper 与实例绑定的运行时不承载业务字段。后端 API 和远端同步尚未接入。
 
 ## VPN：按能力拆分，不按“有没有界面”拆分
 

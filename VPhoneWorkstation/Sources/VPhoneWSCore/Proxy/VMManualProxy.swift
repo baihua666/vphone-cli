@@ -13,9 +13,11 @@ public struct VMManualProxy: Sendable {
     let password: String
     let tls: Bool
     let udp: Bool
+    let dialerProxy: String?
 
     public init(name: String, host: String, port: Int, kind: Kind,
-                username: String = "", password: String = "", tls: Bool = false, udp: Bool = false) throws {
+                username: String = "", password: String = "", tls: Bool = false, udp: Bool = false,
+                dialerProxy: String? = nil) throws {
         let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let server = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !label.isEmpty, label.count <= 80, !label.contains(","),
@@ -32,6 +34,7 @@ public struct VMManualProxy: Sendable {
         guard username.isEmpty == password.isEmpty else { throw ProxyRouteError("请同时填写用户名和密码；使用 IP 白名单时两项都留空") }
         self.name = "IP · " + label; self.host = server; self.port = port; self.kind = kind
         self.username = username; self.password = password; self.tls = tls; self.udp = udp
+        self.dialerProxy = dialerProxy
     }
 
     var configuration: [String: Any] {
@@ -40,6 +43,7 @@ public struct VMManualProxy: Sendable {
         if !username.isEmpty { result["username"] = username }
         if !password.isEmpty { result["password"] = password }
         if kind == .socks5 { result["udp"] = udp }
+        if let dialerProxy { result["dialer-proxy"] = dialerProxy }
         return result
     }
 }

@@ -1,5 +1,5 @@
 {
-  "originHash" : "a6866c860e660ef27df596c0ba8795342d386b1b265f3a7cc212d640cd67c649",
+  "originHash" : "b482047b5612d7c032774103e4f619238e43bcf7011883a14ea5b9fda94fe674",
   "pins" : [
     {
       "identity" : "applemobiledevicelibrary",
@@ -188,6 +188,15 @@
       "state" : {
         "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
         "version" : "1.8.1"
+      }
+    },
+    {
+      "identity" : "yams",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jpsim/Yams.git",
+      "state" : {
+        "revision" : "d41ba4e7164c0838c6d48351f7575f7f762151fe",
+        "version" : "6.1.0"
       }
     }
   ],
