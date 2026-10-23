@@ -1,0 +1,21 @@
+{
+  "tag": "launchpad-2.8.0-image-clean-ios-r1",
+  "previousTags": ["launchpad-2.8.0-r2"],
+  "baseline": "2.8.0",
+  "appRevision": 2,
+  "minimumMacOS": 15,
+  "signing": "internalDevelopment",
+  "appDMG": "/absolute/private/reused-r2-app.dmg",
+  "coreVersion": "2.8.0-local.199abaf3",
+  "coreZIP": "/absolute/private/VPhone-2.8.0-local.199abaf3.zip",
+  "images": [
+    {
+      "id": "clean-ios",
+      "version": "2026.10.24",
+      "revision": 1,
+      "title": "干净 iOS 模板",
+      "archive": "/absolute/private/clean-ios.tzst",
+      "expandedBytes": 0
+    }
+  ]
+}

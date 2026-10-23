@@ -38,12 +38,19 @@ func copy(_ path: String, as name: String, to output: URL) throws -> Distributio
 }
 func main() async throws {
     let args = CommandLine.arguments
-    if args.count == 3 && args[1] == "--check-download" { try await checkDownload(URL(fileURLWithPath: args[2])); return }
+    if args.count >= 2 && args[1] == "--check-download" {
+        guard args.count == 3 || (args.count == 4 && args[3] == "--include-images") else {
+            throw DistributionError("用法：distribution-publisher --check-download 新缓存目录 [--include-images]")
+        }
+        try await checkDownload(URL(fileURLWithPath: args[2]), includeImages: args.count == 4)
+        return
+    }
+
     if args.count == 3 && args[1] == "--verify" { try verifyDirectory(URL(fileURLWithPath: args[2])); return }
     guard args.count == 3 else { throw DistributionError("用法：distribution-publisher recipe.json 新的输出目录") }
     let recipe = try JSONDecoder().decode(Recipe.self, from: Data(contentsOf: URL(fileURLWithPath: args[1])))
     guard DistributionAsset.safeName(recipe.tag), recipe.appRevision > 0,
-          recipe.images.allSatisfy({ DistributionAsset.safeName($0.id + "-" + String($0.revision) + ".part0000") && DistributionAsset.safeName($0.version) }),
+          recipe.images.allSatisfy({ $0.expandedBytes > 0 && $0.expandedBytes < Int64.max / 8 && $0.revision > 0 && !$0.title.isEmpty && DistributionAsset.safeName($0.id + "-" + String($0.revision) + ".part0000") && DistributionAsset.safeName($0.version) }),
           Set(recipe.images.map(\.id)).count == recipe.images.count else { throw DistributionError("发布参数无效") }
     try verifyArtifacts(dmg: URL(fileURLWithPath: recipe.appDMG), core: URL(fileURLWithPath: recipe.coreZIP), baseline: recipe.baseline, revision: recipe.appRevision, coreVersion: recipe.coreVersion, signing: recipe.signing ?? .notarized)
     let output = URL(fileURLWithPath: args[2], isDirectory: true)

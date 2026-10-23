@@ -83,6 +83,8 @@ zsh Integrations/Distribution/scripts/package-core.zsh \
 
 ### 3. 准备模板和发布参数
 
+镜像完整操作及验收步骤见 [镜像发布流程](launchpad-image-release.md)。
+
 复制 [recipe.example.json](../../Integrations/Distribution/recipe.example.json) 到本机私有工作目录，填写真实路径与上述 identity。
 `images: []` 允许先发布 App/Core；客户端会明确显示尚无镜像，不能视为完整首次启动验收。
 每个镜像条目为：
