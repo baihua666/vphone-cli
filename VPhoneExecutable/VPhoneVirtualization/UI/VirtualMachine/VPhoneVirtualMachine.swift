@@ -23,6 +23,7 @@ class VPhoneVirtualMachine: NSObject, VZVirtualMachineDelegate {
     /// The in-process network backing `.tunnel` mode; nil for every other mode.
     /// Held because the sockets live only as long as this reference does.
     private var userspaceNetwork: VPhoneUserspaceNetwork?
+    private var nativeProxyReferenceURL: URL?
     /// How the manifest's network was realized: attachment, MAC, the address
     /// vphoned should hold the guest to, and the ports forwarded into it.
     private(set) var networkPlan: VPhoneNetworkPlan?
@@ -186,6 +187,13 @@ class VPhoneVirtualMachine: NSObject, VZVirtualMachineDelegate {
         config.networkDevices = network.configuration.map { [$0] } ?? []
         networkPlan = plan
         userspaceNetwork = network.userspaceNetwork
+        let proxyReference = options.configURL.deletingLastPathComponent().appendingPathComponent("native-proxy-reference.json")
+        nativeProxyReferenceURL = proxyReference
+        if FileManager.default.fileExists(atPath: proxyReference.path) {
+            let path = try JSONDecoder().decode(String.self, from: Data(contentsOf: proxyReference))
+            guard let userspaceNetwork else { throw NSError(domain: "VPhoneNativeProxy", code: 3) }
+            try userspaceNetwork.setNativeProxy(VPhoneNativeProxy.load(URL(fileURLWithPath: path)))
+        }
         print("[vphone] Network: \(Self.describe(plan))")
 
         // Serial port (PL011 UART - pipes for input/output with boot detection)
@@ -400,8 +408,23 @@ class VPhoneVirtualMachine: NSObject, VZVirtualMachineDelegate {
     }
 
     /// The NIC as it is now, for `vphone.sock`'s `network` command.
+    func setNativeProxyFile(_ path: String) throws {
+        guard let network = userspaceNetwork, let reference = nativeProxyReferenceURL,
+              path.isEmpty || path.hasPrefix("/") else {
+            throw NSError(domain: "VPhoneNativeProxy", code: 3, userInfo: [NSLocalizedDescriptionKey: "Native proxy requires tunnel mode and an absolute configuration path"])
+        }
+        let value = path.isEmpty ? nil : try VPhoneNativeProxy.load(URL(fileURLWithPath: path))
+        // Validate and persist first. A failed disk write must leave the active route untouched.
+        if path.isEmpty {
+            if FileManager.default.fileExists(atPath: reference.path) { try FileManager.default.removeItem(at: reference) }
+        } else { try JSONEncoder().encode(path).write(to: reference, options: .atomic) }
+        try network.setNativeProxy(value)
+    }
+
     var networkStatus: [String: Any] {
-        var status: [String: Any] = [:]
+        var status: [String: Any] = ["native_proxy_supported": userspaceNetwork != nil,
+                                     "native_proxy_enabled": userspaceNetwork?.usesNativeProxy ?? false]
+        status["native_proxy_endpoint"] = userspaceNetwork?.nativeProxyEndpoint
         if let plan = networkPlan {
             status["configured"] = Self.describe(plan)
             status["mac"] = plan.macAddress?.description ?? ""

@@ -129,6 +129,10 @@ struct VPhoneTCPForwarderTests {
             queue.sync { forwarder.stop() }
         }
 
+        func proxy(_ config: VPhoneNativeProxy?) {
+            queue.sync { forwarder.setNativeProxy(config) }
+        }
+
         /// Wait for something a background socket is responsible for.
         ///
         /// Polls rather than sleeping a fixed time: the far end of these tests is
@@ -285,6 +289,21 @@ struct VPhoneTCPForwarderTests {
             windowSize: window,
             payload: [0x41],
         ))
+    }
+
+    @Test func failedNativeProxyDoesNotFallBackToHostSockets() throws {
+        let server = try LoopbackServer { client, server in server.drain(client) }
+        let harness = Harness(guestPort: 51999, destinationPort: server.port)
+        harness.start(); defer { harness.stop() }
+        harness.proxy(VPhoneNativeProxy(host: "invalid.example", address: "127.0.0.1", port: 1,
+            username: "test", password: "test", interface: "wifi", dnsAddress: "1.1.1.1"))
+        harness.feed(VPhoneTCPSegment(sourcePort: harness.guestPort, destinationPort: server.port,
+            sequenceNumber: 1000, acknowledgmentNumber: 0, flags: VPhoneTCPFlags.syn, windowSize: 65535))
+        usleep(300000)
+        #expect(harness.ourISN == nil)
+        // Only an explicit switch back permits the same reachable host destination.
+        harness.proxy(nil)
+        try handshake(harness)
     }
 
     // MARK: - The guest's window

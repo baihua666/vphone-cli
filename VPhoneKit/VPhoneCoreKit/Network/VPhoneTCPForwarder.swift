@@ -229,6 +229,9 @@ final class VPhoneTCPForwarder: @unchecked Sendable {
     private var connections: [VPhoneTCPFlowKey: Connection] = [:]
     private var reaper: DispatchSourceTimer?
     private var isStopped = false
+    private var nativeProxy: VPhoneNativeProxy?
+    private var proxyGeneration = 0
+    private var pendingProxy: [VPhoneTCPFlowKey: VPhoneHTTPSProxyBridge] = [:]
     /// Source of initial sequence numbers. Only has to be unpredictable enough
     /// that two connections to the same peer do not look alike.
     private var sequenceCounter: UInt32 = .random(in: 0 ... UInt32.max)
@@ -249,6 +252,15 @@ final class VPhoneTCPForwarder: @unchecked Sendable {
         self.gatewayAddress = gatewayAddress
         self.deliver = deliver
         queue.setSpecific(key: Self.queueKey, value: ())
+    }
+
+    func setNativeProxy(_ value: VPhoneNativeProxy?) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        proxyGeneration += 1
+        let pending = Array(pendingProxy.values); pendingProxy.removeAll()
+        for bridge in pending { bridge.stop() }
+        for connection in Array(connections.values) { resetGuest(connection); finish(connection) }
+        nativeProxy = value
     }
 
     /// Live connections, for tests and diagnostics.
@@ -276,6 +288,7 @@ final class VPhoneTCPForwarder: @unchecked Sendable {
     func stop() {
         dispatchPrecondition(condition: .onQueue(queue))
         guard !isStopped else { return }
+        setNativeProxy(nil)
         isStopped = true
         reaper?.cancel()
         reaper = nil
@@ -350,6 +363,22 @@ final class VPhoneTCPForwarder: @unchecked Sendable {
             return
         }
 
+        if let proxy = nativeProxy {
+            guard pendingProxy[flow.key] == nil, pendingProxy.count + connections.count < Self.maximumConnections else { return }
+            let generation = proxyGeneration
+            let target = flow.destinationAddress.description
+            let bridge = VPhoneHTTPSProxyBridge(proxy: proxy, destination: target, port: flow.destinationPort, queue: queue) { [weak self] descriptor in
+                guard let self else { if let descriptor { Darwin.close(descriptor) }; return }
+                guard generation == self.proxyGeneration, !self.isStopped else {
+                    if let descriptor { Darwin.close(descriptor) }; return
+                }
+                self.pendingProxy.removeValue(forKey: flow.key)
+                guard let descriptor else { self.sendReset(for: flow, inReplyTo: segment); return }
+                self.adoptProxy(descriptor, flow: flow, segment: segment)
+            }
+            pendingProxy[flow.key] = bridge; bridge.start()
+            return
+        }
         let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else {
             sendReset(for: flow, inReplyTo: segment)
@@ -414,6 +443,19 @@ final class VPhoneTCPForwarder: @unchecked Sendable {
 
         readSource.resume()
         connections[flow.key] = connection
+    }
+
+    private func adoptProxy(_ descriptor: Int32, flow: VPhoneTCPFlow, segment: VPhoneTCPSegment) {
+        let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
+        let connection = Connection(flow: flow, socket: descriptor, readSource: source, state: .synAcknowledged,
+            localSequence: nextSequence(), remoteSequence: segment.sequenceNumber &+ 1,
+            peerMSS: segment.maximumSegmentSize ?? Self.defaultPeerMSS, peerWindowScale: segment.windowScale ?? 0)
+        connection.windowScaleNegotiated = segment.windowScale != nil
+        source.setEventHandler { [weak self] in self?.drainHost(connection) }
+        source.setCancelHandler { Darwin.close(descriptor) }
+        connections[flow.key] = connection
+        sendSynAcknowledgment(connection)
+        source.resume()
     }
 
     private func finishConnect(_ connection: Connection) {

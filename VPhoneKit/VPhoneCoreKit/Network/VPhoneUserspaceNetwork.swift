@@ -58,6 +58,10 @@ public final class VPhoneUserspaceNetwork: @unchecked Sendable {
     /// Set by `stop()`. Cancelling the read source closes our descriptor once no
     /// handler is running, so the pair cannot be reopened after that.
     private var isStopped = false
+    private var nativeProxy: VPhoneNativeProxy?
+    private var nativeGeneration = 0
+    private var dnsPending = 0
+
     private var responder: VPhoneUserspaceNetworkResponder
     /// Carries the guest's UDP out to the host and the answers back. Owns one
     /// socket per flow, so it is the thing `stop()` has to tear down.
@@ -180,6 +184,48 @@ public final class VPhoneUserspaceNetwork: @unchecked Sendable {
         source?.cancel()
     }
 
+    /// Explicitly selected per VM. nil restores the original host/Clash path.
+    public func setNativeProxy(_ value: VPhoneNativeProxy?) throws {
+        try value?.validate()
+        queue.sync {
+            nativeGeneration += 1
+            nativeProxy = value
+            tcpForwarder.setNativeProxy(value)
+            // Cancel previous UDP flows before changing the egress policy.
+            forwarder.stop()
+            forwarder = VPhoneUDPForwarder(configuration: configuration, queue: queue) { [weak self] flow, payload in
+                self?.sendUDPReply(flow: flow, payload: payload)
+            }
+            forwarder.start()
+        }
+    }
+
+    public var usesNativeProxy: Bool { queue.sync { nativeProxy != nil } }
+    public var nativeProxyEndpoint: String? {
+        queue.sync { nativeProxy.map { "\($0.host):\($0.port)" } }
+    }
+
+    private func proxyDNS(_ payload: [UInt8], flow: VPhoneUDPFlow, proxy: VPhoneNativeProxy) {
+        guard dnsPending < 32 else { return }
+        dnsPending += 1
+        let generation = nativeGeneration
+        let bridge = VPhoneHTTPSProxyBridge(proxy: proxy, destination: proxy.dnsAddress, port: 443, queue: queue) { [weak self] descriptor in
+            guard let self else { if let descriptor { Darwin.close(descriptor) }; return }
+            guard let descriptor else { self.dnsPending -= 1; return }
+            DispatchQueue.global().async { [weak self] in
+                let answer = VPhoneProxyDNS.exchange(payload, descriptor: descriptor, resolver: proxy.dnsAddress)
+                self?.queue.async { [weak self] in
+                    guard let self else { return }
+                    self.dnsPending -= 1
+                    if generation == self.nativeGeneration, !self.isStopped, let answer {
+                        self.sendUDPReply(flow: flow, payload: answer)
+                    }
+                }
+            }
+        }
+        bridge.start()
+    }
+
     // MARK: - Frame loop
 
     private func drain() {
@@ -201,6 +247,11 @@ public final class VPhoneUserspaceNetwork: @unchecked Sendable {
                    let session = inboundUDP[flow.destinationPort], session.guestPort == flow.sourcePort
                 {
                     replyInbound(payload, session: session, gatewayPort: flow.destinationPort)
+                    continue
+                }
+                if let proxy = nativeProxy {
+                    if flow.destinationPort == 53 { proxyDNS(payload, flow: flow, proxy: proxy) }
+                    // No general UDP/QUIC support in this experimental HTTPS-only mode.
                     continue
                 }
                 // The answer arrives later, on this same queue.

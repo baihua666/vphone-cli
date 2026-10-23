@@ -250,6 +250,9 @@ class VPhoneHostAutomationServer {
                 guard let virtualMachine else {
                     return Self.reply(ok: false, error: "the VM is not running")
                 }
+                if let path = json["native_proxy_file"] as? String {
+                    try virtualMachine.setNativeProxyFile(path)
+                }
                 if let link = json["link"] as? String {
                     guard link == "up" || link == "down" else {
                         return Self.reply(ok: false, error: "link must be up or down")

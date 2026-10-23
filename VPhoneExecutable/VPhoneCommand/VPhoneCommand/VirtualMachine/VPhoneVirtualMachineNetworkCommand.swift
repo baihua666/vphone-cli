@@ -24,7 +24,11 @@ struct VPhoneVirtualMachineNetworkCommand: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Emit JSON") var json = false
     @Flag(name: .long, help: "Check public IPv4 from the guest via HTTPS (api.ipify.org)") var probe = false
 
+    @Option(name: .long, help: "Experimental HTTPS proxy configuration (0600 JSON); empty restores host/Clash routing")
+    var nativeProxyFile: String?
+
     func run() throws {
+        guard nativeProxyFile == nil || (!probe && link == nil) else { throw ValidationError("Proxy changes cannot be combined with probe/link changes") }
         guard !probe || link == nil else { throw ValidationError("--probe cannot change the network link.") }
         if let link, link != "up", link != "down" {
             throw ValidationError("--link must be up or down.")
@@ -35,6 +39,17 @@ struct VPhoneVirtualMachineNetworkCommand: ParsableCommand {
 
         var request: [String: Any] = ["t": "network"]
         request["link"] = link
+        if let path = nativeProxyFile {
+            guard let before = VPhoneHostAutomationProbe.send(["t": "network"], socketPath: socketPath, timeout: 10),
+                  let status = before["result"] as? [String: Any], status["native_proxy_supported"] as? Bool == true else {
+                throw ValidationError("Running core does not support native proxy; existing routing unchanged")
+            }
+            if !path.isEmpty {
+                guard path.hasPrefix("/") else { throw ValidationError("Proxy configuration must be an absolute path") }
+                _ = try VPhoneNativeProxy.load(URL(fileURLWithPath: path))
+            }
+            request["native_proxy_file"] = path
+        }
         guard let reply = VPhoneHostAutomationProbe.send(request, socketPath: socketPath, timeout: 10) else {
             throw ValidationError("\(name) is not running, or its control socket does not answer. Start it with vm launch.")
         }
