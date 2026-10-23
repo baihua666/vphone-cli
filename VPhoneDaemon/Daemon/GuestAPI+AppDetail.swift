@@ -38,7 +38,9 @@ extension GuestAPI {
             return try systemAppsVisibility(set: params["visible"] as? Bool)
         case "system.respring":
             try requireForce(params, "restart SpringBoard")
-            return try respring()
+            let result = try respring()
+            GuestScreenUnlock.springBoardDidRestart()
+            return result
         case "system.reboot":
             let userspace = bool(params, "userspace")
             try requireForce(params, userspace ? "restart userspace" : "reboot the guest")

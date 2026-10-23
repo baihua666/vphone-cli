@@ -30,6 +30,12 @@ void vp_hid_touch2(int phase, double x1, double y1, double x2, double y2);
 /// SpringBoardServices has no SBSUndimScreen.
 bool vp_screen_undim(void);
 
+#ifdef __OBJC__
+/// Ask ManagedConfiguration to persist Auto-Lock Never. Read back the
+/// effective setting before treating this request as successful.
+bool vp_auto_lock_never(NSString **error);
+#endif
+
 /// Ask launchd to shut the guest down and halt. Returns 0 once the request is
 /// accepted, otherwise an errno value. Needs root.
 int vp_system_halt(void);

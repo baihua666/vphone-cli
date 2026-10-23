@@ -1,6 +1,7 @@
 import Foundation
 import IcliKit
 import notify
+import VphonedNative
 
 /// Makes Auto-Lock "Never" hold on the Lock Screen too.
 ///
@@ -66,10 +67,34 @@ enum GuestLockScreenIdle {
         let autoLock = autoLockSeconds()
         let minimum = lockScreenMinimum()
         return [
+            "set_supported": true,
             "auto_lock_seconds": autoLock.map { $0 as Any } ?? NSNull(),
             "never": autoLock.map { $0 >= never } ?? false,
             "lock_screen_minimum_seconds": minimum.map { $0 as Any } ?? NSNull(),
         ]
+    }
+
+    /// profiled owns this value. Wait for its effective settings rather than
+    /// claiming success when the private setter merely accepted the request.
+    static func setNever() throws -> [String: Any] {
+        if autoLockSeconds() != never {
+            var error: NSString?
+            guard vp_auto_lock_never(&error) else {
+                throw GuestAPIError.operationFailed(error.map(String.init) ?? "Unable to set Auto-Lock")
+            }
+            let deadline = ProcessInfo.processInfo.systemUptime + 10
+            while autoLockSeconds() != never {
+                guard ProcessInfo.processInfo.systemUptime < deadline else {
+                    throw GuestAPIError.operationFailed("Auto-Lock Never was not committed by profiled; check device restrictions and retry")
+                }
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+        }
+        queue.sync { apply(reason: "initialization") }
+        guard lockScreenMinimum() == never else {
+            throw GuestAPIError.operationFailed("Lock Screen idle setting did not persist")
+        }
+        return describe()
     }
 
     private static func apply(reason: String) {

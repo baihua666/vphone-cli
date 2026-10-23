@@ -82,6 +82,12 @@ extension GuestAPI {
             }
             return try setRotationLock(locked)
         case "display.auto_lock":
+            if let value = params["never"] {
+                guard let never = value as? Bool, never else {
+                    throw GuestAPIError.invalidRequest("never must be true; omit it to read Auto-Lock")
+                }
+                return try GuestLockScreenIdle.setNever()
+            }
             return GuestLockScreenIdle.describe()
         case "screen.unlock":
             return try GuestScreenUnlock.unlock(

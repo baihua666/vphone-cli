@@ -23,9 +23,19 @@ import VphonedNative
 enum GuestScreenUnlock {
     /// Two unlocks at once would press Home and type over each other.
     private static let exclusive = NSLock()
+    // Protected by exclusive, including the respring notification.
+    nonisolated(unsafe) private static var awaitsPostRespringLock = false
     private static let pollInterval = 0.1
     /// How long SpringBoard takes to raise the passcode pad after Home.
     private static let padDelay = 1.0
+
+    /// Respring can return before its new Lock Screen appears. The next
+    /// unlock must not trust the old "unlocked" notification in that gap.
+    static func springBoardDidRestart() {
+        exclusive.lock()
+        defer { exclusive.unlock() }
+        awaitsPostRespringLock = true
+    }
 
     static func unlock(passcode: String?, timeout: Double) throws -> [String: Any] {
         guard timeout.isFinite, (1 ... 60).contains(timeout) else {
@@ -35,7 +45,9 @@ enum GuestScreenUnlock {
         defer { exclusive.unlock() }
 
         let deadline = Date().addingTimeInterval(timeout)
-        let before = startingState(until: deadline)
+        let awaitsLock = awaitsPostRespringLock
+        awaitsPostRespringLock = false
+        let before = startingState(until: deadline, awaitsLock: awaitsLock)
 
         if before.locked {
             let lock = try collectDeviceSnapshot()["lock"] as? [String: Any]
@@ -134,10 +146,10 @@ enum GuestScreenUnlock {
     /// The state to start from. Until SpringBoard has finished starting, the
     /// two notify states read "unlocked and lit" whatever the screen will
     /// show, so that reading is trusted only once SpringBoard says it is up.
-    private static func startingState(until deadline: Date) -> State {
+    private static func startingState(until deadline: Date, awaitsLock: Bool) -> State {
         while true {
             let now = state()
-            if now.locked || now.screenOff || springBoardStarted() || Date() >= deadline {
+            if now.locked || Date() >= deadline || (!awaitsLock && (now.screenOff || springBoardStarted())) {
                 return now
             }
             Thread.sleep(forTimeInterval: pollInterval)
