@@ -63,7 +63,11 @@ func verifyDirectory(_ folder: URL) throws {
         for part in image.parts {
             let input = try FileHandle(forReadingFrom: folder.appendingPathComponent(part.name))
             defer { try? input.close() }
-            while let data = try input.read(upToCount: 1_048_576), !data.isEmpty { hash.update(data: data) }
+            while try autoreleasepool(invoking: {
+                guard let data = try input.read(upToCount: 1_048_576), !data.isEmpty else { return false }
+                hash.update(data: data)
+                return true
+            }) {}
         }
         guard hash.finalize().map({ String(format: "%02x", $0) }).joined() == image.archiveSHA256 else {
             throw DistributionError("镜像完整 SHA-256 校验失败")

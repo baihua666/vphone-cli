@@ -53,11 +53,13 @@ public actor DistributionDownload {
         for piece in pieces {
             let reader = try FileHandle(forReadingFrom: piece)
             defer { try? reader.close() }
-            while let data = try reader.read(upToCount: 1_048_576), !data.isEmpty {
+            while try autoreleasepool(invoking: {
+                guard let data = try reader.read(upToCount: 1_048_576), !data.isEmpty else { return false }
                 try Task.checkCancellation()
                 try writer.write(contentsOf: data); hash.update(data: data); written += Int64(data.count)
                 progress("合并并校验镜像", written, image.archiveBytes)
-            }
+                return true
+            }) {}
         }
         try writer.synchronize()
         guard written == image.archiveBytes, hash.finalize().hex == image.archiveSHA256 else {
@@ -94,9 +96,13 @@ public actor DistributionDownload {
         let input = try FileHandle(forReadingFrom: file)
         defer { try? input.close() }
         var hash = SHA256()
-        while let data = try input.read(upToCount: 1_048_576), !data.isEmpty {
+        // Foundation's FileHandle buffers are autoreleased on macOS. Drain per
+        // chunk so synchronous multi-GB work cannot retain the whole archive.
+        while try autoreleasepool(invoking: {
+            guard let data = try input.read(upToCount: 1_048_576), !data.isEmpty else { return false }
             try Task.checkCancellation(); hash.update(data: data)
-        }
+            return true
+        }) {}
         return hash.finalize().hex
     }
     public static func matches(_ file: URL, bytes: Int64, digest: String) throws -> Bool {

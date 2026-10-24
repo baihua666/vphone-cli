@@ -21,9 +21,13 @@ public enum DistributionPacking {
             var size = 0; var hash = SHA256()
             do {
                 while size < partBytes {
-                    guard let data = try reader.read(upToCount: min(1_048_576, partBytes - size)), !data.isEmpty else { done = true; break }
-                    try writer.write(contentsOf: data); size += data.count
-                    hash.update(data: data); whole.update(data: data)
+                    let read = try autoreleasepool {
+                        guard let data = try reader.read(upToCount: min(1_048_576, partBytes - size)), !data.isEmpty else { return false }
+                        try writer.write(contentsOf: data); size += data.count
+                        hash.update(data: data); whole.update(data: data)
+                        return true
+                    }
+                    if !read { done = true; break }
                 }
                 try writer.close()
             } catch { try? writer.close(); throw error }

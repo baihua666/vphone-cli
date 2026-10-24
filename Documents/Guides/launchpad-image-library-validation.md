@@ -9,13 +9,19 @@
 
 ## 已完成验证
 
-- Distribution：19 项测试通过，包括版本聚合、兼容信息冲突、历史遍历及发布清理的成功/失败路径。
+- Distribution：20 项测试通过，包括版本聚合、兼容信息冲突、历史遍历、发布清理，以及跨 1 MiB 读取和非整齐分片边界的拆分/哈希/合并往返。
 - Launchpad Debug：定制开启和 `VPHONE_DISTRIBUTION=` 关闭构建均通过。
 - 内部签名 Release：2.8.0 / 修订 3，Apple Development 签名，无公证；已部署到 `/Applications/vphone-launchpad.app`。
 - 真实 UI：新版“镜像版本库与创建实例”入口可用；检查更新成功读取当前线上 r2，正确显示暂无镜像。
 - 部署后 Helper `ready (15)`、主机检查通过。原实例 `1-20261023` 恢复运行；全部实例的 Core、内存、CPU、UDID、资料库、网络配置与部署前一致。
 - `prune-releases.zsh launchpad-2.8.0-r2` 实机运行通过：真实下载 APP 10,813,066 字节、Core 18,468,317 字节，SHA-256、签名和 seal 正确。GitHub 仅有 r2，无旧 Release 被删。
 - 清理了未使用的旧构建/签名安装包；保留 r3、当前运行 Core、现有 5 台用户虚拟机、固件输入和研究测试数据。移除了无实例绑定的历史 Core：b0ffd6cc、55bcfe1a、5e1720bf，保留 2.8.0-local.199abaf3。
+
+## 大文件内存修复
+
+真实 11.6 GB 镜像处理暴露了 Foundation `FileHandle.read(upToCount:)` 的 autorelease 缓冲累计。1 GiB 独立复现的最大 RSS 为 1,214,627,840 字节；每块使用 `autoreleasepool` 后为 139,214,848 字节（含 Swift 解释器）。下载哈希、合并、发布分片及完整校验四处循环均改为每块释放，保持原有 SHA-256/取消/重试行为，没有改 Core。
+
+修复后的完整发布目录校验约 15.62 秒，`time -l` 最大 RSS 8,994,816 字节。20 项测试、分发开启 Release 与关闭 Debug 构建通过。最终 APP 复用原已批准的 Helper 二进制（SHA-256 `3208aaff8674c182614018df97f33bdca729251959c13d8f0ac7d28f0d08f8a8`），避免无代码变更的重签触发 Helper 再认证；外层 APP 重新正常签名并验证。
 
 ## 干净模板进度
 

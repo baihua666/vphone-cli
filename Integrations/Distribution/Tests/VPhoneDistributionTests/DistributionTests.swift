@@ -185,7 +185,7 @@ private actor Commands {
     var values: [[String]] = []
     func append(_ value: [String]) { values.append(value) }
 }
-private actor Fixture {
+actor Fixture {
     let folder: URL; let data: [Data]
     var calls: [String] = []; var fail = false
     init(folder: URL, data: [Data]) { self.folder = folder; self.data = data }
