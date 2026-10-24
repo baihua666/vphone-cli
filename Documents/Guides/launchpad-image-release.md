@@ -2,8 +2,8 @@
 
 适用于内部发布维护者。2026-10-24。用户安装入口见 [其它 Mac 安装与使用说明](launchpad-internal-user-guide.md)。
 
-**当前状态：APP/Core 已发布；干净镜像尚未发布，完整镜像下载与启动验收仍待完成。**
-下面给出可执行流程与验收标准，不把无镜像 Release 当作新机完整交付。
+**当前发布：`launchpad-2.8.0-r3`，包含 APP 修订 3、原 Core 和 `clean-ios / 26.6.2-r1` 镜像。**
+完整验收结果与仍待验证范围见 [镜像版本库验证记录](launchpad-image-library-validation.md)。
 不修改 Core、CLI 或 guest。开发机使用现有发布工具；接收用户只操作 Launchpad。
 
 ## 1. 接收与确认模板
@@ -133,7 +133,7 @@ swift run --package-path Integrations/Distribution distribution-publisher \
 
 GitHub 官方参考：[管理 Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)。
 
-## 7. 仅保留最新版的发布策略（2026-10-24 用户确认）
+## 8. 仅保留最新版的发布策略（2026-10-24 用户确认）
 
 APP、Core、每种镜像分别保留版本身份与递增修订；线上 Release 附件仅保留最新可用发行版。新清单必须自包含全部当前需要的附件，`previousTags` 为 `[]`，镜像 id 保持稳定、revision 继续递增。删旧包不重置版本计数，也不改变现有实例绑定。
 

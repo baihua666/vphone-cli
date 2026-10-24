@@ -167,5 +167,5 @@ APP 分别管理 App 发布修订、Core 内容身份和镜像 id/修订；显�
 ## 验证范围
 
 本发行版已在开发 Mac 完成：真实 APP/Core 下载与 SHA-256 校验、APP 安装升级、Helper 授权、更新页面下载、原 Core 实例启动恢复。
-新模板已完成导出、独立导入、新设备身份创建、桌面、网络和冷启动验证。r3 发布后的 APP 在线镜像下载/创建验收进度见 [验证记录](launchpad-image-library-validation.md)。
+新模板已在 Apple M4 / macOS 27.0.1 完成 APP 在线真实下载、暂停续传、完整校验、自动导入、新设备身份创建、桌面、网络和冷启动验证。清理旧 Release 后的更新检查也已通过，详见 [验证记录](launchpad-image-library-validation.md)。
 **另一台干净 Mac 的首次安装尚未实测；本次按用户要求用本机验证。** 本说明不代表所有 Mac 和历史镜像都已验收。
