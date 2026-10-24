@@ -2,10 +2,10 @@
   "tag": "launchpad-2.8.0-image-clean-ios-r1",
   "previousTags": [],
   "baseline": "2.8.0",
-  "appRevision": 2,
+  "appRevision": 3,
   "minimumMacOS": 15,
   "signing": "internalDevelopment",
-  "appDMG": "/absolute/private/reused-r2-app.dmg",
+  "appDMG": "/absolute/private/reused-r3-app.dmg",
   "coreVersion": "2.8.0-local.199abaf3",
   "coreZIP": "/absolute/private/VPhone-2.8.0-local.199abaf3.zip",
   "images": [

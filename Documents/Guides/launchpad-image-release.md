@@ -24,6 +24,8 @@
 
 如果提供者只有完整实例目录：在源 Launchpad 中正常停止该实例，选择实例的「导出… / Export…」生成归档；不要仅压缩 Disk.img 或运行中的目录。保留原始归档作为可追溯输入。
 
+当前 Core `2.8.0-local.199abaf3` 实测可能在正常停机后留下 `vphone.sock`，导出会报 `gnutar format cannot archive sockets`。先确认该实例进程完全退出，并用 `lsof /完整实例路径/vphone.sock` 确认无人占用，再仅删除这个遗留套接字及本次失败归档后重试。不要在实例运行时删除套接字，不改动 Disk.img、NVRAM 或 SEPStorage；这属于发布机的临时文件清理，不需要修改 Core。
+
 新身份克隆不会清除账号和应用数据，也不保证所有标识重置；模板清理必须在导出前完成。设置自动锁定“永不”并验证冷启动进入桌面；不能把“永不锁屏”当成启动解锁成功。
 
 ## 2. 发布前离线验收
@@ -50,14 +52,14 @@ Launchpad 会在此数值基础上预留两倍容量和安全余量。64 GiB 等
 | --- | --- |
 | tag | 每次新建独立 Release，例如 `launchpad-2.8.0-image-clean-ios-r1`；不得替换 r2 的现有清单或附件 |
 | previousTags | 当前“仅保留最新版”策略必须填写空数组 `[]`，避免清理旧 Release 后留下失效引用 |
-| baseline / appRevision | 复用当前 App 时仍为 `2.8.0` / `2`；不能把镜像修订当 App 修订 |
+| baseline / appRevision | 复用当前 App 时仍为 `2.8.0` / `3`；不能把镜像修订当 App 修订 |
 | appDMG / coreZIP | 使用当前已发布包的原始字节；仅更新镜像不重建或重签 App/Core |
 | coreVersion | 核对实际 seal 身份；所有本次镜像必须与清单里的 Core 一致 |
 | images[].id | 稳定模板类型，例如 `clean-ios`，后续版本沿用 |
 | version / revision | 人可读版本和严格递增整数修订；同 id/revision 不替换内容 |
 | archive / expandedBytes | 真实归档路径及实测容量上界；不手写分片哈希 |
 
-可以在发布机用 `gh release download launchpad-2.8.0-r2 --repo baihua666/vphone-cli --dir /absolute/new/input --pattern '*.dmg' --pattern 'VPhone-*.zip'` 取回原始包。对照原 Release 清单核验 SHA-256 后填写路径，不重新打包。
+可以在发布机用 `gh release download launchpad-2.8.0-r3 --repo baihua666/vphone-cli --dir /absolute/new/input --pattern '*.dmg' --pattern 'VPhone-*.zip'` 取回原始包。对照原 Release 清单核验 SHA-256 后填写路径，不重新打包。
 
 ## 4. 分片、清单生成与本地校验
 
