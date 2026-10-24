@@ -50,17 +50,21 @@ struct VPhoneDistributionView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Section("3 · 下载镜像与创建实例") {
-                    Picker("镜像模板", selection: $distribution.selectedImageID) {
+                Section("3 · 镜像版本库与创建实例") {
+                    Picker("镜像版本（全部发行版）", selection: $distribution.selectedImageID) {
                         Text("请选择").tag("")
-                        ForEach(distribution.selected?.images ?? []) { image in
-                            Text("\(image.title) · \(image.version)（修订 \(image.revision)）").tag(image.id)
+                        ForEach(distribution.imageVersions) { version in
+                            Text("\(version.image.title) · \(version.image.version)（修订 \(version.image.revision)）").tag(version.id)
                         }
                     }.disabled(distribution.busy)
-                    if distribution.selected?.images.isEmpty == true {
-                        Text("此发行版未提供镜像；可继续使用平台已有的新建或本地导入功能。")
+                    if !distribution.catalogs.isEmpty && distribution.imageVersions.isEmpty {
+                        Text("尚未发布镜像。可在主窗口通过“＋”从固件新建或导入已有镜像；发布镜像后点击“检查更新”即可显示。")
                     }
                     if let image = distribution.image {
+                        LabeledContent("所需 Core", value: image.coreVersion)
+                        LabeledContent("Core 状态", value: platform.bundles.isUsable(image.coreVersion) ? "已就绪" : "创建时自动下载并安装，可能需要管理员认证")
+                        LabeledContent("镜像来源", value: distribution.imageVersion?.catalog.tag ?? "")
+                        LabeledContent("导入所需可用空间", value: ByteCountFormatter.string(fromByteCount: image.expandedBytes * 2 + 1_073_741_824, countStyle: .file))
                         LabeledContent("下载大小", value: ByteCountFormatter.string(fromByteCount: image.archiveBytes, countStyle: .file))
                         LabeledContent("目标资料库", value: platform.machines.libraryRoot)
                         TextField("新实例名称", text: $distribution.machineName).disabled(distribution.busy)
@@ -68,9 +72,14 @@ struct VPhoneDistributionView: View {
                             .font(.caption).foregroundStyle(.secondary)
                         HStack {
                             Button("仅下载／继续下载") { distribution.downloadImage() }.disabled(distribution.busy)
-                            Button("下载、导入并启动新实例") { distribution.installImage(using: platform) }
-                                .disabled(distribution.busy || !platform.host.requiredPassed || !platform.bundles.isUsable(image.coreVersion))
+                            Button("创建并启动新虚拟机") { distribution.installImage(using: platform) }
+                                .disabled(distribution.busy || !platform.host.requiredPassed || (!platform.bundles.isUsable(image.coreVersion) && !platform.canInstallBundles) || distribution.machineName.isEmpty)
                         }
+                    }
+                    if !platform.host.requiredPassed {
+                        Text("请先完成第 1 步主机设置；完成后可继续，无需手动安装 Core。").font(.caption).foregroundStyle(.secondary)
+                    } else if let image = distribution.image, !platform.bundles.isUsable(image.coreVersion), !platform.canInstallBundles {
+                        Text("请在主机设置中完成 Helper 和开发者工具授权，才能自动安装 Core。").font(.caption).foregroundStyle(.secondary)
                     }
                     if distribution.createdMachine != nil {
                         Button("重试启动已导入实例") { distribution.retryStart(using: platform) }.disabled(distribution.busy)
@@ -83,7 +92,7 @@ struct VPhoneDistributionView: View {
                             VStack(alignment: .leading) {
                                 Text("\(receipt.imageID) · \(receipt.imageVersion)")
                                 Text(receipt.machinePath).font(.caption).textSelection(.enabled)
-                                Text(newer.map { "有新模板 \($0.version)，请选择该发行版本创建新实例" } ?? "未发现更新模板（这是导入记录，不代表当前客体系统版本）")
+                                Text(newer.map { "有新模板 \($0.version)，可在镜像版本库选择并创建新实例" } ?? "未发现更新模板（这是导入记录，不代表当前客体系统版本）")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -100,7 +109,7 @@ struct VPhoneDistributionView: View {
         }
         .frame(minWidth: 720, minHeight: 650)
         .task { if distribution.catalogs.isEmpty && !distribution.busy { distribution.check() } }
-        .onChange(of: distribution.selectedTag) { _, _ in distribution.selectedImageID = distribution.selected?.images.first?.id ?? "" }
+
     }
 }
 #endif

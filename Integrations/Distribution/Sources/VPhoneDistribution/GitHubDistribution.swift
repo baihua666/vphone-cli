@@ -31,7 +31,12 @@ public enum GitHubDistribution {
         var catalogs: [DistributionCatalog] = []
         // Re-read the immutable tag URL: the catalog must actually belong to
         // the tag it declares, rather than an unrelated latest release.
-        for tag in [latest.tag] + (latest.previousTags ?? []) {
+        var pending = [latest.tag] + (latest.previousTags ?? [])
+        var visited = Set<String>()
+        while !pending.isEmpty {
+            let tag = pending.removeFirst()
+            guard visited.insert(tag).inserted else { continue }
+            guard visited.count <= 100 else { throw DistributionError("发行历史超过 100 个版本，请维护发行目录") }
             let (content, code) = try await load(assetURL(tag: tag, name: manifestName))
             guard code == 200 else { throw DistributionError("发行目录下载失败：\(tag)（HTTP \(code)）") }
             let catalog = try DistributionCatalog.decode(content)
@@ -39,6 +44,7 @@ public enum GitHubDistribution {
                 throw DistributionError("目录与 Release tag 不一致，或最新目录已变化，请重试")
             }
             catalogs.append(catalog)
+            pending.append(contentsOf: catalog.previousTags ?? [])
         }
         return try validatedVersions(catalogs)
     }
@@ -56,10 +62,11 @@ public enum GitHubDistribution {
         var imageRevisions: [String: String] = [:]
         for image in catalogs.flatMap(\.images) {
             let key = "\(image.id):\(image.revision)"
-            if let previous = imageRevisions[key], previous != image.archiveSHA256 {
+            let identity = "\(image.archiveSHA256):\(image.coreVersion):\(image.version):\(image.expandedBytes):\(image.archiveBytes)"
+            if let previous = imageRevisions[key], previous != identity {
                 throw DistributionError("同一镜像版本内容发生变化：\(key)")
             }
-            imageRevisions[key] = image.archiveSHA256
+            imageRevisions[key] = identity
         }
         return catalogs.enumerated().sorted { left, right in
             left.element.app.revision == right.element.app.revision

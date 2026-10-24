@@ -25,7 +25,9 @@ final class VPhoneDistributionModel {
     private let downloads = DistributionDownload(root: root.appendingPathComponent("Downloads", isDirectory: true))
     private var receiptFile: URL { Self.root.appendingPathComponent("images.json") }
     var selected: DistributionCatalog? { catalogs.first { $0.tag == selectedTag } }
-    var image: DistributionImage? { selected?.images.first { $0.id == selectedImageID } }
+    var imageVersions: [DistributionImageVersion] { DistributionImageVersion.all(in: catalogs) }
+    var imageVersion: DistributionImageVersion? { imageVersions.first { $0.id == selectedImageID } }
+    var image: DistributionImage? { imageVersion?.image }
     var currentRevision: Int { (Bundle.main.object(forInfoDictionaryKey: "VPhoneDistributionRevision") as? String).flatMap(Int.init) ?? 0 }
     var appStatus: String {
         guard let latest = catalogs.first else { return "尚未获取发行版本" }
@@ -57,7 +59,9 @@ final class VPhoneDistributionModel {
             let catalogs = try await GitHubDistribution.fetch()
             self.catalogs = catalogs
             self.selectedTag = catalogs.first?.tag ?? ""
-            self.selectedImageID = catalogs.first?.images.first?.id ?? ""
+            if !self.imageVersions.contains(where: { $0.id == self.selectedImageID }) {
+                self.selectedImageID = self.imageVersions.first?.id ?? ""
+            }
             self.status = catalogs.isEmpty ? "尚无可用发行目录；发布工具上传正式 Release 后即可使用。" : "版本目录已更新；仅检查，不会替换 App、Core 或实例。"
         }
     }
@@ -82,25 +86,30 @@ final class VPhoneDistributionModel {
     }
     func installCore(using model: VPhoneLaunchpadModel) {
         guard let catalog = selected else { return }
-        run {
-            guard model.canInstallBundles else { throw DistributionError("请先完成主机设置、Helper 和开发者工具授权") }
-            self.canPause = true
-            let zip = try await self.downloads.asset(catalog.core.asset, tag: catalog.tag, progress: self.progress)
-            try Task.checkCancellation()
-            self.canPause = false
-            self.status = "安装匹配的 Core，保留现有默认值与实例绑定…"
-            let candidate = try await VPhoneLaunchpadLocalBundle.prepare(zip)
-            defer { try? FileManager.default.removeItem(at: candidate.workDirectory) }
-            guard candidate.version == catalog.core.version else { throw DistributionError("下载的 Core seal 与发行目录不一致，未安装") }
-            await model.installLocalBundle(zip, keepsDefault: model.bundles.defaultVersion != nil)
-            guard model.bundles.isUsable(catalog.core.version) else {
-                throw model.bundles.progress?.error ?? VPhoneLaunchpadError("Core 内容身份不匹配或主机验证未通过")
-            }
-            self.status = "Core 已就绪：\(catalog.core.version)；原有实例未换绑。"
+        run { try await self.ensureCore(catalog, using: model) }
+    }
+    private func ensureCore(_ catalog: DistributionCatalog, using model: VPhoneLaunchpadModel) async throws {
+        guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= catalog.app.minimumMacOS else {
+            throw DistributionError("此发行版本需要 macOS \(catalog.app.minimumMacOS) 或更新版本")
         }
+        if model.bundles.isUsable(catalog.core.version) { return }
+        guard model.canInstallBundles else { throw DistributionError("请先完成主机设置、Helper 和开发者工具授权，再继续创建") }
+        canPause = true
+        let zip = try await downloads.asset(catalog.core.asset, tag: catalog.tag, progress: progress)
+        try Task.checkCancellation()
+        canPause = false
+        status = "安装镜像所需 Core，保留现有默认值与实例绑定…"
+        let candidate = try await VPhoneLaunchpadLocalBundle.prepare(zip)
+        defer { try? FileManager.default.removeItem(at: candidate.workDirectory) }
+        guard candidate.version == catalog.core.version else { throw DistributionError("下载的 Core seal 与发行目录不一致，未安装") }
+        await model.installLocalBundle(zip, keepsDefault: model.bundles.defaultVersion != nil)
+        guard model.bundles.isUsable(catalog.core.version) else {
+            throw model.bundles.progress?.error ?? VPhoneLaunchpadError("Core 内容身份不匹配或主机验证未通过")
+        }
+        status = "Core 已就绪：\(catalog.core.version)；原有实例未换绑。"
     }
     func downloadImage() {
-        guard let image, let catalog = selected else { return }
+        guard let image, let catalog = imageVersion?.catalog else { return }
         run {
             self.canPause = true
             _ = try await self.downloads.image(image, tag: catalog.tag, progress: self.progress)
@@ -108,14 +117,11 @@ final class VPhoneDistributionModel {
         }
     }
     func installImage(using model: VPhoneLaunchpadModel) {
-        guard let image, let catalog = selected else { return }
+        guard let image, let catalog = imageVersion?.catalog else { return }
         let name = machineName
         run {
             guard self.receiptError.isEmpty else { throw DistributionError(self.receiptError) }
-            guard model.host.requiredPassed, model.bundles.isUsable(image.coreVersion),
-                  let cli = model.bundles.commandLine(version: image.coreVersion) else {
-                throw DistributionError("请先完成主机检查并安装该镜像匹配的 Core")
-            }
+            guard model.host.requiredPassed else { throw DistributionError("请先完成第一步主机设置，再继续创建") }
             let root = model.machines.libraryRoot
             if let issue = VPhoneLaunchpadMachineLocations.problem(with: root) { throw DistributionError(issue) }
             guard DistributionAsset.safeName(name), VPhoneLaunchpadMachineLocations.socketPathFits(root: root, name: name) else {
@@ -126,6 +132,10 @@ final class VPhoneDistributionModel {
             let folder = URL(fileURLWithPath: root, isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try DistributionDownload.requireSpace(at: folder, bytes: image.expandedBytes * 2)
+            try await self.ensureCore(catalog, using: model)
+            guard let cli = model.bundles.commandLine(version: image.coreVersion) else {
+                throw DistributionError("匹配的 Core 不可用，请检查主机设置后重试")
+            }
             self.canPause = true
             let archive = try await self.downloads.image(image, tag: catalog.tag, progress: self.progress)
             try Task.checkCancellation()

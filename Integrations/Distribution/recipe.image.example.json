@@ -1,6 +1,6 @@
 {
   "tag": "launchpad-2.8.0-image-clean-ios-r1",
-  "previousTags": ["launchpad-2.8.0-r2"],
+  "previousTags": [],
   "baseline": "2.8.0",
   "appRevision": 2,
   "minimumMacOS": 15,

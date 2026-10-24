@@ -188,3 +188,17 @@ GitHub 对附件/CDN 的网络限制仍可能存在；本改动消除的是 REST
 - 原运行实例正常停止后恢复，guest 在 8 秒响应；Core/guestEnvironment 绑定仍为 `2.8.0-local.199abaf3`、内存 4096 MB，Core seal 与安装前一致。旧 r1 App 备份在 `.build/distribution-install-backup-r2/vphone-launchpad.app`。
 - 另一台干净 Mac 的首装与镜像导入仍未验收；本次结果覆盖本机真实发行下载、升级和原实例恢复，不扩大为跨 Mac 全链路结论。
 - 真实 APP 内点击「下载 App 更新安装包」后完成独立网络下载，页面显示「App 安装包已校验」及「在 Finder 中显示安装包」。App 缓存文件再次核对 SHA-256 与发布附件相同。
+
+## 独立镜像版本库（2026-10-24）
+
+`版本与镜像` → `镜像版本库与创建实例` 汇总发行目录及其历史目录里的全部镜像版本，按模板类型、修订号降序显示。APP 发行版本的切换不会改变镜像选择。相同模板 id/revision 去重；相同修订若更改归档、系统版本标签、所需 Core 或容量则拒绝目录，必须发布新修订。历史目录递归读取并去重，上限 100 个 Release，不使用 GitHub REST API。
+
+完成主机设置后，选择镜像并填写新实例名称，点击「创建并启动新虚拟机」。Launchpad 校验名称和磁盘空间，自动准备所选镜像对应 Release 的 Core，然后下载分片、校验、导入、新身份克隆、写入原生绑定并启动，最后等待客体服务就绪。已有可用 Core 直接复用；安装其它 Core 不改变现有默认 Core 或实例绑定。缺少 Helper/开发者工具权限时页面说明原因并提供主机设置入口。
+
+镜像升级通过新修订创建新实例；旧实例及其数据保留。暂停发生在下载阶段，导入后启动失败时使用「重试启动已导入实例」，无需重复下载/导入。镜像记录是来源记录，不代表当前 guest 系统版本。
+
+实现仍受 `VPHONE_CUSTOM_DISTRIBUTION` 控制，定义在 Launchpad 原有 xcconfig；未修改 Core、CLI、Helper 或 guest。关闭宏恢复原有创建/导入入口。
+
+## 发布保留策略（2026-10-24）
+
+用户已选择仅保留最新线上 Release。版本管理仍保留 APP 修订、Core seal、镜像 id/version/revision 与每台实例的来源记录；新清单 `previousTags: []`。历史遍历保留为旧目录兼容能力，不表示继续保留历史二进制。新版本通过真实下载和启动验收后，使用 `scripts/prune-releases.zsh` 清理旧产品 Release；该开发机工具使用已登录的 gh，APP 的更新检查仍不使用 GitHub REST API。完整顺序见镜像发布指南第 7 节。

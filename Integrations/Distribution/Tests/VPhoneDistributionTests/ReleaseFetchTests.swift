@@ -28,6 +28,17 @@ final class ReleaseFetchTests: XCTestCase, @unchecked Sendable {
             } catch { XCTAssertTrue(error.localizedDescription.contains("HTTP \(status)")) }
         }
     }
+    func testHistoryTraversesOlderCatalogsAndDeduplicatesSharedAncestors() async throws {
+        let latest = try data(tag: "release-r3", previous: ["release-r2"])
+        let middle = try data(tag: "release-r2", previous: ["release-r1"])
+        let oldest = try data()
+        let catalogs = try await GitHubDistribution.fetch { url in
+            if url.path.contains("/release-r1/") { return (oldest, 200) }
+            if url.path.contains("/release-r2/") { return (middle, 200) }
+            return (latest, 200)
+        }
+        XCTAssertEqual(catalogs.map(\.tag), ["release-r3", "release-r2", "release-r1"])
+    }
     func testTagMismatchAndInvalidHistoryAreRejected() async throws {
         let latest = try data()
         let wrong = try data(tag: "other")

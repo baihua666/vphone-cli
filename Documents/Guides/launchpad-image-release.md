@@ -2,13 +2,17 @@
 
 适用于内部发布维护者。2026-10-24。用户安装入口见 [其它 Mac 安装与使用说明](launchpad-internal-user-guide.md)。
 
-**当前状态：APP/Core 已发布；镜像由用户另行提供，尚未发布或完成真实镜像验收。**
+**当前状态：APP/Core 已发布；干净镜像尚未发布，完整镜像下载与启动验收仍待完成。**
 下面给出可执行流程与验收标准，不把无镜像 Release 当作新机完整交付。
 不修改 Core、CLI 或 guest。开发机使用现有发布工具；接收用户只操作 Launchpad。
 
 ## 1. 接收与确认模板
 
-由模板提供者交付以下信息：
+可接收用户提供的干净归档，也可由维护者使用原 Core 和原始 iPhone/cloudOS IPSW，在独立实例中完成固件准备、恢复、首次启动和导出。镜像包含 Apple 固件及初始化后的磁盘，并非仅编译本项目源码即可生成。制作镜像不要求修改 Core 源码。不要使用现用业务实例代替干净模板。
+
+制作前核算磁盘空间：现有 Helper 的 CFW 操作要求相关卷至少有 50 GiB 空闲；此外还需容纳固件展开、归档、分片、下载缓存和验收实例。未满足空间条件时先确定外置存储或清理授权，不能绕过检查。
+
+无论使用哪种来源，都应交付以下信息：
 
 - 已正常停机导出的 vphone `.tzst` / `.txz` 完整归档、字节大小和 SHA-256。
 - iOS/cloudOS 版本、原 Core 完整版本；当前计划复用 `2.8.0-local.199abaf3`，不匹配时先确认兼容性，不能自动升级底层。
@@ -45,7 +49,7 @@ Launchpad 会在此数值基础上预留两倍容量和安全余量。64 GiB 等
 | 字段 | 维护规则 |
 | --- | --- |
 | tag | 每次新建独立 Release，例如 `launchpad-2.8.0-image-clean-ios-r1`；不得替换 r2 的现有清单或附件 |
-| previousTags | 列出此前已正式发布的 tag，最新在前，最多 99 项；不要放本次 tag、draft 或 prerelease |
+| previousTags | 当前“仅保留最新版”策略必须填写空数组 `[]`，避免清理旧 Release 后留下失效引用 |
 | baseline / appRevision | 复用当前 App 时仍为 `2.8.0` / `2`；不能把镜像修订当 App 修订 |
 | appDMG / coreZIP | 使用当前已发布包的原始字节；仅更新镜像不重建或重签 App/Core |
 | coreVersion | 核对实际 seal 身份；所有本次镜像必须与清单里的 Core 一致 |
@@ -126,3 +130,17 @@ swift run --package-path Integrations/Distribution distribution-publisher \
 - 已发布模板存在问题：在说明中标明问题，并将上一份含完整清单的 Release 设为 latest。已下载的坏模板不自动清除；通知使用者停止采用。修复后使用新 revision/tag，保留追溯。
 
 GitHub 官方参考：[管理 Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)。
+
+## 7. 仅保留最新版的发布策略（2026-10-24 用户确认）
+
+APP、Core、每种镜像分别保留版本身份与递增修订；线上 Release 附件仅保留最新可用发行版。新清单必须自包含全部当前需要的附件，`previousTags` 为 `[]`，镜像 id 保持稳定、revision 继续递增。删旧包不重置版本计数，也不改变现有实例绑定。
+
+新版本先上传 draft、核验、发布并设为 latest，完成真实安装启动验收后执行：
+
+```sh
+zsh Integrations/Distribution/scripts/prune-releases.zsh <已验收的最新tag>
+```
+
+该工具拒绝非 latest 或仍引用历史的目录；先真实下载并校验最新版 APP/Core，以及存在时的全部镜像分片和完整归档，成功后才删除旧的 `launchpad-*` Release。下载失败不会删除旧发布。保留 Git tag/提交用于源码追溯，不删除实例、已绑定 Core、其它项目发行或 draft。
+
+删除旧 Release 后旧下载直链将失效，安装文档应使用最新 Release 页面和对应版本链接；用户安装的旧实例仍使用其本地 Core。需要旧版恢复时由源码 tag 重新构建，不能继续承诺旧二进制在线下载。
