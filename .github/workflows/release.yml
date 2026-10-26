@@ -19,7 +19,9 @@ permissions:
   contents: write
 
 jobs:
+  # Launchpad distributions are signed and verified by the distribution publisher.
   build:
+    if: ${{ !startsWith(github.event.release.tag_name || inputs.tag, 'launchpad-') }}
     runs-on: xcode-27
     steps:
       - name: Checkout
@@ -94,6 +96,7 @@ jobs:
         run: gh release upload "$TAG" "VPhone-${TAG}.zip" --clobber
 
   launchpad:
+    if: ${{ !startsWith(github.event.release.tag_name || inputs.tag, 'launchpad-') }}
     runs-on: xcode-27
     steps:
       - name: Checkout
