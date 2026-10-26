@@ -12,15 +12,11 @@ final class VPhoneDistributionModel {
     var localImageDirectory = ""
     var localImages: [DistributionLocalImage] = []
     var machineName = "my-iphone"
-    var status = "点击检查版本，读取本项目的 GitHub Releases。"
+    var status = "点击刷新 Core 目录，获取可安装的运行组件。"
     var error = ""
     var fraction: Double = 0
     var busy = false
     var canPause = false
-    #if VPHONE_CUSTOM_APP_UPDATE
-    var updatingApp = false
-    #endif
-    var installer: URL?
     var receipts: [DistributionReceipt] = []
     var receiptError = ""
     var createdMachine: VPhoneLaunchpadMachinePath?
@@ -41,23 +37,10 @@ final class VPhoneDistributionModel {
     }
     var imageVersion: DistributionLocalImage? { imageVersions.first { $0.id == selectedImageID } }
     var image: DistributionImage? { imageVersion?.image }
-    var currentRevision: Int { (Bundle.main.object(forInfoDictionaryKey: "VPhoneDistributionRevision") as? String).flatMap(Int.init) ?? 0 }
-    var appStatus: String {
-        guard let latest = catalogs.first else { return "尚未获取发行版本" }
-        if currentRevision == 0 { return "当前为开发构建；最新发布修订 \(latest.app.revision)" }
-        return latest.app.revision > currentRevision ? "有更新：修订 \(currentRevision) → \(latest.app.revision)" : "当前修订 \(currentRevision)，未发现更新"
-    }
     init() {
         #if VPHONE_CUSTOM_LOCAL_IMAGES
         localImageDirectory = UserDefaults.standard.string(forKey: "distribution.localImageDirectory") ?? ""
         if !localImageDirectory.isEmpty { reloadLocalImages() }
-        #endif
-        #if VPHONE_CUSTOM_APP_UPDATE
-        let report = Self.root.appendingPathComponent("app-update-error.txt")
-        if let message = try? String(contentsOf: report, encoding: .utf8) {
-            error = message
-            try? FileManager.default.removeItem(at: report)
-        }
         #endif
         guard FileManager.default.fileExists(atPath: receiptFile.path) else { return }
         do { receipts = try JSONDecoder().decode([DistributionReceipt].self, from: Data(contentsOf: receiptFile)) }
@@ -79,14 +62,14 @@ final class VPhoneDistributionModel {
     func pause() { if canPause { task?.cancel() } }
     func check() {
         run {
-            self.status = "检查 App、Core 与镜像版本…"
+            self.status = "正在获取 Core 目录…"
             let catalogs = try await GitHubDistribution.fetch()
             self.catalogs = catalogs
             self.selectedTag = catalogs.first?.tag ?? ""
             if !self.imageVersions.contains(where: { $0.id == self.selectedImageID }) {
                 self.selectedImageID = self.imageVersions.first?.id ?? ""
             }
-            self.status = catalogs.isEmpty ? "尚无可用发行目录；发布工具上传正式 Release 后即可使用。" : "版本目录已更新；仅检查，不会替换 App、Core 或实例。"
+            self.status = catalogs.isEmpty ? "尚无可用发行目录；发布工具上传正式 Release 后即可使用。" : "Core 目录已刷新，可继续准备运行组件。"
         }
     }
     var progress: DistributionDownload.Progress {
@@ -95,17 +78,6 @@ final class VPhoneDistributionModel {
                 self?.status = message
                 self?.fraction = total > 0 ? Double(done) / Double(total) : 0
             }
-        }
-    }
-    func downloadApp() {
-        guard let catalog = selected else { return }
-        run {
-            guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= catalog.app.minimumMacOS else {
-                throw DistributionError("此版本需要 macOS \(catalog.app.minimumMacOS) 或更新版本")
-            }
-            self.canPause = true
-            self.installer = try await self.downloads.asset(catalog.app.asset, tag: catalog.tag, progress: self.progress)
-            self.status = "App 安装包已校验。请先正常停止实例并退出 Launchpad，保留旧 app 后安装更新。"
         }
     }
     func installCore(using model: VPhoneLaunchpadModel) {

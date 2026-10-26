@@ -2,14 +2,13 @@
 import AppKit
 import VPhoneDistribution
 
-extension VPhoneDistributionModel {
-    var hasAppUpdate: Bool { catalogs.first.map { $0.app.revision > currentRevision } ?? false }
+extension VPhoneLaunchpadAppUpdateModel {
 
     func updateApp(using platform: VPhoneLaunchpadModel) {
-        guard let catalog = catalogs.first, hasAppUpdate else { return }
+        guard let catalog, hasAppUpdate else { return }
         run {
-            self.updatingApp = true
-            defer { self.updatingApp = false }
+            self.installing = true
+            defer { self.installing = false }
             try await self.requireUpdateIdle(platform)
             guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= catalog.app.minimumMacOS else {
                 throw DistributionError("此更新需要 macOS \(catalog.app.minimumMacOS) 或更新版本")
@@ -41,7 +40,7 @@ extension VPhoneDistributionModel {
 
     private func requireUpdateIdle(_ platform: VPhoneLaunchpadModel) async throws {
         await platform.machines.refresh()
-        guard !platform.machines.hasActiveCreation, !platform.machines.hasActiveTransfer,
+        guard !platform.distribution.busy, !platform.machines.hasActiveCreation, !platform.machines.hasActiveTransfer,
               platform.machines.machines.allSatisfy({ platform.machines.state(of: $0.path) == .stopped }) else {
             throw DistributionError("请先正常停止虚拟机，并等待创建、导入或导出完成，再点击更新。当前 App 未替换。")
         }

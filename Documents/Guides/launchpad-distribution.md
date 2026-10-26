@@ -6,7 +6,7 @@
 
 - App 更新：菜单「VPhone Launchpad → 检查 App 更新…」。从包含该能力的版本开始，点击顶部「更新」即可下载、校验、安装并重启。更旧版本首次需手动安装一次新 DMG。
 - Core：按需要单独安装，不自动改绑已有实例或更新 guest。
-- 镜像：在「版本与镜像 → 本地镜像目录」选择包含完整归档及 images.json 的目录。更新本地文件和清单后点击「刷新本地目录」，再校验、创建新实例。现有 VM 不会被覆盖。
+- 镜像：在「开始使用 → 本地镜像目录」选择包含完整归档及 images.json 的目录。更新本地文件和清单后点击「刷新本地目录」，再校验、创建新实例。现有 VM 不会被覆盖。
 - 本地目录格式与维护见 [镜像本地目录](launchpad-image-release.md) 和 [清单示例](local-images.example.json)。原生「文件 → 导入…」仍可使用已有自有归档。
 
 ## 发布边界
@@ -69,3 +69,9 @@ App target 的 `VPhoneLaunchpad.xcconfig` 集中维护：
 一键更新实现位于 Distribution/AppUpdate，目录适配位于 DistributionLocalImages，纯文件清单规则位于 Integrations/Distribution。删除功能时一并移除实现、窄组装点、条件分支、宏定义与对应测试。发布禁令不依赖 UI 宏，不因关闭本地目录功能而解除。
 
 App 更新在原安装卷的私有目录暂存，经签名、版本和 Helper 签名规则校验，等待旧进程退出后替换并重新打开。替换失败保留或恢复旧版；备份和日志保留于本次 .vphone-update-UUID 目录。有运行/启动中的 VM 或创建/导入/导出任务时拒绝安装；不会自动停止 VM。回退不改实例、Core 绑定、guest 或本地镜像目录。
+
+## App 更新与开始使用分开（当前源码，待发布）
+
+「VPhone Launchpad → 检查 App 更新…」打开独立的 App 更新窗口，只展示当前 App 版本、检查结果、下载进度和安装重启操作；不读取本地镜像清单，不进行 Core 安装或实例创建。开始使用保留权限、Core、本地镜像和创建启动四步，顶部「刷新 Core 目录」只为准备运行组件获取元数据。两个窗口的检查结果、忙碌状态和错误各自维护；均提供「关闭」和 Esc。App 安装重启仍要求虚拟机及开始使用中的操作已结束。
+
+关闭 `VPHONE_APP_UPDATE` 后，独立更新窗口保留检查与手动下载安装包；关闭 `VPHONE_DISTRIBUTION` 则移除这两个本地定制窗口。未变更 Core、guest、Helper 或已有 VM 绑定。

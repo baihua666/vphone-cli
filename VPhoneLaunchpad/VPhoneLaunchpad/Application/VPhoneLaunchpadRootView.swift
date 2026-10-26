@@ -16,7 +16,7 @@ struct VPhoneLaunchpadRootView: View {
                     Button { openWindow(id: "applications") } label: { Label("应用管理", systemImage: "app.badge") }
                     #endif
                     #if VPHONE_CUSTOM_DISTRIBUTION
-                    Button { openWindow(id: "distribution") } label: { Label("版本与镜像", systemImage: "arrow.down.circle") }
+                    Button { openWindow(id: "distribution") } label: { Label("开始使用", systemImage: "checklist") }
                     #endif
                     Button {
                         openWindow(id: "flywheel")

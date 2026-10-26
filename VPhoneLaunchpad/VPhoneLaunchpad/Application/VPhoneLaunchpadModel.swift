@@ -43,6 +43,7 @@ final class VPhoneLaunchpadModel {
 
     #if VPHONE_CUSTOM_DISTRIBUTION
     let distribution = VPhoneDistributionModel()
+    let appUpdates = VPhoneLaunchpadAppUpdateModel()
     #endif
     /// IPSWs dropped on the window or opened with Launchpad, copied into the cache.
     let ipswImport = VPhoneLaunchpadIPSWImport()

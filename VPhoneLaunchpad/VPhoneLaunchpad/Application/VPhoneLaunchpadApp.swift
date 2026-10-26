@@ -27,7 +27,7 @@ struct VPhoneLaunchpadApp: App {
         // Nor is any saved: the window's frame is kept under its own name.
         .restorationBehavior(.disabled)
         .commands {
-            #if VPHONE_CUSTOM_DISTRIBUTION && VPHONE_CUSTOM_APP_UPDATE
+            #if VPHONE_CUSTOM_DISTRIBUTION
             VPhoneLaunchpadAppUpdateCommands(model: model)
             #endif
             CommandGroup(replacing: .newItem) {
@@ -93,10 +93,20 @@ struct VPhoneLaunchpadApp: App {
         #endif
 
         #if VPHONE_CUSTOM_DISTRIBUTION
-        Window("开始使用与版本更新", id: "distribution") {
+        Window("开始使用", id: "distribution") {
             VPhoneDistributionView().environment(model)
         }
         .defaultSize(width: 800, height: 760)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        #endif
+
+        #if VPHONE_CUSTOM_DISTRIBUTION
+        Window("App 更新", id: "app-update") {
+            VPhoneLaunchpadAppUpdateView().environment(model)
+        }
+        .defaultSize(width: 480, height: 310)
+        .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
         #endif
@@ -172,10 +182,10 @@ final class VPhoneLaunchpadAppDelegate: NSObject, NSApplicationDelegate {
             }
         #endif
         #if VPHONE_CUSTOM_DISTRIBUTION
-        if model?.distribution.busy == true {
+        if model?.distribution.busy == true || model?.appUpdates.busy == true {
             let alert = NSAlert()
-            alert.messageText = "版本下载或镜像导入正在进行"
-            alert.informativeText = "请先暂停下载，或等待 Core 安装／镜像导入完成后再退出。"
+            alert.messageText = "下载、安装或镜像导入正在进行"
+            alert.informativeText = "请先暂停下载，或等待 App 准备／Core 安装／镜像导入完成后再退出。"
             alert.runModal()
             return .terminateCancel
         }

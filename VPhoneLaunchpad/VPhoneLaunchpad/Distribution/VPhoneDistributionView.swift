@@ -14,15 +14,9 @@ struct VPhoneDistributionView: View {
         @Bindable var distribution = distribution
         VStack(alignment: .leading) {
             HStack {
-                Text("开始使用与版本更新").font(.title2)
+                Text("开始使用").font(.title2)
                 Spacer()
-                #if VPHONE_CUSTOM_APP_UPDATE
-                if distribution.hasAppUpdate {
-                    Button(distribution.updatingApp ? "更新中…" : "更新") { distribution.updateApp(using: platform) }
-                        .buttonStyle(.borderedProminent).disabled(distribution.busy)
-                }
-                #endif
-                Button("检查更新／重试") { distribution.check() }.disabled(distribution.busy)
+                Button("刷新 Core 目录") { distribution.check() }.disabled(distribution.busy)
                 Button("关闭") {
                     UserDefaults.standard.set(true, forKey: "distribution.setupSeen")
                     dismissWindow(id: "distribution")
@@ -53,10 +47,10 @@ struct VPhoneDistributionView: View {
                 } header: { Text("1 · 权限设置") }
                 Section {
                     stepStatus(.core)
-                    Picker("发行版本", selection: $distribution.selectedTag) {
+                    Picker("Core 来源", selection: $distribution.selectedTag) {
                         Text("请选择").tag("")
                         ForEach(distribution.catalogs, id: \.tag) { catalog in
-                            Text("\(catalog.tag) · App 修订 \(catalog.app.revision)").tag(catalog.tag)
+                            Text(catalog.core.version).tag(catalog.tag)
                         }
                     }.disabled(distribution.busy)
                     if let image = distribution.image, coreReady {
@@ -69,7 +63,7 @@ struct VPhoneDistributionView: View {
                             distribution.installCore(using: platform)
                         }.disabled(distribution.busy || !permissionsReady || !platform.canInstallBundles || coreReady)
                     } else {
-                        Text("请先点击窗口顶部的“检查更新／重试”获取发行目录。")
+                        Text("请先点击窗口顶部的“刷新 Core 目录”获取发行目录。")
                     }
                     if !permissionsReady { Text("请先完成第 1 步权限设置。").foregroundStyle(.secondary) }
                 } header: { Text("2 · Core 安装") }
@@ -119,21 +113,6 @@ struct VPhoneDistributionView: View {
                     Text("导入期间请勿退出 APP、拔盘或让 Mac 休眠。完成后可在主列表正常启动、停止实例。重开 APP 后，请从主列表启动已创建的实例；本步完成表示本次已通过启动检查，不代表实例会始终运行。")
                         .font(.caption).foregroundStyle(.secondary)
                 } header: { Text("4 · 创建启动") }
-                Section("后续 App 更新") {
-                    Text(distribution.appStatus)
-                    #if VPHONE_CUSTOM_APP_UPDATE
-                    Text("更新将自动下载、校验、安装并重启 Launchpad。请先停止虚拟机；Core、镜像和实例绑定保持不变。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    #else
-                    Text("内部开发签名版未公证。安装更新前先停止实例并退出 APP；更新包不会自动替换正在运行的程序。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("下载 App 更新安装包") { distribution.downloadApp() }
-                        .disabled(distribution.busy || distribution.selected == nil)
-                    if let installer = distribution.installer {
-                        Button("在 Finder 中显示安装包") { NSWorkspace.shared.activateFileViewerSelecting([installer]) }
-                    }
-                    #endif
-                }
                 if !distribution.receipts.isEmpty {
                     Section("已创建实例的模板版本") {
                         ForEach(distribution.receipts) { receipt in
