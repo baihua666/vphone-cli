@@ -16,6 +16,12 @@ struct VPhoneDistributionView: View {
             HStack {
                 Text("开始使用与版本更新").font(.title2)
                 Spacer()
+                #if VPHONE_CUSTOM_APP_UPDATE
+                if distribution.hasAppUpdate {
+                    Button(distribution.updatingApp ? "更新中…" : "更新") { distribution.updateApp(using: platform) }
+                        .buttonStyle(.borderedProminent).disabled(distribution.busy)
+                }
+                #endif
                 Button("检查更新／重试") { distribution.check() }.disabled(distribution.busy)
                 Button("关闭") {
                     UserDefaults.standard.set(true, forKey: "distribution.setupSeen")
@@ -104,6 +110,10 @@ struct VPhoneDistributionView: View {
                 } header: { Text("4 · 创建启动") }
                 Section("后续 App 更新") {
                     Text(distribution.appStatus)
+                    #if VPHONE_CUSTOM_APP_UPDATE
+                    Text("更新将自动下载、校验、安装并重启 Launchpad。请先停止虚拟机；Core、镜像和实例绑定保持不变。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    #else
                     Text("内部开发签名版未公证。安装更新前先停止实例并退出 APP；更新包不会自动替换正在运行的程序。")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("下载 App 更新安装包") { distribution.downloadApp() }
@@ -111,6 +121,7 @@ struct VPhoneDistributionView: View {
                     if let installer = distribution.installer {
                         Button("在 Finder 中显示安装包") { NSWorkspace.shared.activateFileViewerSelecting([installer]) }
                     }
+                    #endif
                 }
                 if !distribution.receipts.isEmpty {
                     Section("已创建实例的模板版本") {

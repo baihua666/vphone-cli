@@ -15,6 +15,9 @@ final class VPhoneDistributionModel {
     var fraction: Double = 0
     var busy = false
     var canPause = false
+    #if VPHONE_CUSTOM_APP_UPDATE
+    var updatingApp = false
+    #endif
     var installer: URL?
     var receipts: [DistributionReceipt] = []
     var receiptError = ""
@@ -37,6 +40,13 @@ final class VPhoneDistributionModel {
         return latest.app.revision > currentRevision ? "有更新：修订 \(currentRevision) → \(latest.app.revision)" : "当前修订 \(currentRevision)，未发现更新"
     }
     init() {
+        #if VPHONE_CUSTOM_APP_UPDATE
+        let report = Self.root.appendingPathComponent("app-update-error.txt")
+        if let message = try? String(contentsOf: report, encoding: .utf8) {
+            error = message
+            try? FileManager.default.removeItem(at: report)
+        }
+        #endif
         guard FileManager.default.fileExists(atPath: receiptFile.path) else { return }
         do { receipts = try JSONDecoder().decode([DistributionReceipt].self, from: Data(contentsOf: receiptFile)) }
         catch { receiptError = "镜像安装记录无法读取，原文件保留：\(error.localizedDescription)" }

@@ -27,6 +27,9 @@ struct VPhoneLaunchpadApp: App {
         // Nor is any saved: the window's frame is kept under its own name.
         .restorationBehavior(.disabled)
         .commands {
+            #if VPHONE_CUSTOM_DISTRIBUTION && VPHONE_CUSTOM_APP_UPDATE
+            VPhoneLaunchpadAppUpdateCommands(model: model)
+            #endif
             CommandGroup(replacing: .newItem) {
                 Button("New…") { model.machineSheetRequest = .newMachine }
                     .keyboardShortcut("n")
