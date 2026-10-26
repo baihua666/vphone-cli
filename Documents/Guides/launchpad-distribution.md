@@ -81,6 +81,21 @@ zsh Integrations/Distribution/scripts/package-core.zsh \
 
 脚本先验证签名，再以现有 seal 计算身份并压缩，不重签或重建 Core。新功能不要求修改底层。
 
+本机 Xcode 27 构建 2.13.4 时，出现过 `ProcessInfoPlistFile` 在 Bundle 封装签名后运行的情况：Xcode 显示构建成功，但最终 `codesign --verify` 报 Info.plist 被修改。发布前必须检查最终产物。遇到同一情况，可在构建全部结束后重新调用项目原有封装脚本（以下路径与本次验收一致；其它构建目录应相应替换），再执行上面的归档步骤：
+
+```sh
+CONFIGURATION=Release \
+CONFIGURATION_TEMP_DIR="$PWD/.build/UpstreamCore/Build/Intermediates.noindex/VPhoneVirtualization.build/Release" \
+TARGET_BUILD_DIR="$PWD/.build/UpstreamCore/Build/Products/Release" \
+FULL_PRODUCT_NAME=VPhone.bundle \
+zsh VPhoneExecutable/VPhoneVirtualization/Build/StageBundle.sh
+
+codesign --verify --strict --deep \
+  .build/UpstreamCore/Build/Products/Release/VPhone.bundle
+```
+
+这一步沿用官方封装、签名和 Bundle admission 检查；只作用于发布机的构建输出，不能对已安装 Core 重签。最终身份以最后一次 seal 为准，封装后不要再修改包内文件。
+
 ### 3. 准备模板和发布参数
 
 镜像完整操作及验收步骤见 [镜像发布流程](launchpad-image-release.md)。

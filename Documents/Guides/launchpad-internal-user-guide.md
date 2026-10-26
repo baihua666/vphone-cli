@@ -1,6 +1,6 @@
 # VPhone Launchpad 内部用户安装与使用说明
 
-> **r5 正在本机验收，尚未公开发布。** 完成真实导入、克隆、启动和失败重试后发布；当前公开版本请查看 [最新 Release](https://github.com/baihua666/vphone-cli/releases/latest)。
+> **当前内部版：2.13.4 / 修订 5。** 已完成本机导入、克隆、启动和失败重试后发布。[最新 Release](https://github.com/baihua666/vphone-cli/releases/latest) · [本机验收记录与限制](launchpad-upstream-2.13.4-validation.md)。
 
 适用版本：**Launchpad 2.13.4 / 发布修订 5**。更新日期：2026-10-26。
 
