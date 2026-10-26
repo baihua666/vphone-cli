@@ -5,6 +5,7 @@ import VPhoneDistribution
 struct VPhoneDistributionView: View {
     @Environment(VPhoneLaunchpadModel.self) private var platform
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     private var distribution: VPhoneDistributionModel { platform.distribution }
     private var permissionsReady: Bool { platform.host.requiredPassed }
     private var coreReady: Bool { distribution.stepState(.core, using: platform) == .completed }
@@ -16,10 +17,10 @@ struct VPhoneDistributionView: View {
                 Text("开始使用与版本更新").font(.title2)
                 Spacer()
                 Button("检查更新／重试") { distribution.check() }.disabled(distribution.busy)
-                Button("稍后设置") {
+                Button("关闭") {
                     UserDefaults.standard.set(true, forKey: "distribution.setupSeen")
-                    NSApp.keyWindow?.close()
-                }.disabled(distribution.busy)
+                    dismissWindow(id: "distribution")
+                }.keyboardShortcut(.cancelAction)
             }.padding()
             Form {
                 Section {
