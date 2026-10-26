@@ -111,3 +111,5 @@
 回退需要正常停机后用同一实例的修前快照同时恢复 Disk、SEPStorage、NVRAM，再恢复各自备份的原 Core 绑定；不能只恢复 Disk 或把关闭编译宏当作 guest 回退。两台当前修复后的数据不应被自动回滚，必须由用户明确选择。
 
 证据：本工作树 `.build/legacy-guest-repair/`，含 red/green/final tests、完整构建日志、helper 安装与更新输出、两台修前/修后应用与容器清单、实际宿主帧、两次启动 health 状态、配置/绑定备份及签名 seal。快照在各自 VM 的 Snapshots 内。
+
+最终空闲验收：2 号回到主屏幕后无输入 250 秒，3 号最终 Core 冷启动后无输入 865 秒，均有真实宿主帧、screen_off=false、locked=false。两台均确认 Auto-Lock=Never，最终 Core/guestEnvironment 身份一致。再次检查 1 号 boot_session_uuid 与最初只读取证一致，证实未重启；两台修前快照仍在。39 项最终回归、缓存真实文件测试、最终已安装 Core deep strict 签名全部通过。本次构建中间文件的可选清理被工具拒绝（不允许 rm -f 类命令），未绕过限制，构建缓存保留。
