@@ -27,47 +27,19 @@ public actor DistributionDownload {
         return try await obtain(asset, tag: tag, progress: progress)
     }
 
-    public func image(_ image: DistributionImage, tag: String, progress: Progress = { _, _, _ in }) async throws -> URL {
+    public func image(_ image: DistributionImage, tag: String, localArchive: URL? = nil,
+                      progress: Progress = { _, _, _ in }) async throws -> URL {
         guard !busy else { throw DistributionError("已有下载正在进行") }
         busy = true; defer { busy = false }
-        try prepare()
-        let output = root.appendingPathComponent(image.cacheKey + ".tzst")
-        if try Self.matches(output, bytes: image.archiveBytes, digest: image.archiveSHA256) { return output }
-        try Self.requireSpace(at: root, bytes: image.archiveBytes * 2)
-        var pieces: [URL] = []
-        var completed: Int64 = 0
-        for part in image.parts {
+        if let localArchive {
+            guard localArchive.isFileURL,
+                  try Self.matches(localArchive, bytes: image.archiveBytes, digest: image.archiveSHA256) else {
+                throw DistributionError("本地镜像不存在或大小／SHA-256 与所选镜像版本不一致。请选择匹配的完整归档；不会自动改为下载。")
+            }
             try Task.checkCancellation()
-            progress("下载分片 \(pieces.count + 1)/\(image.parts.count)；已完成分片可续传", completed, image.archiveBytes)
-            pieces.append(try await obtain(part, tag: tag, progress: { _, _, _ in }))
-            completed += part.size
-            progress("已校验分片 \(pieces.count)/\(image.parts.count)", completed, image.archiveBytes)
+            return localArchive
         }
-        let partial = root.appendingPathComponent(UUID().uuidString + ".assembling")
-        defer { try? FileManager.default.removeItem(at: partial) }
-        FileManager.default.createFile(atPath: partial.path, contents: nil)
-        let writer = try FileHandle(forWritingTo: partial)
-        defer { try? writer.close() }
-        var hash = SHA256()
-        var written: Int64 = 0
-        for piece in pieces {
-            let reader = try FileHandle(forReadingFrom: piece)
-            defer { try? reader.close() }
-            while try autoreleasepool(invoking: {
-                guard let data = try reader.read(upToCount: 1_048_576), !data.isEmpty else { return false }
-                try Task.checkCancellation()
-                try writer.write(contentsOf: data); hash.update(data: data); written += Int64(data.count)
-                progress("合并并校验镜像", written, image.archiveBytes)
-                return true
-            }) {}
-        }
-        try writer.synchronize()
-        guard written == image.archiveBytes, hash.finalize().hex == image.archiveSHA256 else {
-            throw DistributionError("完整镜像校验失败；保留分片以供重试")
-        }
-        if FileManager.default.fileExists(atPath: output.path) { try FileManager.default.removeItem(at: output) }
-        try FileManager.default.moveItem(at: partial, to: output)
-        return output
+        throw DistributionError("镜像在线下载已停用，请从本地镜像目录选择完整归档。")
     }
 
     private func prepare() throws {

@@ -9,6 +9,8 @@ final class VPhoneDistributionModel {
     var catalogs: [DistributionCatalog] = []
     var selectedTag = ""
     var selectedImageID = ""
+    var localImageDirectory = ""
+    var localImages: [DistributionLocalImage] = []
     var machineName = "my-iphone"
     var status = "点击检查版本，读取本项目的 GitHub Releases。"
     var error = ""
@@ -30,8 +32,14 @@ final class VPhoneDistributionModel {
     let downloads = DistributionDownload(root: root.appendingPathComponent("Downloads", isDirectory: true))
     private var receiptFile: URL { Self.root.appendingPathComponent("images.json") }
     var selected: DistributionCatalog? { catalogs.first { $0.tag == selectedTag } }
-    var imageVersions: [DistributionImageVersion] { DistributionImageVersion.all(in: catalogs) }
-    var imageVersion: DistributionImageVersion? { imageVersions.first { $0.id == selectedImageID } }
+    var imageVersions: [DistributionLocalImage] {
+        #if VPHONE_CUSTOM_LOCAL_IMAGES
+        localImages
+        #else
+        []
+        #endif
+    }
+    var imageVersion: DistributionLocalImage? { imageVersions.first { $0.id == selectedImageID } }
     var image: DistributionImage? { imageVersion?.image }
     var currentRevision: Int { (Bundle.main.object(forInfoDictionaryKey: "VPhoneDistributionRevision") as? String).flatMap(Int.init) ?? 0 }
     var appStatus: String {
@@ -40,6 +48,10 @@ final class VPhoneDistributionModel {
         return latest.app.revision > currentRevision ? "有更新：修订 \(currentRevision) → \(latest.app.revision)" : "当前修订 \(currentRevision)，未发现更新"
     }
     init() {
+        #if VPHONE_CUSTOM_LOCAL_IMAGES
+        localImageDirectory = UserDefaults.standard.string(forKey: "distribution.localImageDirectory") ?? ""
+        if !localImageDirectory.isEmpty { reloadLocalImages() }
+        #endif
         #if VPHONE_CUSTOM_APP_UPDATE
         let report = Self.root.appendingPathComponent("app-update-error.txt")
         if let message = try? String(contentsOf: report, encoding: .utf8) {
@@ -126,14 +138,14 @@ final class VPhoneDistributionModel {
         status = "Core 已就绪：\(catalog.core.version)；原有实例未换绑。"
     }
     func downloadImage() {
-        guard let image, let catalog = imageVersion?.catalog else { return }
+        guard let image else { return }
         run {
-            _ = try await self.fetchImage(image, catalog: catalog)
-            self.status = "镜像 \(image.title) \(image.version) 下载并校验完成；已有实例保持不变。"
+            _ = try await self.fetchImage(image)
+            self.status = "镜像 \(image.title) \(image.version) 已校验，可以创建实例；已有实例保持不变。"
         }
     }
     func installImage(using model: VPhoneLaunchpadModel) {
-        guard let image, let catalog = imageVersion?.catalog else { return }
+        guard let image else { return }
         if importedMachine(using: model) != nil { retryStart(using: model); return }
         let name = machineName
         let scope = launchScope(using: model)
@@ -152,11 +164,14 @@ final class VPhoneDistributionModel {
                 let folder = URL(fileURLWithPath: root, isDirectory: true)
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 try DistributionDownload.requireSpace(at: folder, bytes: image.expandedBytes * 2)
-                try await self.ensureCore(catalog, using: model)
+                if !model.bundles.isUsable(image.coreVersion) {
+                    guard let catalog = self.setupCatalog else { throw DistributionError("所需 Core 尚未安装；请先安装本地镜像清单指定的 Core：\(image.coreVersion)") }
+                    try await self.ensureCore(catalog, using: model)
+                }
                 guard let cli = model.bundles.commandLine(version: image.coreVersion) else {
                     throw DistributionError("匹配的 Core 不可用，请检查主机设置后重试")
                 }
-                let archive = try await self.fetchImage(image, catalog: catalog)
+                let archive = try await self.fetchImage(image)
                 try Task.checkCancellation()
                 self.canPause = false
                 self.status = "导入并创建独立身份，请勿退出 Launchpad…"

@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "images": [
+    {
+      "archiveBytes": 11605975444,
+      "archiveSHA256": "20707f45165d68de6766f365e6b23bd9d4e12aa904f2a6ea1419c7350ee56adf",
+      "coreVersion": "2.13.4-local.666ac4da",
+      "expandedBytes": 32212254720,
+      "id": "clean-ios",
+      "revision": 2,
+      "title": "干净 iOS 26.6.2 模板",
+      "version": "26.6.2-r2",
+      "archive": "clean-ios-2-20707f45165d68de6766f365e6b23bd9d4e12aa904f2a6ea1419c7350ee56adf.tzst"
+    }
+  ]
+}

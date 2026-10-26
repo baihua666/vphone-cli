@@ -16,8 +16,9 @@ notes="$output/release-notes.md"
 if gh release view "$tag" --repo baihua666/vphone-cli >/dev/null 2>&1; then
   print -u2 'Release already exists; use a new revision instead of replacing assets'; exit 1
 fi
-assets=("$output"/*(N.))
-assets=("${(@)assets:#$notes}")
+app_asset=$(plutil -extract app.asset.name raw -o - "$manifest")
+core_asset=$(plutil -extract core.asset.name raw -o - "$manifest")
+assets=("$manifest" "$output/$app_asset" "$output/$core_asset")
 gh release create "$tag" --repo baihua666/vphone-cli --target "$commit" \
   --draft --title "VPhone Launchpad $tag" --notes-file "$notes" "${assets[@]}"
 print -- 'Draft uploaded. Review actual artifacts and validation, then publish explicitly. Clients ignore drafts and prereleases.'

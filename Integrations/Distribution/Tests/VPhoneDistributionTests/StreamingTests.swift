@@ -16,7 +16,7 @@ extension DistributionTests {
         let value = try catalog(pieces)
         let source = Fixture(folder: folder, data: pieces)
         let download = DistributionDownload(root: folder.appendingPathComponent("cache")) { try await source.fetch($0) }
-        let output = try await download.image(value.images[0], tag: value.tag)
+        let output = try await download.image(value.images[0], tag: "local", localArchive: input)
         XCTAssertEqual(try Data(contentsOf: output), bytes)
     }
 }

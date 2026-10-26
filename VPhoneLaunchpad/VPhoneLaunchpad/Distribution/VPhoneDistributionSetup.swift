@@ -1,13 +1,16 @@
 #if VPHONE_CUSTOM_DISTRIBUTION
-import Foundation
+import AppKit
 import VPhoneDistribution
 
 extension VPhoneDistributionModel {
     typealias SetupStep = DistributionSetupProgress.Step
     typealias SetupState = DistributionSetupProgress.State
 
-    var setupCatalog: DistributionCatalog? { imageVersion?.catalog ?? selected }
-    var imageScope: String { image?.cacheKey ?? "" }
+    var setupCatalog: DistributionCatalog? {
+        guard let image else { return selected }
+        return catalogs.first { $0.core.version == image.coreVersion }
+    }
+    var imageScope: String { (image?.cacheKey ?? "") + "|local:" + (imageVersion?.archive.path ?? "") }
     func launchScope(using model: VPhoneLaunchpadModel) -> String {
         imageScope + "|" + VPhoneLaunchpadMachinePath(libraryRoot: model.machines.libraryRoot, name: machineName).url.path
     }
@@ -19,6 +22,7 @@ extension VPhoneDistributionModel {
             let state = setup.state(step, scope: "host")
             return state == .completed ? .pending : state
         case .core:
+            if let image, model.bundles.isUsable(image.coreVersion) { return .completed }
             guard let catalog = setupCatalog else { return .pending }
             if model.bundles.isUsable(catalog.core.version) { return .completed }
             let state = setup.state(step, scope: catalog.core.version)
@@ -55,12 +59,11 @@ extension VPhoneDistributionModel {
             }
         }
     }
-    func fetchImage(_ image: DistributionImage, catalog: DistributionCatalog) async throws -> URL {
-        try await performStep(.image, scope: image.cacheKey) {
-            self.status = "下载并校验镜像…已有缓存将先校验，请稍候。"
-            self.canPause = true
-            defer { self.canPause = false }
-            return try await self.downloads.image(image, tag: catalog.tag, progress: self.progress)
+    func fetchImage(_ image: DistributionImage) async throws -> URL {
+        try await performStep(.image, scope: imageScope) {
+            guard let file = self.imageVersion?.archive else { throw DistributionError("请先选择本地镜像目录及版本") }
+            self.status = "正在校验本地镜像大小与 SHA-256；不复制或上传镜像…"
+            return try await self.downloads.image(image, tag: "local", localArchive: file, progress: self.progress)
         }
     }
 }

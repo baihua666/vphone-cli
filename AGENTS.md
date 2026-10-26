@@ -1,5 +1,13 @@
 # vphone-cli
 
+## 镜像禁止上传与本地目录管理（2026-10-26）
+
+- 用户明确禁止上传虚拟 iPhone 镜像及分片，包括通过发布脚本、CI、gh、网盘或手工上传。镜像只在线下由用户管理，从本地目录读取和更新。
+- App 发布只包含 Launchpad、必要的 Core 和发行清单；`images` 与 `previousTags` 必须为空，不为了自包含发行目录重新上传镜像，也不引用历史发行来恢复在线镜像流程。
+- 本地镜像目录独立管理版本、完整归档及校验元数据。刷新目录或更新模板不能覆盖已有 VM，不自动升级 Core 或 guest，不复制大文件到下载缓存。
+- 本规则覆盖旧文档中“每个 Release 自带完整镜像”“上传镜像分片”的相反要求。历史已发布附件的删除需明确授权，不能因本规则擅自删除历史发布。
+- 发布器和上传脚本须在网络上传前拒绝镜像及未登记附件；这不等于全局工具层已经拦截任意手工上传。
+
 Virtual iPhone boot tool using Apple's Virtualization.framework with PCC research VMs.
 
 ## Monorepo development

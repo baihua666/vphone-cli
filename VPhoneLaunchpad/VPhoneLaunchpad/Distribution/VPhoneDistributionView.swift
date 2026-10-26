@@ -33,8 +33,8 @@ struct VPhoneDistributionView: View {
                     let completed = [DistributionSetupProgress.Step.permissions, .core, .image, .launch]
                         .filter { distribution.stepState($0, using: platform) == .completed }.count
                     Text("准备进度：\(completed) / 4 步已完成").font(.headline)
-                    Text("只需安装主 APP，Core 和镜像均由此向导在线下载。按下面四步完成准备；不需要手动下载、拼接镜像或使用命令行。")
-                    Text("需要实体 Apple Silicon Mac、本机 APFS 资料库和管理员权限。当前镜像约 11.61 GB，建议开始前预留 90 GiB 空闲空间；实际要求以所选镜像为准。")
+                    Text("安装主 APP 后可在线安装 Core；镜像仅从本地目录选择，不上传或在线下载镜像。")
+                    Text("需要实体 Apple Silicon Mac、本机 APFS 资料库和管理员权限。镜像与版本清单由本地目录管理；导入空间以所选镜像为准。")
                         .font(.caption).foregroundStyle(.secondary)
                     Link("完整安装说明", destination: URL(string: "https://github.com/baihua666/vphone-cli/blob/tb_dev/Documents/Guides/launchpad-internal-user-guide.md")!)
                 }
@@ -59,7 +59,10 @@ struct VPhoneDistributionView: View {
                             Text("\(catalog.tag) · App 修订 \(catalog.app.revision)").tag(catalog.tag)
                         }
                     }.disabled(distribution.busy)
-                    if let catalog = distribution.setupCatalog {
+                    if let image = distribution.image, coreReady {
+                        LabeledContent("匹配 Core", value: image.coreVersion)
+                        Text("所需 Core 已安装，可使用本地镜像。")
+                    } else if let catalog = distribution.setupCatalog {
                         LabeledContent("匹配 Core", value: catalog.core.version)
                         Text("Core 是运行组件，不是 iPhone 镜像。点击下方按钮后自动下载、校验并通过 Helper 安装；不会改绑已有实例。")
                         Button(coreReady ? "Core 已就绪" : "安装匹配 Core／重试") {
@@ -71,25 +74,33 @@ struct VPhoneDistributionView: View {
                     if !permissionsReady { Text("请先完成第 1 步权限设置。").foregroundStyle(.secondary) }
                 } header: { Text("2 · Core 安装") }
                 Section {
-                    stepStatus(.image)
-                    Picker("镜像版本（全部发行版）", selection: $distribution.selectedImageID) {
+                    #if VPHONE_CUSTOM_LOCAL_IMAGES
+                    HStack {
+                        Button("选择镜像目录…") { distribution.chooseLocalImageDirectory() }
+                        Button("刷新本地目录") { distribution.reloadLocalImages() }
+                            .disabled(distribution.localImageDirectory.isEmpty)
+                    }.disabled(distribution.busy)
+                    Text(distribution.localImageDirectory.isEmpty ? "尚未选择目录" : distribution.localImageDirectory)
+                        .font(.caption).textSelection(.enabled)
+                    Picker("本地镜像版本", selection: $distribution.selectedImageID) {
                         Text("请选择").tag("")
-                        ForEach(distribution.imageVersions) { version in
-                            Text("\(version.image.title) · \(version.image.version)（修订 \(version.image.revision)）").tag(version.id)
+                        ForEach(distribution.imageVersions) { item in
+                            Text("\(item.image.title) · \(item.image.version)（修订 \(item.image.revision)）").tag(item.id)
                         }
                     }.disabled(distribution.busy)
                     if let image = distribution.image {
                         LabeledContent("所需 Core", value: image.coreVersion)
-                        LabeledContent("下载大小", value: ByteCountFormatter.string(fromByteCount: image.archiveBytes, countStyle: .file))
+                        LabeledContent("本地归档", value: ByteCountFormatter.string(fromByteCount: image.archiveBytes, countStyle: .file))
                         LabeledContent("导入所需可用空间", value: ByteCountFormatter.string(fromByteCount: image.expandedBytes * 2 + 1_073_741_824, countStyle: .file))
-                        Text("APP 自动下载所有分片、合并并校验。可暂停后继续，已校验分片会复用；不需要到 Release 页面逐个下载。重新打开 APP 后需重新校验缓存，才能显示本步完成。")
-                        Button("下载镜像／继续／重试") { distribution.downloadImage() }
-                            .disabled(distribution.busy || !permissionsReady || !coreReady)
-                    } else {
-                        Text("尚无可用镜像。请检查更新；已有完整镜像归档也可从主窗口“＋ → 导入…”导入。")
+                        Button("校验本地镜像") { distribution.downloadImage() }.disabled(distribution.busy)
                     }
-                    if !coreReady { Text("请先完成第 2 步 Core 安装。").foregroundStyle(.secondary) }
-                } header: { Text("3 · 镜像下载") }
+                    Text("镜像仅在线下管理。目录内放置完整归档和 images.json 版本清单；更新文件后刷新目录。创建前核对大小与 SHA-256，不上传、不复制到下载缓存、不覆盖已有实例。自有归档也可从主窗口“文件 → 导入…”使用。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    #else
+                    Text("镜像在线下载已停用。请从主窗口“文件 → 导入…”使用本地镜像。")
+                    #endif
+                    stepStatus(.image)
+                } header: { Text("3 · 本地镜像目录") }
                 Section {
                     stepStatus(.launch)
                     LabeledContent("目标资料库", value: platform.machines.libraryRoot)
@@ -97,11 +108,11 @@ struct VPhoneDistributionView: View {
                     Text("名称只用英文字母、数字、点、横线或下划线，且不能与现有实例重名。创建时使用新设备身份，不覆盖已有磁盘。")
                         .font(.caption).foregroundStyle(.secondary)
                     if distribution.importedMachine(using: platform) != nil {
-                        Text("当前实例已导入。可直接启动并检查客体，不需要再次下载或导入。")
+                        Text("当前实例已导入。可直接启动并检查客体，不需要重复导入。")
                         Button("重试启动已导入实例") { distribution.retryStart(using: platform) }
                             .disabled(distribution.busy || !permissionsReady || !coreReady)
                     } else {
-                        Text("完成下载后点击创建；也可直接点击下方按钮，APP 会先完成镜像下载校验，再导入并启动。等待显示“已启动且客体就绪”后，检查 iPhone 桌面及网络。")
+                        Text("准备好镜像后点击创建；也可直接点击下方按钮，APP 会校验本地镜像，再导入并启动。等待显示“已启动且客体就绪”后，检查 iPhone 桌面及网络。")
                         Button("创建并启动新虚拟机") { distribution.installImage(using: platform) }
                             .disabled(distribution.busy || !permissionsReady || !coreReady || distribution.image == nil || distribution.machineName.isEmpty)
                     }
@@ -126,11 +137,11 @@ struct VPhoneDistributionView: View {
                 if !distribution.receipts.isEmpty {
                     Section("已创建实例的模板版本") {
                         ForEach(distribution.receipts) { receipt in
-                            let newer = distribution.catalogs.flatMap(\.images).filter { receipt.updateAvailable($0) }.max { $0.revision < $1.revision }
+                            let newer = distribution.imageVersions.map(\.image).filter { receipt.updateAvailable($0) }.max { $0.revision < $1.revision }
                             VStack(alignment: .leading) {
                                 Text("\(receipt.imageID) · \(receipt.imageVersion)")
                                 Text(receipt.machinePath).font(.caption).textSelection(.enabled)
-                                Text(newer.map { "有新模板 \($0.version)，可选择并创建新实例" } ?? "未发现更新模板（这是导入记录，不代表当前客体系统版本）")
+                                Text(newer.map { "有新模板 \($0.version)，可选择并创建新实例" } ?? "未发现更新模板（本地导入记录，不代表当前客体系统版本）")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -146,14 +157,6 @@ struct VPhoneDistributionView: View {
             }.padding()
         }
         .frame(minWidth: 720, minHeight: 650)
-        .onChange(of: distribution.selectedTag) {
-            if distribution.imageVersion?.catalog.tag != distribution.selectedTag {
-                distribution.selectedImageID = distribution.imageVersions.first { $0.catalog.tag == distribution.selectedTag }?.id ?? ""
-            }
-        }
-        .onChange(of: distribution.selectedImageID) {
-            if let tag = distribution.imageVersion?.catalog.tag { distribution.selectedTag = tag }
-        }
         .task { if distribution.catalogs.isEmpty && !distribution.busy { distribution.check() } }
     }
 

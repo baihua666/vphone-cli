@@ -57,28 +57,27 @@ import XCTest
 }
 
 extension DistributionTests {
-    @MainActor func testWizardDownloadFailureRetriesVerifiedChunksWithoutFalseCompletion() async throws {
-        let folder = try temp()
-        let value = try catalog()
-        let image = value.images[0]
-        let source = Fixture(folder: folder, data: [Data("one".utf8), Data("two".utf8)])
-        await source.failSecond()
-        let download = DistributionDownload(root: folder.appendingPathComponent("cache")) { try await source.fetch($0) }
+    @MainActor func testLocalImageFailureCanRetryWithoutFalseCompletion() async throws {
+        let folder = try temp(), image = try catalog().images[0]
+        let file = folder.appendingPathComponent("local.tzst")
+        try Data("badbad".utf8).write(to: file)
+        let download = DistributionDownload(root: folder.appendingPathComponent("cache")) { _ in
+            XCTFail("no image network"); throw DistributionError("unexpected")
+        }
         let progress = DistributionSetupProgress()
         do {
             _ = try await progress.perform(.image, scope: image.cacheKey) {
-                try await download.image(image, tag: value.tag)
+                try await download.image(image, tag: "local", localArchive: file)
             }
-            XCTFail("interrupted transfer must fail")
+            XCTFail("tampered file must fail")
         } catch {}
-        XCTAssertEqual(progress.state(.image, scope: image.cacheKey), .failed("network interrupted"))
+        if case .failed = progress.state(.image, scope: image.cacheKey) {} else { XCTFail("must remain failed") }
+        try Data("onetwo".utf8).write(to: file)
         let archive = try await progress.perform(.image, scope: image.cacheKey) {
-            try await download.image(image, tag: value.tag)
+            try await download.image(image, tag: "local", localArchive: file)
         }
-        XCTAssertEqual(try DistributionDownload.digest(archive), image.archiveSHA256)
+        XCTAssertEqual(archive, file)
         XCTAssertEqual(progress.state(.image, scope: image.cacheKey), .completed)
-        let calls = await source.calls
-        XCTAssertEqual(calls, ["part0", "part1", "part1"])
         XCTAssertEqual(progress.state(.launch, scope: "new-instance"), .pending)
     }
 }

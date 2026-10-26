@@ -50,6 +50,7 @@ func verifyArtifacts(dmg: URL, core: URL, baseline: String, revision: Int, coreV
 }
 func verifyDirectory(_ folder: URL) throws {
     let catalog = try DistributionCatalog.decode(Data(contentsOf: folder.appendingPathComponent(GitHubDistribution.manifestName)))
+    try DistributionPublicationPolicy.validate(catalog, names: FileManager.default.contentsOfDirectory(atPath: folder.path))
     for asset in catalog.assets {
         guard try DistributionDownload.matches(folder.appendingPathComponent(asset.name), bytes: asset.size, digest: asset.sha256) else {
             throw DistributionError("发布附件校验失败：\(asset.name)")
@@ -58,21 +59,6 @@ func verifyDirectory(_ folder: URL) throws {
     let allowed = Set(catalog.assets.map(\.name) + [GitHubDistribution.manifestName, "release-notes.md"])
     let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
     guard names.allSatisfy({ allowed.contains($0) }) else { throw DistributionError("发布目录含未登记文件，拒绝批量上传") }
-    for image in catalog.images {
-        var hash = SHA256()
-        for part in image.parts {
-            let input = try FileHandle(forReadingFrom: folder.appendingPathComponent(part.name))
-            defer { try? input.close() }
-            while try autoreleasepool(invoking: {
-                guard let data = try input.read(upToCount: 1_048_576), !data.isEmpty else { return false }
-                hash.update(data: data)
-                return true
-            }) {}
-        }
-        guard hash.finalize().map({ String(format: "%02x", $0) }).joined() == image.archiveSHA256 else {
-            throw DistributionError("镜像完整 SHA-256 校验失败")
-        }
-    }
     try verifyArtifacts(dmg: folder.appendingPathComponent(catalog.app.asset.name), core: folder.appendingPathComponent(catalog.core.asset.name),
                         baseline: catalog.app.baseline, revision: catalog.app.revision, coreVersion: catalog.core.version, signing: catalog.app.signingMode)
     print("发布目录附件、App 签名模式及修订、Core seal 校验通过")

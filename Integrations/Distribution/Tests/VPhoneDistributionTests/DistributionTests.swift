@@ -57,19 +57,17 @@ final class DistributionTests: XCTestCase, @unchecked Sendable {
         let uneven = try DistributionPacking.split(input, prefix: "uneven", output: folder, partBytes: 3)
         XCTAssertEqual(uneven.parts.map(\.size), [3, 3, 2])
     }
-    func testCompleteArchiveHashIsCheckedAfterValidParts() async throws {
-        let folder = try temp(); let value = try catalog()
-        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(value.images[0])) as? [String: Any])
-        json["archiveSHA256"] = String(repeating: "a", count: 64)
-        let image = try JSONDecoder().decode(DistributionImage.self, from: JSONSerialization.data(withJSONObject: json))
-        let source = Fixture(folder: folder, data: [Data("one".utf8), Data("two".utf8)])
-        let download = DistributionDownload(root: folder.appendingPathComponent("cache")) { try await source.fetch($0) }
-        do { _ = try await download.image(image, tag: value.tag); XCTFail("must fail") }
-        catch { XCTAssertTrue(error.localizedDescription.contains("完整镜像")) }
-        let names = try FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("cache").path)
-        XCTAssertFalse(names.contains { $0.hasSuffix(".tzst") || $0.hasSuffix(".assembling") })
-        XCTAssertEqual(names.count, 2)
+    func testCompleteLocalArchiveHashIsChecked() async throws {
+        let folder = try temp(), value = try catalog()
+        let file = folder.appendingPathComponent("image.tzst")
+        try Data("badbad".utf8).write(to: file)
+        let cache = folder.appendingPathComponent("cache")
+        let download = DistributionDownload(root: cache) { _ in XCTFail("no image network"); throw DistributionError("unexpected") }
+        do { _ = try await download.image(value.images[0], tag: "local", localArchive: file); XCTFail("must fail") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("SHA-256")) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache.path))
     }
+
     func testImageOnlyReleaseCanReuseAppRevisionButNotReplaceApp() throws {
         let original = try catalog()
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
@@ -96,33 +94,31 @@ final class DistributionTests: XCTestCase, @unchecked Sendable {
         json["schema"] = 9
         XCTAssertThrowsError(try DistributionCatalog.decode(JSONSerialization.data(withJSONObject: json)))
     }
-    func testCacheSurvivesFailureAndResumesAtNextChunk() async throws {
-        let folder = try temp(); let pieces = [Data("one".utf8), Data("two".utf8)]
-        let value = try catalog(pieces); let image = try XCTUnwrap(value.images.first)
+    func testAppAndCoreAssetCacheSurvivesFailure() async throws {
+        let folder = try temp(), pieces = [Data("one".utf8), Data("two".utf8)]
         let source = Fixture(folder: folder, data: pieces)
         let download = DistributionDownload(root: folder.appendingPathComponent("cache")) { try await source.fetch($0) }
+        let assets = pieces.enumerated().map { DistributionAsset(name: "part\($0.offset)", size: Int64($0.element.count), sha256: sha($0.element)) }
         await source.failSecond()
-        do { _ = try await download.image(image, tag: value.tag); XCTFail("expected failure") } catch {}
-        let before = await source.calls
-        XCTAssertEqual(before, ["part0", "part1"])
-        let output = try await download.image(image, tag: value.tag)
-        XCTAssertEqual(try Data(contentsOf: output), pieces[0] + pieces[1])
-        let after = await source.calls
-        XCTAssertEqual(after, ["part0", "part1", "part1"])
-        _ = try await download.image(image, tag: value.tag)
-        let cached = await source.calls
-        XCTAssertEqual(cached, after)
+        _ = try await download.asset(assets[0], tag: "release")
+        do { _ = try await download.asset(assets[1], tag: "release"); XCTFail("must fail") } catch {}
+        _ = try await download.asset(assets[0], tag: "release")
+        let output = try await download.asset(assets[1], tag: "release")
+        XCTAssertEqual(try Data(contentsOf: output), pieces[1])
+        let calls = await source.calls
+        XCTAssertEqual(calls, ["part0", "part1", "part1"])
     }
-    func testTamperedChunkIsNotAccepted() async throws {
-        let folder = try temp(); let value = try catalog()
+
+    func testTamperedAppOrCoreAssetIsNotAccepted() async throws {
+        let folder = try temp(), value = try catalog()
         let download = DistributionDownload(root: folder.appendingPathComponent("cache")) { _ in
             let file = folder.appendingPathComponent(UUID().uuidString)
             try Data("bad".utf8).write(to: file); return file
         }
-        do { _ = try await download.image(value.images[0], tag: value.tag); XCTFail("expected checksum failure") }
+        do { _ = try await download.asset(value.core.asset, tag: value.tag); XCTFail("must fail") }
         catch { XCTAssertTrue(error.localizedDescription.contains("SHA-256")) }
-        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("cache/" + value.images[0].cacheKey + ".tzst").path))
     }
+
     func testNewIdentityWorkflowNeverOverwritesExistingMachine() async throws {
         let folder = try temp()
         let capture = Commands()

@@ -1,248 +1,71 @@
-# Launchpad 下载分发与首次使用（第一版）
+# Launchpad 发布与更新
 
-普通用户请阅读 [其它 Mac 内部安装与使用说明](launchpad-internal-user-guide.md)。本页面向开发与发布维护。
+2026-10-26：镜像禁止上传，仅从用户本地目录读取。旧的“完整 Release 自带镜像分片”要求已被用户取消；不得再据此上传镜像。
 
-2026-10-24。目标是让其它 Mac 下载签名 App 后，在原生界面完成环境检查、Core 安装、镜像下载和创建启动，不需要安装 Git、Xcode 或命令行依赖。开发机器仍使用 Xcode。
-本轮实现客户端及发布工具；用户另行提供干净模板，尚未发布真实镜像。
+## 用户路径
 
-## 用户入口与版本行为
+- App 更新：菜单「VPhone Launchpad → 检查 App 更新…」。从包含该能力的版本开始，点击顶部「更新」即可下载、校验、安装并重启。更旧版本首次需手动安装一次新 DMG。
+- Core：按需要单独安装，不自动改绑已有实例或更新 guest。
+- 镜像：在「版本与镜像 → 本地镜像目录」选择包含完整归档及 images.json 的目录。更新本地文件和清单后点击「刷新本地目录」，再校验、创建新实例。现有 VM 不会被覆盖。
+- 本地目录格式与维护见 [镜像本地目录](launchpad-image-release.md) 和 [清单示例](local-images.example.json)。原生「文件 → 导入…」仍可使用已有自有归档。
 
-主窗口工具栏「版本与镜像」打开独立窗口，首次运行自动显示。窗口依次提供：
+## 发布边界
 
-1. 主机准备：复用 Host Setup。需要实体 Apple Silicon Mac、macOS 15+；管理员认证与 Recovery 中的 Research Guests 设置仍由用户完成。
-2. 检查更新：直接读取本项目 `baihua666/vphone-cli/releases/latest/download/launchpad-catalog.json`，无需 REST API 或 Token。GitHub latest 排除 draft/prerelease；再从清单声明的固定 tag 下载清单并核对一致。清单的可选 previousTags 提供最多 99 个历史发行版；发布者只列已发布的正式 tag。404 显示尚无可用目录，其它 HTTP/校验错误不冒充已是最新版本。
-3. App：显示本地与最新发布修订，支持选择历史发行版本、下载并校验 DMG，在 Finder 中显示。第一版由用户正常停止实例、退出并备份旧 App 后安装；不自动替换正在运行的 App，也不自动停机。macOS Gatekeeper 继续负责执行准入。
-4. Core：下载对应 ZIP，通过现有 local bundle 解析核对 seal 身份，再复用原 Helper 安装、policy/preflight。已有默认值和实例绑定保留；新环境使用已安装核心作为默认候选。缺权限时回到 Host Setup，不自动改变系统安全设置。
-5. 镜像：选择模板、版本、新实例名；可仅下载或下载后导入启动。已校验分片跨进程保留，暂停后当前未完成分片重下，不是字节级续传。进度以已校验分片和合并字节显示。
-6. 导入：在目标资料库同卷的私有临时目录调用已有 `vm import --name <随机模板名>`，再 `vm clone --new-identity`；源模板不启动。完成后将新目录移入资料库，不覆盖同名对象，写标准 Core 绑定并请求启动，最多等待 guest ping 120 秒。启动未确认时保留实例，可重试启动或从平台管理，不重复导入。
+线上仅允许 App DMG、必要 Core ZIP 和 launchpad-catalog.json；镜像文件、分片和历史镜像引用均禁止。recipe 和 catalog 的 images、previousTags 必须为 []。
 
-关闭窗口不会取消共享模型中的操作。下载可暂停；导入/Core 安装期间正常退出会被提示阻止。强制结束或断电仍可能留下 `.distribution-<UUID>` 临时目录，需要确认没有进程使用后手动清理；不能宣称导入具有跨进程事务恢复。
+`DistributionPublicationPolicy` 在发布目录校验时拒绝镜像记录和未允许文件；publisher 在分片/复制/校验产物前拒绝带镜像的 recipe。`publish-release.zsh` 验证后只选择三个明确文件上传，不按目录通配上传。测试 `scripts/test-publication-policy.zsh <旧含镜像目录>` 用假的 gh 记录器确认拒绝发生在任何上传命令之前。
 
-## 三种版本分开维护
+此为项目发布工具及行为约束，不代表任意手工 gh、CI 或其它工具已被全局拦截。历史已发布附件不会自动删除，删除另需用户明确授权。
 
-| 对象 | 身份 | 更新规则 |
-| --- | --- | --- |
-| App | 官方基线 `CFBundleShortVersionString` + 独立 `VPhoneDistributionRevision` | revision 为正整数、发布时严格递增；本地开发默认 0，标为开发构建；不改变官方基线或 CFBundleVersion |
-| Core | 原有 `2.8.0-local.<seal SHA-256 前 8 位>` | 按真实内容识别，不能按发布时间改身份；不会自动迁移现有机器 |
-| 镜像 | 稳定 id + 显示 version + 递增 revision + 完整 SHA-256 | 只下载新模板并创建新实例，不原地覆盖用户磁盘 |
+## 版本身份
 
-Release tag 例如 `launchpad-2.8.0-r1` 是分发标签，不是新的官方产品版本号。相同镜像 id/revision 不得替换内容；App revision 不得对应不同内容。仅更新镜像时可在新 Release 中复用完全相同的 App DMG 与 revision，无需重新构建 App。客户端拒绝有冲突的发行目录。
-镜像安装记录独立保存于 `~/Library/Application Support/vphone-launchpad/Distribution/images.json`，不向 VM manifest 添加字段。
-记录表示导入来源，不宣称它是当前 guest OS 版本或实时 VM 身份；改名/删除后历史路径仍保留，记录本身不提供任何 VM 操作。模板更新不会更新客体应用。
+- App：采用实际合入的官方基线，另加严格递增发布 revision。同一公开 revision 不得替换不同内容。草稿可在发布前修正。
+- Core：保持官方基线与 `-local.<seal 内容哈希>` 身份；仅更新 App 不重建 Core。
+- 本地镜像：稳定 id、显示版本、递增 revision、真实大小及完整 SHA-256，由本地 images.json 管理，独立于 App 发布。
 
-## 发布目录与完整性
+本分支官方基线为 2.13.4，上游 commit 7f55bebdcbed913541928b9c4b1c1ca79abc0822。每次发布另记录实际源码 commit；不要把新上游发布当作已合入。
 
-源码包：`Integrations/Distribution`。App 和 publisher 共用 schema/校验规则。
-发行清单通过固定 GitHub 仓库的 HTTPS 附件地址读取，限制 1 MiB，并核对 latest 与固定 tag 的清单相同。正常检查不调用 api.github.com，避免共享出口的匿名 REST 配额。附件缺失会在下载时报错，下载后按清单大小和 SHA-256 校验；不再依赖 REST 返回的 asset digest。
-下载地址只能由固定仓库、已验证的 tag 和单个文件名组成，不从清单执行 shell 或任意 URL。
-附件逐个校验大小和 SHA-256；分片流式合并后再校验完整 archive。哈希/合并使用 1 MiB 缓冲，不把大镜像读入内存。
+## 构建和发布
 
-缓存位于同一 Distribution 目录下的 `Downloads/`，内容哈希参与文件名。保留分片和完整归档便于再次创建；第一版不自动清理缓存。
-下载预留分片＋合并文件空间，导入预留两倍 expandedBytes 和安全余量，不将 APFS 克隆一定共享空间当作容量保证。
-信任根为固定 GitHub 仓库的 HTTPS 和 App 系统签名准入；不是独立离线签名目录体系。
-
-## 发布步骤（开发机器）
-
-### 1. 构建 App（内部版或公证版）
-
-当前内部使用选择 **Apple Development 签名、不公证**，复用现有签名脚本和 Helper 互信要求，不接受 ad-hoc/无签名包。团队在本机 Developer.xcconfig 配置，或由 `VPHONE_LAUNCHPAD_TEAM` 环境变量传给打包脚本；不得提交真实团队配置。
+用发布源码的干净快照构建，不能夹带其它会话未完成改动。本机团队配置及私钥不进 Git。
 
 ```sh
 zsh Integrations/Distribution/scripts/package-app.zsh --internal \
-  1 'Apple Development: <现有有效身份>'
+  <新修订> 'Apple Development: <本机有效身份>'
 ```
 
-内部包位于 `.build/distribution-app-internalDevelopment-r1/`。发布 recipe 须增加 `"signing": "internalDevelopment"`，工具会将该标识写入 catalog，并与包内 `VPhoneDistributionSigning` 比对；模式不一致拒绝发布。旧目录缺少 signing 时仍按 notarized 处理，不能自动降级。检查更新与下载校验保持启用，界面显示未公证提示。
+内部版有 Apple Development 签名、未公证，不是访问控制。另一台 Mac 的首次打开可能需要系统正常准入确认；不绕过 Gatekeeper、签名或 Helper 授权。当前无写权限安装目录不新增提权自动更新流程，明确报错。
 
-内部版仅跳过 stapler/spctl 公证准入检查，继续校验 Apple 签名、App 标识、Helper 的签名要求、版本与所有附件哈希。不修改 Helper 权限或 Core。内部签名不是访问控制：向公开 GitHub Release 上传仍会公开附件。
-
-接收方下载后把 App 拖到 Applications；若 macOS 阻止打开，在系统设置「隐私与安全性」核对来源后选择「仍要打开」，不全局关闭 Gatekeeper。随后通过 Host Setup 安装／更新 Helper，在 macOS 弹窗中认证；接收方不需要签名私钥。组织策略可能禁止手动放行，需目标 Mac 实测。开发证书过期或撤销后需重新签名发布。现有 Mac 上已有 Helper 的升级通过不能替代干净 Mac 首装验收。
-
-若以后改用公证分发，使用下面的原有模式：
-
-
-在本机 gitignored `VPhoneLaunchpad/Configuration/Developer.xcconfig` 设置对应团队，钥匙串准备有效 **Developer ID Application** 证书和 `notarytool` profile。不要把密钥、团队私有配置或公证凭据加入仓库。
-
-```sh
-zsh Integrations/Distribution/scripts/package-app.zsh \
-  1 'Developer ID Application: <有效身份>' '<notarytool钥匙串profile>'
-```
-
-脚本 Release 构建，将独立 revision 写入 Info.plist，调用既有签名脚本，生成带 Applications 快捷方式的 DMG，提交 Apple 公证并 staple/validate。
-它不修改已安装 App、不启动 VM，也不创建 Core。相同输出目录已存在时拒绝覆盖。
-Apple Development 只能使用上述内部模式；不以本机可运行代替其它 Mac 的分发验收。
-
-### 2. 打包已批准的 Core
-
-```sh
-zsh Integrations/Distribution/scripts/package-core.zsh \
-  /absolute/path/VPhone.bundle /absolute/new/core-output
-```
-
-脚本先验证签名，再以现有 seal 计算身份并压缩，不重签或重建 Core。新功能不要求修改底层。
-
-本机 Xcode 27 构建 2.13.4 时，出现过 `ProcessInfoPlistFile` 在 Bundle 封装签名后运行的情况：Xcode 显示构建成功，但最终 `codesign --verify` 报 Info.plist 被修改。发布前必须检查最终产物。遇到同一情况，可在构建全部结束后重新调用项目原有封装脚本（以下路径与本次验收一致；其它构建目录应相应替换），再执行上面的归档步骤：
-
-```sh
-CONFIGURATION=Release \
-CONFIGURATION_TEMP_DIR="$PWD/.build/UpstreamCore/Build/Intermediates.noindex/VPhoneVirtualization.build/Release" \
-TARGET_BUILD_DIR="$PWD/.build/UpstreamCore/Build/Products/Release" \
-FULL_PRODUCT_NAME=VPhone.bundle \
-zsh VPhoneExecutable/VPhoneVirtualization/Build/StageBundle.sh
-
-codesign --verify --strict --deep \
-  .build/UpstreamCore/Build/Products/Release/VPhone.bundle
-```
-
-这一步沿用官方封装、签名和 Bundle admission 检查；只作用于发布机的构建输出，不能对已安装 Core 重签。最终身份以最后一次 seal 为准，封装后不要再修改包内文件。
-
-### 3. 准备模板和发布参数
-
-镜像完整操作及验收步骤见 [镜像发布流程](launchpad-image-release.md)。
-
-复制 [recipe.example.json](../../Integrations/Distribution/recipe.example.json) 到本机私有工作目录，填写真实路径与上述 identity。
-`images: []` 允许先发布 App/Core；客户端会明确显示尚无镜像，不能视为完整首次启动验收。
-每个镜像条目为：
-
-```json
-{
-  "id": "clean-ios",
-  "version": "2026.10.24",
-  "revision": 1,
-  "title": "干净 iOS 模板",
-  "archive": "/absolute/path/clean.tzst",
-  "expandedBytes": 68719476736
-}
-```
-
-数值仅表示 schema 示例，必须填写实际解压文件占用的保守上界，不照抄示例容量。
-模板须在源 VM 正常停机后用已有 export 导出。发布前人工确认无账号、Cookie、代理凭据、业务数据和私有文件引用，验证新身份克隆及跨 Mac 启动。
-新身份克隆仅按现有 CLI 清理机器标识/MAC/冲突网络设置，不意味着应用数据、SEP 或所有广告标识自动重置。用户现用 VM 不得直接作模板公开。
+准备 recipe：填入精确 tag、官方 baseline、appRevision、App DMG、原 Core ZIP 与原 seal 身份，signing 为 internalDevelopment，images 与 previousTags 为空。用既有 publisher 生成新的发布目录：
 
 ```sh
 swift run --package-path Integrations/Distribution distribution-publisher \
-  /absolute/private/recipe.json /absolute/new/release-output
-```
-
-工具按 signing 模式验证 App 公证/签名、App baseline/revision 和 Core seal；镜像每片 1 GiB，最后一片可更小；输出目录必须不存在。
-生成 manifest 后只保留声明附件。失败输出不作为正式发行目录，排查后使用新目录。
-
-### 4. 上传 Draft 与发布
-
-在输出目录写 `release-notes.md`，记录实际源码 SHA、变更、验证范围、已知限制、Core 与模板来源。
-
-```sh
+  /absolute/recipe.json /absolute/new-output
+swift run --package-path Integrations/Distribution distribution-publisher \
+  --verify /absolute/new-output
 zsh Integrations/Distribution/scripts/publish-release.zsh \
-  /absolute/release-output <完整40位源码commitSHA>
+  /absolute/new-output <精确源码commit>
 ```
 
-脚本重新验证所有分片、整包、App 签名（公证模式另验公证）与 Core 身份；拒绝额外附件；用开发端 `gh` 上传 **draft** 至固定仓库。用户端不需要 gh。
-已有同名 release 不覆盖。发布者核对第二台 Mac 的干净环境验收和公开分发内容后再显式发布；客户端忽略 draft/prerelease。
-目录在最终整包齐备后发布，不将仍上传中的分片暴露为可安装版本。
+工具默认上传草稿。核对草稿只有三个允许附件、SHA-256 和源码 commit 一致后，公开并设为 latest。已公开 tag/附件不替换，使用新 revision。恢复中断的本次未发布草稿时，也必须先通过新发布策略校验，不得补回镜像。
 
-## 编译开关与回退
-
-`VPHONE_CUSTOM_DISTRIBUTION` 由 `VPhoneLaunchpad/Configuration/VPhoneLaunchpad.xcconfig` 的 `VPHONE_DISTRIBUTION` 默认开启。
-构建时 `VPHONE_DISTRIBUTION=` 可关闭窗口、工具栏入口、首次引导、任务模型和退出保护，恢复原 Host Setup/Core 自动提示。
-独立包保留可编译，但停用后的 App 无该模块的网络、下载或启动副作用。
-`VPHONE_DISTRIBUTION_REVISION` 默认 0，正式打包脚本显式赋值；版本比较不复用 Core 内容哈希作大小排序。
-移除功能时删除 Distribution UI 目录、独立 package、Xcode 引用、App/Model/RootView 的条件组装、宏及 Info.plist 附加键。
-关闭宏不会删除下载、历史记录、已安装 Core 或已创建实例。更新 App 前先完成正在执行的导入/安装。
-
-## 验证与尚未完成的真实验收
-
-业务包测试覆盖 schema、路径/大小限制、分片失败后复用、损坏分片、导入与新身份调用顺序、同名拒绝、失败/取消清理及镜像更新记录。
-导入测试使用隔离目录和命令替身，不操作用户 VM，不冒充真实 guest 启动。
-本轮不提供假模板，不上传用户现有实例。完整跨 Mac 下载、Helper 认证、模板导入与 guest 启动，必须在获得已签名 App 和用户提供的干净模板后验收。
-
-官方依据：[GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)（单附件小于 2 GiB）、[Apple 打包分发](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)。
-
-### 2026-10-24 本机实现验证
-
-- 分发模块 10 项测试通过，另覆盖发布分片边界与还原、App 不变时独立更新镜像、相同 App 修订的内容冲突，以及发布实例目录前完成绑定准备。
-- Launchpad 开启与 `VPHONE_DISTRIBUTION=` 关闭构建均通过；关闭产物中未发现本功能 Model/View 符号。源码差异未触及 Core/CLI/guest。
-- 使用已安装 `2.8.0-local.199abaf3` 只读执行 Core 打包，签名验证通过，输出计算身份一致；没有重签、安装或重新绑定实例。
-- 发布 zsh 脚本语法检查通过。本机没有 Developer ID Application 证书，仅有 Apple Development 身份，因此未执行正式签名、公证或 GitHub 上传；用户尚未提供干净模板。尚未验证另一台 Mac 的端到端首次运行。
-- 本轮未替换正在运行的 Launchpad。源码构建产物在 `.build/LaunchpadDecodo/Build/Products/Debug/vphone-launchpad.app`；这不是已经公证的可分发安装包。
-
-### 2026-10-24 内部签名模式验收（补充，优先于上述首轮未部署记录）
-
-- `--internal` Release 构建成功，复用当前已安装 App 的 Apple Development 身份及团队；未公证，未修改签名权限或 Helper/Core 协议。成品为 `.build/distribution-app-internalDevelopment-r1/vphone-launchpad-internalDevelopment-r1.dmg`，App 基线 2.8.0、发布修订 1，属于内部测试产物，尚未上传 GitHub。
-- DMG SHA-256：`389e3892f150ea5d4b5bea2579c93e9c3e118a2b9c8b73cdb04178bbdba10f9f`。
-- Publisher 从真实 DMG 挂载验证 Apple 签名、Helper 签名要求、revision、分发模式，再核对原 Core ZIP seal；生成无镜像的真实发布目录并再次 `--verify` 通过。修正原验证命令 `codesign -R` 参数需使用内联 `-R=<requirement>` 的问题。
-- 从 DMG 安装完整 App 到 `/Applications/vphone-launchpad.app`。旧包备份 `.build/distribution-install-backup-r1/vphone-launchpad.app`；无 ad-hoc 重签、无全局 Gatekeeper 关闭。
-- 用户在系统弹窗完成 Helper 管理员认证。`status` 返回 `helper: ready (15)`、`hostReady: true`、`canInstallBundles: true`；系统 Helper 与包内副本逐字节相同。
-- 原先运行的 `1-20261023` 正常停止后恢复，guest 在 7 秒内响应；内存仍为 4096 MB、Core/guestEnvironment 绑定仍为 `2.8.0-local.199abaf3`，Core seal 与部署前一致。其它实例保持停止。
-- 11 项隔离模块测试通过，包括旧目录默认公证、内部模式解码、未知模式拒绝和同修订签名模式冲突。没有使用用户镜像做下载测试。
-- 真实更新页面请求已执行，但当前出口 GitHub API 返回 HTTP 403 / rate limit exceeded；未发布目录附件，因此真实在线更新下载尚未完成验收。另一台干净 Mac 的 Gatekeeper、首次 Helper 安装和模板导入也仍待实测，本机升级验收不能代替这些结果。
-- 分发宏启用的 Release 打包与 `VPHONE_DISTRIBUTION=` 关闭构建均成功；关闭产物不含 Distribution Model/View 符号，未部署关闭构建。
-
-### 发布与在线下载验收命令
-
-发布 recipe 可指定 `previousTags`（最新在前，最多 99 项，不含本次 tag），使客户端保留历史版本选择。首次发布使用空数组。所有 latest Release 必须包含发行清单；不要把无清单的其它发行版标成 latest。
-
-发布工具默认上传 draft；审核附件后，发布者用 `gh release edit <tag> --draft=false --latest` 公开。源码提交、App 修订、Core seal 应在发布说明中分别记录；已有发布附件不替换。
+公开后，用全新缓存验证匿名客户端 App/Core 下载、签名、App 修订和 Core seal：
 
 ```sh
 swift run --package-path Integrations/Distribution distribution-publisher \
-  --check-download /absolute/new/acceptance-cache
+  --check-download /absolute/new-cache
 ```
 
-该验收使用与 App 相同的匿名目录和下载模块，不读取 gh Token，强制新缓存，真实下载 App/Core，再核对大小、SHA-256、签名、修订和 Core seal，不安装或修改 Core。
-GitHub 对附件/CDN 的网络限制仍可能存在；本改动消除的是 REST 匿名 API 配额依赖，不承诺无限制网络访问。
+该验收不下载镜像、不安装 Core、不创建 VM。镜像校验和导入在用户本地目录进行；不得用旧在线镜像命令替代。
 
-### 2026-10-24 r2 已发布与真实下载验收
+## 编译开关和回退
 
-- 用户授权发布的内部版：[launchpad-2.8.0-r2](https://github.com/baihua666/vphone-cli/releases/tag/launchpad-2.8.0-r2)。Release 非 draft、非 prerelease，并设为 latest；tag 精确指向 `87169bd0abb1ca570cb0ceb868f3baae9c129437`。这仍是 Apple Development 签名、未公证的内部包。
-- App：基线 2.8.0 / revision 2，10,813,066 字节，SHA-256 `4a2d572a2c0af6b7987dfe61561764d1738f7c62d7426d15b28d1b5c696446b9`。
-- Core：`2.8.0-local.199abaf3`，18,468,317 字节，SHA-256 `26f315c874b0df4c9e62acf5470466ab1039352d79981eb25d72e3366e6c45fa`。复用原 ZIP，无 Core 源码、签名或绑定改动。
-- 只有上述两份包和 `launchpad-catalog.json` 三个附件，images 为空。未发布任何现用虚拟机、账号或业务数据。
-- 14 项模块测试通过，分发宏开启 Release 打包、关闭 Debug 构建通过。正常版本检查不再请求 REST API；latest 下载和 previousTags 历史清单均固定在本仓库。
-- `--check-download` 使用全新 `.build/distribution-online-acceptance-r2-final` 缓存、无 Token 真实下载 App/Core，大小、SHA-256、App/Helper 签名、修订和 Core seal 全部通过。首次并行验收时与安装操作同时挂载同一 DMG 导致资源忙；分开执行并用新缓存重新完整下载后通过，未将失败算作成功。
-- 当前 Mac 已从实际下载的 DMG 安装修订 2；主机/Helper ready (15)，APP 内成功获取 `launchpad-2.8.0-r2` 并显示“当前修订 2，未发现更新”、未公证提示和无镜像说明。
-- 原运行实例正常停止后恢复，guest 在 8 秒响应；Core/guestEnvironment 绑定仍为 `2.8.0-local.199abaf3`、内存 4096 MB，Core seal 与安装前一致。旧 r1 App 备份在 `.build/distribution-install-backup-r2/vphone-launchpad.app`。
-- 另一台干净 Mac 的首装与镜像导入仍未验收；本次结果覆盖本机真实发行下载、升级和原实例恢复，不扩大为跨 Mac 全链路结论。
-- 真实 APP 内点击「下载 App 更新安装包」后完成独立网络下载，页面显示「App 安装包已校验」及「在 Finder 中显示安装包」。App 缓存文件再次核对 SHA-256 与发布附件相同。
+App target 的 `VPhoneLaunchpad.xcconfig` 集中维护：
 
-## 独立镜像版本库（2026-10-24）
+- `VPHONE_DISTRIBUTION = VPHONE_CUSTOM_DISTRIBUTION`：整个分发/目录入口。
+- `VPHONE_APP_UPDATE = VPHONE_CUSTOM_APP_UPDATE`：默认开启，一键更新；清空恢复手动下载安装包。
+- `VPHONE_LOCAL_IMAGES = VPHONE_CUSTOM_LOCAL_IMAGES`：默认开启，本地目录管理；清空隐藏目录入口、停止自动读取目录，保留基础文件导入。不会恢复在线镜像下载。
 
-`版本与镜像` → `镜像版本库与创建实例` 汇总发行目录及其历史目录里的全部镜像版本，按模板类型、修订号降序显示。APP 发行版本的切换不会改变镜像选择。相同模板 id/revision 去重；相同修订若更改归档、系统版本标签、所需 Core 或容量则拒绝目录，必须发布新修订。历史目录递归读取并去重，上限 100 个 Release，不使用 GitHub REST API。
+一键更新实现位于 Distribution/AppUpdate，目录适配位于 DistributionLocalImages，纯文件清单规则位于 Integrations/Distribution。删除功能时一并移除实现、窄组装点、条件分支、宏定义与对应测试。发布禁令不依赖 UI 宏，不因关闭本地目录功能而解除。
 
-完成主机设置后，选择镜像并填写新实例名称，点击「创建并启动新虚拟机」。Launchpad 校验名称和磁盘空间，自动准备所选镜像对应 Release 的 Core，然后下载分片、校验、导入、新身份克隆、写入原生绑定并启动，最后等待客体服务就绪。已有可用 Core 直接复用；安装其它 Core 不改变现有默认 Core 或实例绑定。缺少 Helper/开发者工具权限时页面说明原因并提供主机设置入口。
-
-镜像升级通过新修订创建新实例；旧实例及其数据保留。暂停发生在下载阶段，导入后启动失败时使用「重试启动已导入实例」，无需重复下载/导入。镜像记录是来源记录，不代表当前 guest 系统版本。
-
-实现仍受 `VPHONE_CUSTOM_DISTRIBUTION` 控制，定义在 Launchpad 原有 xcconfig；未修改 Core、CLI、Helper 或 guest。关闭宏恢复原有创建/导入入口。
-
-## 发布保留策略（2026-10-24）
-
-用户已选择仅保留最新线上 Release。版本管理仍保留 APP 修订、Core seal、镜像 id/version/revision 与每台实例的来源记录；新清单 `previousTags: []`。历史遍历保留为旧目录兼容能力，不表示继续保留历史二进制。新版本通过真实下载和启动验收后，使用 `scripts/prune-releases.zsh` 清理旧产品 Release；该开发机工具使用已登录的 gh，APP 的更新检查仍不使用 GitHub REST API。完整顺序见镜像发布指南第 7 节。
-
-### 2026-10-26：主 APP 四步首次使用向导（r4 草稿，创建验收阻塞）
-
-此更新已部署到本机 `/Applications/vphone-launchpad.app`，App 基线 2.8.0、修订 4；源码为 `9d521d3bbe748b08b2e70f99b92e2873186b00d6`。发布及真实验收结果统一记录在 [r4 向导验收](launchpad-wizard-r4-validation.md)。
-主窗口「版本与镜像」与首次打开使用同一向导，依次展示：
-
-1. **权限设置**：说明开发者工具、Helper 管理员认证及系统设置边界；直接打开既有主机设置，并可重新检查。完成状态使用实时主机检查结果。
-2. **Core 安装**：选择发行版本，下载并安装所选镜像匹配的 Core；已安装可用的 Core 直接显示完成。选择其它镜像时同步所属发行目录，避免安装错版本。失败保留具体错误并可重试。
-3. **镜像下载**：显示下载体积与导入空间；自动下载、合并、校验，支持暂停、继续、重试。成功状态按镜像内容身份隔离，不把另一个版本的下载当成完成。
-4. **创建启动**：输入新实例名称，调用既有导入、新身份克隆、绑定与启动流程；未预下载时先完成下载。只有客体就绪才显示完成。同一会话已导入但启动失败时直接重试启动，避免再次导入；名称或资料库切换不会误启动上一次目标。
-
-所有步骤显示未完成、进行中、已完成、已暂停或失败及具体原因，顶部显示完成步数。检查目录失败可直接重试。已创建实例的历史模板记录仍保留；App 更新下载独立放在向导后的区域。
-
-权限与 Core 以当前检查结果为准；下载与启动成功是本会话的验收证据，不持久化成功勾选。重新打开 APP 后复用磁盘缓存并重新校验；已创建实例从主列表启动。仅凭历史 receipt 中的路径，无法排除删除后同名替换，因此不会据此自动启动历史实例。完成标记不代表实例永远处于运行状态。
-
-实现只涉及 `VPhoneLaunchpad/Distribution/` 和独立 `Integrations/Distribution` 状态模块；Core、CLI、guest、Helper 和实例绑定格式不变。继续使用默认开启的 `VPHONE_CUSTOM_DISTRIBUTION`，定义位置仍为 `VPhoneLaunchpad/Configuration/VPhoneLaunchpad.xcconfig`；设置 `VPHONE_DISTRIBUTION=` 即关闭向导组装及其操作，恢复原有基础入口。没有新增编译开关、后台任务或永久状态文件；回退本次界面与状态模块不会更改已有实例。
-
-验证：Distribution 的 25 项测试通过，覆盖失败后重试、镜像/实例/资料库状态隔离、取消与继续，以及真实文件下载中断后的分片复用与完整校验；Launchpad Debug 启用/关闭分发宏构建均通过。本轮已完成内部签名部署及真实 UI 的权限检查、镜像缓存读取失败重试、暂停恢复、无效名称及空间不足校验；具体创建启动及发布结果见上述验收记录。本机升级验收不代替另一台干净 Mac 的首次系统授权与首次 Core 安装。
-
-## App 一键更新（开发中，尚未发布）
-
-自动更新在现有发行清单和下载器之上实现，不修改 Core、guest 或提权 Helper。
-菜单栏「VPhone Launchpad → 检查 App 更新…」打开检查入口；发现新修订时，窗口顶部显示「更新」。点击后下载、核对清单哈希，把 App 暂存到原安装目录所在卷，校验 App 标识、当前签名团队、官方基线、目标修订和内置 Helper 签名。旧进程退出后独立安装进程替换 App，并重新打开。替换失败恢复旧包；旧 App 留在本次私有暂存目录的 previous.app，安装日志保留于同目录，错误在下次打开时显示。
-
-有运行/启动中的实例或创建、导入、导出任务时拒绝安装，提示先正常停止；准备完成与退出前重复核对。不会自动停止实例、改绑 Core 或升级 guest。不具备安装目录写权限时明确报错，当前实现不新增提权流程；内部开发签名仍未公证，不绕过 Gatekeeper 或组织策略。
-
-编译条件 `VPHONE_CUSTOM_APP_UPDATE` 集中定义于 App target 的 `Configuration/VPhoneLaunchpad.xcconfig`，由 `VPHONE_APP_UPDATE` 默认开启，且依赖原 `VPHONE_CUSTOM_DISTRIBUTION`。清空前者恢复手动下载路径；关闭分发条件则同时关闭整个入口。新实现、菜单和安装副作用位于 `Distribution/AppUpdate/` 并受双条件控制。删除时一并移除该目录、菜单窄组装点、模型状态/错误恢复、视图分支、编译定义及 AppUpdateTests；不影响实例数据。关闭宏不自动清理既有更新备份或下载缓存。
-
-旧版第一次仍需手动安装包含自动更新功能的版本，之后才可一键下载、安装并重启；已发布 r6 尚不包含此能力。2026-10-26 开发验证：真实签名 r6 DMG 的暂存、错误修订/签名身份拒绝、篡改拒绝、安装前失败不替换和替换中失败恢复测试通过。编译条件开启/关闭 Release 构建通过。使用修订0的真实开发构建，在真实菜单和更新按钮中获取线上r6，自动退出、替换并重新启动成功，最终签名与修订6核对通过，实例状态和绑定哈希未变。测试后运行的是线上r6，并非将测试构建冒充新发布。尚未验证另一台Mac、无目录写权限时的系统授权安装、VM运行中拦截的现场操作；不声称已实现这些提权/现场验收。
+App 更新在原安装卷的私有目录暂存，经签名、版本和 Helper 签名规则校验，等待旧进程退出后替换并重新打开。替换失败保留或恢复旧版；备份和日志保留于本次 .vphone-update-UUID 目录。有运行/启动中的 VM 或创建/导入/导出任务时拒绝安装；不会自动停止 VM。回退不改实例、Core 绑定、guest 或本地镜像目录。
