@@ -4392,3 +4392,11 @@ of the same names do not override it.
 ### 2026-09-22：损坏 vm-fresh 经授权全新重建
 
 复用本地 iPhone17,3 26.1/23B85 与 cloudOS 26.1/23B85 原始 IPSW，现有 1.0.14 基线工具执行 `fw patch --variant exp --force-exc-guard`。9 个组件全部成功，本次运行报告 179 处实际修改；此为特定固件运行计数，不替换上文逻辑补丁分类。未修改补丁算法。恢复与首启验收见 debug_journal.md 的本次重建记录。
+
+## 2026-10-26：旧实例客体更新的实验补丁配对修复（用户已授权）
+
+本次不新增二进制补丁，不修改现有补丁声明、preset 或内核指令。修正无 PatchPlan 的 legacy 客体更新策略：未记录的实验项不再默认开启；已记录的其它实验项保留；hv_vmm 的 dyld/watchdog 半边依据实际安装内核的 NUL 分隔 OID 配套，已知不匹配时使用既有 undo / Mach-O 备份恢复。显式计划也核对真实内核而非只信 receipt。无法识别内核时不猜测并保留原磁盘。共享缓存撤销必须完成全部签名页 re-attestation 后才能清除 undo 记录。
+
+回退源码不等于回退已修复 guest；2/3 均保留停机快照和原绑定，可按官方快照恢复流程恢复同一时刻的 Disk、SEP 和 NVRAM。本轮先 3 号验收，再处理 2 号，保留应用数据；实际结果见 Research/Host/black_screen_legacy_guests_20261026.md。
+
+补充实测：撤销 hv_vmm 字符串后仍需失效旧 MobileGestalt 能力缓存。现将该失效处理接在既有补丁状态切换后；复用 vphoned 启动时缓存校验及 restart_pending，不增加独立 patch ID、preset 或公开协议。3 号手工备份缓存的单变量验证成功，2 号使用最终 Core 自动失效、二次冷启动后出图，原应用和 Data 容器目录保留。最终本机包为 2.13.4-local.1da558c7；未公开发布。

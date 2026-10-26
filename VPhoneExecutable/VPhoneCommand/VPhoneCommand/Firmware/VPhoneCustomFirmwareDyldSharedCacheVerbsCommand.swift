@@ -657,10 +657,11 @@ struct VPhoneCustomFirmwareDyldSharedCacheRevertCommand: ParsableCommand {
 
     func run() throws {
         let url = URL(fileURLWithPath: undoLog)
-        guard let data = try? Data(contentsOf: url) else {
+        guard FileManager.default.fileExists(atPath: url.path) else {
             print("  [=] no dyld undo log at \(undoLog); nothing to revert")
             return
         }
+        let data = try Data(contentsOf: url)
         let log = try DyldSharedCacheUndoLog.decode(data)
         let wanted = Set(patches)
         let present = wanted.intersection(log.patchIDs)
@@ -682,11 +683,14 @@ struct VPhoneCustomFirmwareDyldSharedCacheRevertCommand: ParsableCommand {
         )
         if !spans.isEmpty {
             let chunks = try DyldSharedCacheChunkSet(directory: chunksDirectory)
-            try DyldSharedCacheCodeSignature.reattest(
+            let attestation = try DyldSharedCacheCodeSignature.reattest(
                 in: chunks,
                 modifiedSpans: spans,
                 log: VPhoneCustomFirmwareDyldSharedCacheVerbs.stdout,
             )
+            guard attestation.isFullyAttested else {
+                throw ValidationError("Restored dyld pages could not all be re-attested; the undo record was retained.")
+            }
         }
         let remaining = log.removing(patchIDs: present)
         try remaining.encoded().write(to: url, options: .atomic)
