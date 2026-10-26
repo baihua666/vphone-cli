@@ -15,12 +15,11 @@ manifest_history=$(plutil -extract previousTags json -o - "$manifest")
 [[ "${manifest_history//[[:space:]]/}" == '[]' ]] || { print -u2 'Latest catalog must not reference releases that will be deleted'; exit 1; }
 latest=$(gh api repos/baihua666/vphone-cli/releases/latest --jq .tag_name)
 [[ "$latest" == "$tag" ]] || { print -u2 'Requested release is not latest'; exit 1; }
-args=()
 images=$(plutil -extract images json -o - "$manifest")
-[[ "${images//[[:space:]]/}" == '[]' ]] || args+=(--include-images)
-# Real anonymous downloads, signatures, individual and assembled SHA-256 checks.
+[[ "${images//[[:space:]]/}" == '[]' ]] || { print -u2 'Online image catalogs are prohibited; nothing deleted'; exit 1; }
+# App/Core downloads only. Historical release deletion still needs explicit user authorization.
 swift run --package-path Integrations/Distribution distribution-publisher \
-  --check-download "$work/downloads" "${args[@]}"
+  --check-download "$work/downloads"
 latest=$(gh api repos/baihua666/vphone-cli/releases/latest --jq .tag_name)
 [[ "$latest" == "$tag" ]] || { print -u2 'Latest changed during verification; nothing deleted'; exit 1; }
 release_tags=$(gh api --paginate repos/baihua666/vphone-cli/releases --jq '.[] | select(.draft == false) | .tag_name')

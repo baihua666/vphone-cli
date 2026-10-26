@@ -36,7 +36,7 @@ struct VPhoneDistributionView: View {
                     Text("安装主 APP 后可在线安装 Core；镜像仅从本地目录选择，不上传或在线下载镜像。")
                     Text("需要实体 Apple Silicon Mac、本机 APFS 资料库和管理员权限。镜像与版本清单由本地目录管理；导入空间以所选镜像为准。")
                         .font(.caption).foregroundStyle(.secondary)
-                    Link("完整安装说明", destination: URL(string: "https://github.com/baihua666/vphone-cli/blob/tb_dev/Documents/Guides/launchpad-internal-user-guide.md")!)
+                    Link("完整安装说明", destination: URL(string: "https://github.com/baihua666/vphone-cli/releases/latest")!)
                 }
                 Section {
                     stepStatus(.permissions)
