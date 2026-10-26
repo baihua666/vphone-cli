@@ -12,12 +12,21 @@ extension GuestAPI {
             executeService,
             executeLog,
             executeAppDetail,
+            executeSystemApps,
             executeFileTool,
+            executeStorage,
             executeEnvironment,
             executeDeviceIdentity,
             executeSetupAssistant,
+            executeFirstBoot,
             executeTimeZone,
+            executeClock,
             executeAudioLatency,
+            executeGyroscope,
+            executeAttitude,
+            executeHomePodDisplay,
+            executeHomePodDebug,
+            executeScript,
         ]
         for area in areas {
             if let result = try area(method, params) {

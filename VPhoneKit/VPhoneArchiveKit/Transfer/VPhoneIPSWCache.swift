@@ -28,7 +28,6 @@ public enum VPhoneIPSWCache {
         case swappedSources(iPhone: URL, cloudOS: URL)
         case notIPhoneSource(URL, productTypes: [String])
         case notCloudOSSource(URL)
-        case noVirtualPhoneInCloudOS(URL, version: String, build: String)
 
         public var errorDescription: String? {
             switch self {
@@ -46,8 +45,6 @@ public enum VPhoneIPSWCache {
                 "\(file.lastPathComponent) is not an IPSW vphone can run; it is for \(productTypes.isEmpty ? "no listed product" : productTypes.joined(separator: ", ")). Choose an IPSW for \(VPhoneIPSWCache.guestProductTypes.joined(separator: " or ")) as the iPhone source."
             case let .notCloudOSSource(file):
                 "\(file.lastPathComponent) is not a cloudOS IPSW: it has no \(VPhoneIPSWCache.cloudOSDeviceClass) build identity. Choose a cloudOS IPSW as the cloudOS source."
-            case let .noVirtualPhoneInCloudOS(file, version, build):
-                "cloudOS \(version) (\(build)) in \(file.lastPathComponent) has no \(VPhoneIPSWCache.guestDeviceClass) build identity to boot the guest from; no cloudOS after the 26.4 beta (23E5207q) has one. Choose the cloudOS `vphone-cli fw catalog` recommends."
             }
         }
     }
@@ -112,6 +109,35 @@ public enum VPhoneIPSWCache {
             productTypes: metadata.productTypes,
             deviceClasses: metadata.deviceClasses,
         )
+    }
+
+    /// `source` as ``resolve(_:in:session:connections:progress:)`` would
+    /// return it, without downloading: a local file is read in place, a
+    /// remote one only when the cache holds a readable copy. Nil when a
+    /// remote source is not in the cache, or a local one no longer exists
+    /// (the caller then looks elsewhere, such as a template recorded with the
+    /// same source); a local file that exists but is not an IPSW still
+    /// throws. Nothing is written or removed.
+    public static func localArchive(_ source: String, in cacheDirectory: URL) throws -> Archive? {
+        guard let url = URL(string: source), let scheme = url.scheme?.lowercased() else {
+            return try inspectIfPresent(URL(fileURLWithPath: source))
+        }
+        if scheme == "file" {
+            return try inspectIfPresent(url)
+        }
+        guard scheme == "http" || scheme == "https" else {
+            throw Error.unsupportedSource(source)
+        }
+        let cache = cacheDirectory.appendingPathComponent(cacheName(for: url))
+        guard FileManager.default.fileExists(atPath: cache.path) else { return nil }
+        return try? inspect(cache)
+    }
+
+    /// A local IPSW, or nil when nothing is at its path (a dangling link
+    /// included).
+    private static func inspectIfPresent(_ file: URL) throws -> Archive? {
+        guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return try inspect(file)
     }
 
     /// The cached archive when it is readable; an unreadable one is removed.
@@ -586,22 +612,20 @@ public enum VPhoneIPSWCache {
     /// chain matches the VM's DFU hardware. The restore tree needs both.
     public static let iPhoneProductType = VPhoneFirmwareCatalog.device
     public static let cloudOSDeviceClass = "vresearch101ap"
-    /// The cloudOS device class that supplies the guest's kernel, SEP and
-    /// device tree. No cloudOS after the 26.4 beta (23E5207q) carries it,
-    /// including the 26.4 release (23E244) and every one up to 26.7 (23H20).
-    public static let guestDeviceClass = "vphone600ap"
 
     /// Every product whose IPSW can supply the guest OS: the iPhone17,3 the
-    /// catalog targets, and the iPads `VPhoneGuestDevice` knows.
+    /// catalog targets, and the iPads and Apple TV `VPhoneGuestDevice` knows.
+    /// A device restored over another's IPSW (`restoreBase`) is not one.
     public static var guestProductTypes: [String] {
-        VPhoneGuestDevice.known.map(\.productType)
+        VPhoneGuestDevice.known.filter { $0.restoreBase == nil }.map(\.productType)
     }
 
     /// The guest device an IPSW supplies, or nil for any other product. An IPSW
     /// that covers several models gives `preferring` when it is one of them, and
     /// its first known model otherwise.
     public static func guestDevice(for archive: Archive, preferring productType: String? = nil) -> VPhoneGuestDevice? {
-        VPhoneGuestDevice.detect(buildManifest: ["SupportedProductTypes": archive.productTypes], preferring: productType)
+        let types = archive.productTypes.filter { VPhoneGuestDevice.named($0)?.restoreBase == nil }
+        return VPhoneGuestDevice.detect(buildManifest: ["SupportedProductTypes": types], preferring: productType)
     }
 
     /// Checks each BuildManifest before anything is extracted, so a swapped
@@ -620,9 +644,6 @@ public enum VPhoneIPSWCache {
         }
         guard cloudOSIsCloudOS else {
             throw Error.notCloudOSSource(cloudOS.file)
-        }
-        guard cloudOS.deviceClasses.contains(guestDeviceClass) else {
-            throw Error.noVirtualPhoneInCloudOS(cloudOS.file, version: cloudOS.version, build: cloudOS.build)
         }
     }
 

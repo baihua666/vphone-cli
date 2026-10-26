@@ -1,8 +1,8 @@
 import Darwin
 import Foundation
 
-/// A validated `vphone-cli cfw install` or `cfw update-environment`
-/// invocation. Built only from a store bundle whose cdhash still matches its
+/// A validated `vphone-cli cfw install`, `cfw update-environment`, `cfw
+/// update-kernel` or `fw patch` invocation. Built only from a store bundle whose cdhash still matches its
 /// receipt, and only for a VM directory the calling user owns.
 struct VPhoneLaunchpadHelperFirmwareRequest {
     enum Operation {
@@ -13,13 +13,21 @@ struct VPhoneLaunchpadHelperFirmwareRequest {
         case updateEnvironment
         /// Swaps the Preboot kernelcache for the re-patched one, keeping data.
         case updateKernel
+        /// `fw patch` with the machine's recorded selection, for a preset that
+        /// merges and reseals the system image before the restore. `fw patch`
+        /// refuses to run as root for any other selection.
+        case patchRestoreImage
+        /// `fw kernelcache --link-only`: links the kernelcache mix the user
+        /// staged. It never stages, so no ipsw runs as root.
+        case linkKernelcache
     }
 
     typealias MachineKey = VPhoneLaunchpadHelperFirmwareAdmission.MachineKey
 
-    /// The installer's work parent, `VPhoneCustomFirmwareInstaller.workParent`:
-    /// every run makes its private work folder there.
-    static let workParent = "/private/var/tmp"
+    /// CFW keeps its scratch files beside the VM when that VM is on a mounted
+    /// external volume. The child directory is root-owned and private. Internal
+    /// libraries retain the system temporary directory.
+    static let defaultWorkParent = "/private/var/tmp"
 
     let executable: URL
     let arguments: [String]
@@ -58,22 +66,35 @@ struct VPhoneLaunchpadHelperFirmwareRequest {
         let folder = try Self.requireMachine(libraryRoot: libraryRoot, machineName: machineName, ownedBy: callerUID)
         let machine = URL(fileURLWithPath: libraryRoot, isDirectory: true)
             .appendingPathComponent(machineName, isDirectory: true)
+        let workParent = try Self.resolveWorkParent(
+            libraryRoot: libraryRoot,
+            callerUID: callerUID,
+            callerGID: callerGID,
+        )
         var work = stat()
-        guard stat(Self.workParent, &work) == 0 else {
-            throw VPhoneLaunchpadHelperError("Unable to read \(Self.workParent): \(String(cString: strerror(errno)))")
+        guard stat(workParent, &work) == 0 else {
+            throw VPhoneLaunchpadHelperError("Unable to read \(workParent): \(String(cString: strerror(errno)))")
         }
 
         var arguments: [String]
         switch operation {
         case let .install(keepArtifacts):
-            arguments = ["cfw", "install", machineName, "--library-root", libraryRoot]
+            arguments = ["cfw", "install", machineName, "--library-root", libraryRoot,
+                         "--work-parent", workParent]
             if keepArtifacts {
                 arguments.append("--keep-artifacts")
             }
         case .updateEnvironment:
-            arguments = ["cfw", "update-environment", machineName, "--library-root", libraryRoot]
+            arguments = ["cfw", "update-environment", machineName, "--library-root", libraryRoot,
+                         "--work-parent", workParent]
         case .updateKernel:
-            arguments = ["cfw", "update-kernel", machineName, "--library-root", libraryRoot]
+            arguments = ["cfw", "update-kernel", machineName, "--library-root", libraryRoot,
+                         "--work-parent", workParent]
+        case .patchRestoreImage:
+            arguments = ["fw", "patch", machineName, "--library-root", libraryRoot, "--restore-image-only", "--work-parent", workParent]
+        case .linkKernelcache:
+            arguments = ["fw", "kernelcache", machineName, "--library-root", libraryRoot,
+                         "--link-only", "--work-parent", workParent]
         }
 
         self.executable = executable
@@ -81,13 +102,90 @@ struct VPhoneLaunchpadHelperFirmwareRequest {
         workingDirectory = machine
         machineKey = MachineKey(device: folder.st_dev, inode: folder.st_ino)
         // Not one literal: equal keys in a dictionary literal trap.
-        var volumes = [work.st_dev: Self.workParent]
+        var volumes = [work.st_dev: workParent]
         volumes[folder.st_dev] = machine.path
         self.volumes = volumes
         // The same environment `sudo vphone-cli cfw install` sees: SUDO_UID
         // and SUDO_GID are how the installer hands root-created files back
         // to the user afterwards.
         environment = try VPhoneLaunchpadHelperLibraryPath.environment(callerUID: callerUID, callerGID: callerGID)
+    }
+
+    /// Selects a protected scratch directory on the VM's mounted external
+    /// volume. A user-writable volume root is refused: root must not create a
+    /// directory where the caller can race or replace it.
+    private static func resolveWorkParent(
+        libraryRoot: String,
+        callerUID: uid_t,
+        callerGID: gid_t,
+    ) throws -> String {
+        let library = try VPhoneLaunchpadHelperLibraryPath.openDirectory(libraryRoot)
+        defer { close(library) }
+        var filesystem = statfs()
+        guard fstatfs(library, &filesystem) == 0 else {
+            throw VPhoneLaunchpadHelperError("Unable to determine the VM library's volume.")
+        }
+        let mountPoint = withUnsafePointer(to: &filesystem.f_mntonname) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+        }
+        guard mountPoint.hasPrefix("/Volumes/"), mountPoint != "/Volumes" else {
+            return defaultWorkParent
+        }
+
+        let volume = try VPhoneLaunchpadHelperLibraryPath.openDirectory(mountPoint)
+        defer { close(volume) }
+        var volumeInfo = stat()
+        guard fstat(volume, &volumeInfo) == 0, volumeInfo.st_uid == 0 else {
+            throw VPhoneLaunchpadHelperError("The external volume root must be owned by root before CFW can use it for temporary files.")
+        }
+        guard try !callerCanWrite(volumeInfo, callerUID: callerUID, callerGID: callerGID) else {
+            throw VPhoneLaunchpadHelperError("The external volume root is writable by your account; refusing to place privileged CFW temporary files there.")
+        }
+
+        let leaf = ".vphone-cfw-work"
+        if mkdirat(volume, leaf, 0o700) != 0, errno != EEXIST {
+            throw VPhoneLaunchpadHelperError("Unable to create the CFW work directory on \(mountPoint): \(String(cString: strerror(errno)))")
+        }
+        let work = openat(volume, leaf, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard work >= 0 else {
+            throw VPhoneLaunchpadHelperError("The CFW work directory on \(mountPoint) is not a real directory.")
+        }
+        defer { close(work) }
+        var workInfo = stat()
+        guard fstat(work, &workInfo) == 0,
+              workInfo.st_uid == 0,
+              (workInfo.st_mode & S_IFMT) == S_IFDIR,
+              (workInfo.st_mode & 0o077) == 0
+        else {
+            throw VPhoneLaunchpadHelperError("\(mountPoint)/\(leaf) must be a root-owned private directory.")
+        }
+        return mountPoint + "/" + leaf
+    }
+
+    private static func callerCanWrite(
+        _ directory: stat,
+        callerUID: uid_t,
+        callerGID: gid_t,
+    ) throws -> Bool {
+        let mode = directory.st_mode & 0o777
+        if callerUID == directory.st_uid {
+            return mode & 0o200 != 0
+        }
+        guard let account = getpwuid(callerUID) else {
+            throw VPhoneLaunchpadHelperError("Unable to find the user account for the CFW request.")
+        }
+        var groups = [Int32](repeating: 0, count: 256)
+        var count = Int32(groups.count)
+        let found = String(cString: account.pointee.pw_name).withCString {
+            getgrouplist($0, Int32(callerGID), &groups, &count)
+        }
+        guard found >= 0 else {
+            throw VPhoneLaunchpadHelperError("Unable to check permissions on the external volume root.")
+        }
+        if groups.prefix(Int(count)).contains(Int32(directory.st_gid)) {
+            return mode & 0o020 != 0
+        }
+        return mode & 0o002 != 0
     }
 
     /// The machine a cancel names. It checks no ownership: the operation

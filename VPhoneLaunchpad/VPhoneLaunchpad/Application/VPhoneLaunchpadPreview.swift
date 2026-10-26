@@ -15,11 +15,11 @@
         }
 
         static let sheetNotification = Notification.Name("VPhoneLaunchpadPreviewSheet")
-        /// The source a Core Bundle sheet opens on.
-        static var coreBundleSource = VPhoneLaunchpadCoreBundleView.Source.releases
         /// The pages New Machine and machine settings open on.
-        static var newMachinePage = VPhoneLaunchpadNewMachineView.Page.general
+        static var newMachinePage = VPhoneLaunchpadNewMachineView.Page.basic
         static var machineSettingsPage = VPhoneLaunchpadMachineSettingsView.Page.general
+        /// The patch choice New Machine opens with.
+        static var newMachinePatches = VPhoneLaunchpadPatchSelection()
 
         // MARK: - Driver
 
@@ -36,7 +36,7 @@
                 library: model.machines,
                 deviceInitializer: model.machines.deviceInitializer,
             )
-            creation.applyPreview()
+            creation.applyPreview(.restoring)
             model.machines.applyPreview(creation: creation)
             for command in commands.dropLast() {
                 model.history.finish(model.history.record(command), status: 0)
@@ -65,9 +65,6 @@
 
                 model.bundles.applyPreview(installing: false)
                 await panel(model, .coreBundle, "03-core-bundle", suffix)
-                coreBundleSource = .actions
-                await panel(model, .coreBundle, "03b-core-bundle-actions", suffix)
-                coreBundleSource = .releases
 
                 model.leases.applyPreview(orphans: 119)
                 await panel(model, .hostSetup, "04-host-setup-passed", suffix)
@@ -83,12 +80,9 @@
                 model.machines.applyPreview(removing: labMachine)
                 await shot("05c-machines-after-delete", suffix)
                 model.machines.applyPreview(creation: creation)
-                model.showsInspector = false
-                await shot("05a-machines-no-inspector", suffix)
-                model.showsInspector = true
                 if let machine = model.machines.selected {
-                    await standalone("05b-machine-inspector", suffix, size: NSSize(width: 380, height: 980)) {
-                        VPhoneLaunchpadMachineInspector(machine: machine, onShowProgress: { _ in }, onOpenConsole: { _ in })
+                    await standalone("05b-machine-inspector", suffix, size: NSSize(width: 380, height: 1500)) {
+                        VPhoneLaunchpadMachineInspector(machine: machine, onShowProgress: { _ in })
                             .environment(model)
                     }
                 }
@@ -99,15 +93,38 @@
                 await sheet(.newMachine, "07-new-machine", suffix)
                 newMachinePage = .hardware
                 await sheet(.newMachine, "07-new-machine-hardware", suffix)
-                newMachinePage = .advanced
-                await sheet(.newMachine, "07-new-machine-advanced", suffix)
-                newMachinePage = .general
+                newMachinePage = .firmware
+                await sheet(.newMachine, "07-new-machine-firmware", suffix)
+                newMachinePage = .storage
+                await sheet(.newMachine, "07-new-machine-storage", suffix)
+                newMachinePage = .patches
+                // One boot-chain and one guest patch off: the guest one is
+                // applied to the clone, not built into the template.
+                newMachinePatches = VPhoneLaunchpadPatchSelection(blocked: ["ibss-cfw-serial_label", "dyld-cfw-camera"])
+                await sheet(.newMachine, "07c-new-machine-guest-patches", suffix)
+                // The basic page counts the patch change under Advanced Options.
+                newMachinePage = .basic
+                await sheet(.newMachine, "07d-new-machine-changed", suffix)
+                newMachinePatches = VPhoneLaunchpadPatchSelection()
+                newMachinePage = .slimming
+                await sheet(.newMachine, "07b-new-machine-slimming", suffix)
+                newMachinePage = .basic
                 await sheet(.creation(path("ios27-rc")), "08-creation-progress", suffix)
-                creation.applyPreview(downloading: 0.42)
+                creation.applyPreview(.downloading(0.42))
                 await sheet(.creation(path("ios27-rc")), "08a-creation-downloading", suffix)
-                creation.applyPreview(failed: true)
+                creation.applyPreview(.failed)
                 await sheet(.creation(path("ios27-rc")), "08b-creation-failed", suffix)
-                creation.applyPreview()
+                creation.applyPreview(.settingUpTemplate)
+                await sheet(.creation(path("ios27-rc")), "08d-creation-template-setup", suffix)
+                creation.applyPreview(.setupFailed)
+                await sheet(.creation(path("ios27-rc")), "08e-creation-template-failed", suffix)
+                creation.applyPreview(.builtTemplate)
+                await sheet(.creation(path("ios27-rc")), "08f-creation-template-built", suffix)
+                creation.applyPreview(.clonedFromTemplate)
+                await sheet(.creation(path("ios27-rc")), "08g-creation-from-template", suffix)
+                creation.applyPreview(.applyingGuestPatches)
+                await sheet(.creation(path("ios27-rc")), "08h-creation-guest-patches", suffix)
+                creation.applyPreview(.restoring)
                 await standalone("08c-creation-log", suffix, size: NSSize(width: 960, height: 700)) {
                     VPhoneLaunchpadConsoleView(title: "ios27-rc Creation Log", url: creation.logFile)
                 }
@@ -140,12 +157,24 @@
                 await standalone("10d-take-snapshot", suffix, size: NSSize(width: 420, height: 330)) {
                     VPhoneLaunchpadTakeSnapshotSheet(machine: labMachine, taken: Set(sampleSnapshots.map(\.name))) { _, _ in }
                 }
-                await sheet(.export([labMachine]), "11-export", suffix)
                 await sheet(.console(path("research-01")), "12-console", suffix)
                 ipswSelection = ipswScan.ipsws[1].id
                 await panel(model, .ipswCache, "13-downloaded-ipsws", suffix)
                 ipswSelection = ipswScan.ipsws[0].id
                 await panel(model, .ipswCache, "13a-downloaded-ipsws-in-use", suffix)
+                await panel(model, .templates, "14-templates", suffix)
+                guestSystemRunning = true
+                await sheet(.guestSystem(path("research-01")), "15-guest-system", suffix)
+                // Switched to None: the guest no longer reports a restart.
+                guestSystemRestartPending = true
+                await sheet(.guestSystem(path("research-01")), "15b-guest-system-restart-pending", suffix)
+                guestSystemRestartPending = false
+                guestSystemRunning = false
+                await sheet(.guestSystem(labMachine), "15a-guest-system-stopped", suffix)
+                model.machines.applyPreviewNotice()
+                await shot("16-template-notice", suffix)
+                model.machines.templateNotice = nil
+                try? await Task.sleep(for: .milliseconds(800))
             }
             NSApp.terminate(nil)
         }
@@ -211,6 +240,7 @@
             guard let view = target.contentView?.superview ?? target.contentView,
                   let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
             else {
+                NSLog("[preview] no shot for \(name): \(NSApp.windows.map { "\(type(of: $0)) visible=\($0.isVisible) sheet=\($0.isSheet) \($0.frame)" })")
                 return
             }
             view.cacheDisplay(in: view.bounds, to: bitmap)
@@ -251,27 +281,6 @@
             return (try? VPhoneLaunchpadMachineSnapshot.list(from: Data(json.utf8))) ?? []
         }()
 
-        static let artifacts: [VPhoneLaunchpadArtifact] = [
-            artifact(1, "cd013c2a5e8f41b7d09c3e6a2f14b85d7c90e3a1", "2026-09-28T02:14:00Z"),
-            artifact(2, "374a2c5f0b1e9d8c7a6b5d4e3f2a1b0c9d8e7f6a", "2026-09-27T16:40:00Z"),
-        ]
-
-        private static func artifact(_ id: Int64, _ commit: String, _ date: String) -> VPhoneLaunchpadArtifact {
-            let created = ISO8601DateFormatter().date(from: date) ?? Date()
-            return VPhoneLaunchpadArtifact(
-                id: id,
-                name: "vphone-release-\(commit)",
-                commit: commit,
-                branch: "main",
-                runID: id,
-                createdAt: created,
-                expiresAt: created.addingTimeInterval(7 * 86400),
-                size: 20_564_139,
-                sha256: String(repeating: "0", count: 64),
-                downloadURL: URL(string: "https://example.invalid/\(id).zip")!,
-            )
-        }
-
         static let machines: [VPhoneLaunchpadMachine] = {
             let json = """
             [
@@ -279,13 +288,15 @@
                "network":{"mode":"nat","macAddress":"5a:94:ef:12:30:01"},
                "restoreInfo":{"ios":{"version":"26.4.2","build":"23E261"},"cloudOS":{"version":"26.4","build":"23E224"},"variant":"jb","device":"iPhone99,11"},
                "udid":"00008140-001A2B3C4D5E6F70",
-               "unlocksAtStartup":true, "syncsHostLocation":true},
+               "unlocksAtStartup":true, "syncsHostLocation":true,
+               "template":"52b1fcc75e0c","templateMatch":"current"},
               {"name":"ios27-rc","cpuCount":8,"memoryMB":12288,"diskSizeBytes":128000000000,
                "network":{"mode":"nat","macAddress":"5a:94:ef:12:30:02"}},
               {"name":"frida-lab","cpuCount":6,"memoryMB":8192,"diskSizeBytes":64000000000,
                "network":{"mode":"bridged","macAddress":"5a:94:ef:12:30:03","bridgeInterface":"en0"},
                "restoreInfo":{"ios":{"version":"26.6.2","build":"23G90"},"cloudOS":{"version":"26.4","build":"23E224"},"variant":"jb","device":"iPhone99,11"},
-               "udid":"00008140-0011223344556677"}
+               "udid":"00008140-0011223344556677",
+               "template":"2246f982776c","templateMatch":"current"}
             ]
             """
             var machines = (try? JSONDecoder().decode([VPhoneLaunchpadMachine].self, from: Data(json.utf8))) ?? []
@@ -363,7 +374,7 @@
             return scan
         }()
 
-        /// The row the Downloaded IPSWs sheet opens with selected.
+        /// The row the Downloaded Firmware sheet opens with selected.
         static var ipswSelection: String?
 
         static let creationOptions = VPhoneLaunchpadCreationPipeline.Options(
@@ -392,7 +403,7 @@
             func pending(_ part: String, _ value: Bool = false) -> String {
                 guard machine else { return "" }
                 // delivery is reported only for a pending patch, by part.
-                let deliveryKind: String = switch part {
+                let deliveryKind = switch part {
                 case "kernelcache": "update-kernel"
                 case "Guest": "update-environment"
                 case "AVPBooter": "fw-patch"
@@ -449,6 +460,77 @@
             "restore  Waiting for device to enter restore mode…",
             "restore  Verifying restore images…",
         ]
+
+        // MARK: Templates
+
+        /// Stands in for `vm template list --json`: a current slimmed iPhone
+        /// template two machines use, an unslimmed iPad one nothing uses, and
+        /// one an older series built.
+        static let templateList: VPhoneLaunchpadTemplateList? = {
+            func template(
+                _ id: String, device: String, ios: String, build: String, created: String, size: Int64,
+                slimming: String, machines: String, stale: String = "[]", series: String = "2.9",
+            ) -> String {
+                """
+                {"id":"\(id)","path":"\(VPhoneLaunchpadMachineLocations.defaultRoot)/.templates/\(id)","created":"\(created)",
+                 "builtWithBundleVersion":"\(series).0","bootChainBundleVersion":"\(series).0","sourceMachine":"template-1a2b3c4d",
+                 "allocatedBytes":\(size),"diskSizeBytes":64000000000,"machines":\(machines),"stale":\(stale != "[]"),"staleReasons":\(stale),
+                 "sources":{"IPhone":"https://updates.cdn-apple.com/example/\(device)_\(ios)_\(build)_Restore.ipsw","CloudOS":"https://updates.cdn-apple.com/example/cloudos-26.4"},
+                 "steps":{},
+                 "key":{"Device":"\(device)","IOSVersion":"\(ios)","IOSBuild":"\(build)","CloudOSVersion":"26.4","CloudOSBuild":"23E5207q",
+                        "PatchPreset":"standard","BootChainPlanDigest":"01e9","BundleSeries":"\(series)","DiskSizeGB":64,"FormatVersion":2,
+                        "Slimming":\(slimming)}}
+                """
+            }
+            let slim = #"{"TrimTier":"standard/1/en,zh,zh-Hans","SetupBoot":true,"ServiceProfile":"trimmed","ServiceGroups":[],"RemovedApps":["com.apple.AppStore","com.apple.Home","com.apple.tv","com.apple.news","com.apple.facetime","com.apple.MobileStore","com.apple.MobileSMS","com.apple.games","com.apple.findmy","com.apple.Passbook"]}"#
+            let plain = #"{"TrimTier":"none","SetupBoot":true,"ServiceProfile":"none","ServiceGroups":[],"RemovedApps":[]}"#
+            let accounts = #"{"TrimTier":"conservative/1","SetupBoot":true,"ServiceProfile":"trimmed","ServiceGroups":["accounts"],"RemovedApps":["com.apple.AppStore","com.apple.news"]}"#
+            let json = """
+            {"templates":[
+              \(template("52b1fcc75e0c", device: "iPhone17,3", ios: "27.0", build: "24A435", created: "2026-10-08T10:00:00Z", size: 17_580_000_000,
+                         slimming: slim, machines: #"["research-01","ios27-rc"]"#)),
+              \(template("9d04a7c3e1b2", device: "iPad16,1", ios: "27.0.1", build: "24A446", created: "2026-10-07T16:20:00Z", size: 19_310_000_000,
+                         slimming: plain, machines: "[]")),
+              \(template("2246f982776c", device: "iPhone17,3", ios: "26.6.2", build: "23G90", created: "2026-10-02T09:00:00Z", size: 18_920_000_000,
+                         slimming: accounts, machines: #"["frida-lab"]"#, stale: #"["built by bundle series 2.8; this vphone-cli is 2.9"]"#, series: "2.8"))
+            ],
+            "building":[{"name":".building-0e44975ff833-7A1C","path":"\(VPhoneLaunchpadMachineLocations.defaultRoot)/.templates/.building-0e44975ff833-7A1C","id":"0e44975ff833","active":false}],
+            "damaged":[]}
+            """
+            return try? VPhoneLaunchpadTemplateList.decode(Data(json.utf8), libraryRoot: VPhoneLaunchpadMachineLocations.defaultRoot)
+        }()
+
+        static var templates: [VPhoneLaunchpadTemplate] {
+            templateList?.templates ?? []
+        }
+
+        /// Whether the Guest System sheet sees its machine running.
+        static var guestSystemRunning = false
+
+        /// Whether a profile change waits for the guest to restart.
+        static var guestSystemRestartPending = false
+
+        /// Stands in for `services.profile`. After a switch to None the
+        /// guest keeps no record, so it reports no restart either.
+        static var serviceProfile: [String: Any] {
+            if guestSystemRestartPending {
+                return ["profile": "none", "supported": true, "running": [], "reboot_required": false]
+            }
+            return [
+                "profile": "trimmed", "supported": true, "running": [], "reboot_required": false,
+                "record": ["groups": ["base", "app_store", "signin_followup"], "allow": []],
+            ]
+        }
+
+        /// Stands in for `apps.removed_system`: list C, Find My kept.
+        static var removedSystemApps: [String: Any] {
+            let apps = [
+                ("com.apple.AppStore", "AppStore.app"), ("com.apple.Home", "Home.app"), ("com.apple.tv", "TVApp.app"),
+                ("com.apple.news", "News.app"), ("com.apple.facetime", "FaceTime.app"), ("com.apple.MobileSMS", "MobileSMS.app"),
+                ("com.apple.Passbook", "Passbook.app"),
+            ]
+            return ["backups": apps.map { ["bundle_id": $0.0, "app": $0.1, "restorable": true] }]
+        }
 
         static let commands = [
             "vphone-cli host preflight --quiet",

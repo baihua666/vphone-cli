@@ -5,6 +5,8 @@ import Darwin
 enum VPhoneLaunchpadStatus { case pending, running, passed, failed }
 struct VPhoneLaunchpadError: Error { let message: String; var detail: String?; init(_ message: String, detail: String? = nil) { self.message = message; self.detail = detail } }
 struct VPhoneLaunchpadPatchSelection: Sendable {
+    var preset = "standard"; var blocked: Set<String> = []; var allowed: Set<String> = []
+    var customisesRestoredSystem: Bool { false }
     var presetArguments: [String] { [] }; var hasOverrides: Bool { false }; var setPatchesArguments: [String] { [] }
 }
 struct VPhoneLaunchpadMachinePath: Hashable, Sendable {
@@ -16,18 +18,30 @@ final class VPhoneLaunchpadLogWriter: @unchecked Sendable {
     let url: URL; init(url: URL) { self.url = url }
     var tail: String { "test log" }; func write(_ line: String) {}
 }
-struct VPhoneLaunchpadMachineBinding { let bundle: String; let bootChain: String }
+struct VPhoneLaunchpadMachineBinding {
+    var bundle: String; var bootChain: String? = nil; var guestEnvironment: String? = nil
+    static func load(_ path: VPhoneLaunchpadMachinePath) -> Self? { nil }
+}
+struct VPhoneLaunchpadCommandResult {
+    var status: Int32 = 0; var lines: [String] = []
+    var succeeded: Bool { status == 0 }; var jsonData: Data? { nil }; var tail: String { lines.joined(separator: "\n") }
+}
 enum VPhoneLaunchpadPanicLine { static func matches(_ line: String) -> Bool { false } }
 @MainActor final class VPhoneLaunchpadChildProcess { var isRunning = true; func terminate() {} }
 @MainActor final class VPhoneLaunchpadCommandLine {
     var calls: [[String]] = []
     static func display(_ arguments: [String]) -> String { arguments.joined(separator: " ") }
-    func runChecked(_ arguments: [String], onLine: @escaping @Sendable (String) -> Void,
-                    onProgress: (@Sendable (Double) -> Void)? = nil) async throws {
-        calls.append(arguments)
-    }
-    struct Result { let succeeded = true }
-    func run(_ arguments: [String], recordInHistory: Bool) async throws -> Result { Result() }
+@discardableResult
+func runChecked(_ arguments: [String], environment: [String: String] = [:],
+                onLine: @escaping @Sendable (String) -> Void,
+                onProgress: (@Sendable (Double) -> Void)? = nil) async throws -> VPhoneLaunchpadCommandResult {
+    calls.append(arguments)
+    return VPhoneLaunchpadCommandResult()
+}
+func run(_ arguments: [String], recordInHistory: Bool = true,
+         onLine: (@Sendable (String) -> Void)? = nil) async throws -> VPhoneLaunchpadCommandResult {
+    VPhoneLaunchpadCommandResult()
+}
     func start(_ arguments: [String], logFile: URL, onLine: @escaping @Sendable (String) -> Void) throws -> VPhoneLaunchpadChildProcess { VPhoneLaunchpadChildProcess() }
 }
 @MainActor final class VPhoneLaunchpadCoreBundle {
@@ -38,12 +52,27 @@ enum VPhoneLaunchpadPanicLine { static func matches(_ line: String) -> Bool { fa
     func commandLine(version: String) -> VPhoneLaunchpadCommandLine? { versions.append(version); return cli }
 }
 @MainActor final class VPhoneLaunchpadHelperClient {
+func linkKernelcache(bundleVersion: String, machineName: String, libraryRoot: String,
+                     onLine: @escaping @Sendable (String) -> Void) async throws -> Int32 {
+    fatalError("Initialization must never link a kernel")
+}
+func patchRestoreImage(bundleVersion: String, machineName: String, libraryRoot: String,
+                       onLine: @escaping @Sendable (String) -> Void) async throws -> Int32 {
+    fatalError("Initialization must never patch firmware")
+}
+func updateGuestEnvironment(bundleVersion: String, machineName: String, libraryRoot: String,
+                            onLine: @escaping @Sendable (String) -> Void) async throws -> Int32 {
+    fatalError("Initialization must never update guest resources")
+}
+
     func installCustomFirmware(bundleVersion: String, machineName: String, libraryRoot: String,
                                keepArtifacts: Bool, onLine: @escaping @Sendable (String) -> Void) async throws -> Int32 {
         fatalError("Initialization must never install firmware")
     }
 }
 @MainActor final class VPhoneLaunchpadMachineLibrary {
+    var selection: Set<VPhoneLaunchpadMachinePath> = []
+    func isMachineRunning(_ path: VPhoneLaunchpadMachinePath) async -> Bool { false }
     var panicked: Set<VPhoneLaunchpadMachinePath> = []
     var starts = 0
     func bind(_ machine: VPhoneLaunchpadMachinePath, _ binding: VPhoneLaunchpadMachineBinding) throws {}

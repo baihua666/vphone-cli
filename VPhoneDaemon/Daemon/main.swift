@@ -6,6 +6,12 @@ import NIOWebSocket
 import VphonedNative
 
 let mode = vp_native_process_mode()
+if mode == 2 {
+    // A scripting session, spawned by the worker for one script or one
+    // interactive session. None of the startup below belongs here; see
+    // GuestScriptSession.
+    exit(GuestScriptSession.run())
+}
 if mode != 1 {
     guard mode == 0 else { exit(64) }
     vp_native_bootstrap_cached_binary()
@@ -20,6 +26,7 @@ GuestMobileGestaltCache.dropIfStaleOnStartup()
 // Before audiomxd is asked for sound again; see the type for what it cannot cover.
 GuestVirtualAudioProduct.storeOnStartup()
 vp_vcam_start()
+GuestHomePodDisplay.startOnStartup()
 // Multi-finger injection is resolved here so the first pinch is not the call
 // that pays for `dlopen`; a base without the symbols logs and stays a no-op.
 _ = vp_hid_load()
@@ -48,7 +55,8 @@ do {
                     // that carries Origin or a non-loopback Host. The refused
                     // request then reaches GuestHyperTextHandler, which replies 403.
                     let allowed = GuestHyperTextHandler.isLocalClient(request.headers) &&
-                        (request.uri == "/v1/events" || GuestPortForwardHandler.port(from: request.uri) != nil)
+                        (request.uri == "/v1/events" || GuestPortForwardHandler.port(from: request.uri) != nil ||
+                            GuestShellSessionHandler.request(from: request.uri) != nil)
                     guard allowed else { return channel.eventLoop.makeSucceededFuture(nil) }
                     // A client that gave the host proxy its token as a WebSocket
                     // subprotocol expects the server to select that protocol.
@@ -77,6 +85,15 @@ do {
                                 ),
                                 GuestPortForwardHandler(port: port),
                             ])
+                        } else if let session = GuestShellSessionHandler.request(from: request.uri) {
+                            try sync.addHandlers([
+                                NIOWebSocketFrameAggregator(
+                                    minNonFinalFragmentSize: 1,
+                                    maxAccumulatedFrameCount: 32,
+                                    maxAccumulatedFrameSize: 1 << 20,
+                                ),
+                                GuestShellSessionHandler(request: session),
+                            ])
                         } else {
                             try sync.addHandlers([
                                 NIOWebSocketFrameAggregator(
@@ -98,20 +115,25 @@ do {
         .wait()
     vp_native_confirm_cached_binary()
     NSLog("vphoned: HTTP/WebSocket API listening on vsock 1339")
-    // UIPasteboard caches state and receives change notifications on the main
-    // run loop. Blocking this thread on closeFuture leaves subsequent copies
-    // invisible (or refers to an item UUID that pasted has already replaced).
-    let keepAlive = Port()
-    RunLoop.main.add(keepAlive, forMode: .default)
-    server.closeFuture.whenComplete { _ in CFRunLoopStop(CFRunLoopGetMain()) }
-    CFRunLoopRun()
-    keepAlive.invalidate()
-    try server.closeFuture.wait()
+    server.closeFuture.whenComplete { _ in
+        DispatchQueue.main.async {
+            try? group.syncShutdownGracefully()
+            try? filePool.syncShutdownGracefully()
+            _ = eventPublisher
+            exit(0)
+        }
+    }
 } catch {
     NSLog("vphoned: HTTP/WebSocket API failed: %@", String(describing: error))
     exit(1)
 }
 
-try? group.syncShutdownGracefully()
-try? filePool.syncShutdownGracefully()
-_ = eventPublisher
+// The main thread runs the main run loop instead of waiting on the server.
+// UIPasteboard learns there that another process changed the clipboard; with
+// the main thread blocked, vphoned kept the clipboard as it first read it and
+// asked pasted for items of a generation it had already dropped, so a copy
+// made in a guest app never reached the host.
+// The timer only keeps the run loop from returning while nothing else is
+// scheduled on it.
+RunLoop.main.add(Timer(fire: .distantFuture, interval: 0, repeats: false) { _ in }, forMode: .default)
+RunLoop.main.run()

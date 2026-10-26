@@ -290,7 +290,9 @@ public enum VPhoneMachineSnapshots {
                     throw VPhoneMachineSnapshotError.failed(path: live, reason: currentErrorText())
                 }
                 steps.append(SwapStep(file: file, movedAside: movedAside))
-                if absent.contains(file) { continue }
+                if absent.contains(file) {
+                    continue
+                }
                 guard rename(staging.appendingPathComponent(file).path, live) == 0 else {
                     throw VPhoneMachineSnapshotError.failed(path: live, reason: currentErrorText())
                 }
@@ -376,7 +378,7 @@ public enum VPhoneMachineSnapshots {
     }
 
     /// An APFS clone, never a copy. Symbolic links are not followed.
-    private static func cloneFile(_ source: URL, to destination: URL) throws {
+    static func cloneFile(_ source: URL, to destination: URL) throws {
         guard clonefile(source.path, destination.path, UInt32(CLONE_NOFOLLOW)) == 0 else {
             let code = errno
             if code == ENOTSUP || code == EXDEV {

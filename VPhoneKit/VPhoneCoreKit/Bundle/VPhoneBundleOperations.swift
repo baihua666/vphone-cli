@@ -9,6 +9,7 @@ public enum VPhoneBundleOperations {
         public let diskSizeGB: UInt64
         public let romSource: URL
         public let sepromSource: URL
+        public let networkConfig: VPhoneVirtualMachineManifest.NetworkConfig
 
         public init(
             name: String,
@@ -17,21 +18,22 @@ public enum VPhoneBundleOperations {
             diskSizeGB: UInt64,
             romSource: URL,
             sepromSource: URL,
+            networkConfig: VPhoneVirtualMachineManifest.NetworkConfig = .default,
         ) {
             self.name = name; self.cpuCount = cpuCount; self.memoryMB = memoryMB
             self.diskSizeGB = diskSizeGB; self.romSource = romSource; self.sepromSource = sepromSource
+            self.networkConfig = networkConfig
         }
     }
 
-    private static let frameworkResources = URL(fileURLWithPath:
-        "/System/Library/Frameworks/Virtualization.framework/Versions/A/Resources")
-
+    /// The boot ROM new machines get: this bundle's OpenAVB.
     public static func defaultROMSource() -> URL {
-        frameworkResources.appendingPathComponent("AVPBooter.vresearch1.bin")
+        VPhoneBootROM.openAVBSource()
     }
 
+    /// The SEP ROM new machines get: this bundle's OpenSEP.
     public static func defaultSEPROMSource() -> URL {
-        frameworkResources.appendingPathComponent("AVPSEPBooter.vresearch1.bin")
+        VPhoneSEPROM.openSEPSource()
     }
 
     /// Public because `vm import` validates the name it is about to place into
@@ -75,16 +77,19 @@ public enum VPhoneBundleOperations {
             // SEP storage: 512 KB of initialized zero bytes.
             try Data(count: 512 * 1024).write(to: dir.appendingPathComponent("SEPStorage"))
 
-            // ROMs.
-            try fm.copyItem(at: spec.romSource, to: dir.appendingPathComponent("AVPBooter.vresearch1.bin"))
-            try fm.copyItem(at: spec.sepromSource, to: dir.appendingPathComponent("AVPSEPBooter.vresearch1.bin"))
+            // ROMs. Each keeps the name of its kind, so `fw patch` finds an
+            // Apple boot ROM to patch and leaves OpenAVB alone.
+            let romName = try bootROMKind(of: spec.romSource).fileName
+            let sepromName = try sepROMKind(of: spec.sepromSource).fileName
+            try fm.copyItem(at: spec.romSource, to: dir.appendingPathComponent(romName))
+            try fm.copyItem(at: spec.sepromSource, to: dir.appendingPathComponent(sepromName))
 
             // Manifest.
             let manifest = VPhoneVirtualMachineManifest(
                 cpuCount: spec.cpuCount,
                 memorySize: spec.memoryMB * 1024 * 1024,
-                romImages: .init(avpBooter: "AVPBooter.vresearch1.bin",
-                                 avpSEPBooter: "AVPSEPBooter.vresearch1.bin"),
+                networkConfig: spec.networkConfig,
+                romImages: .init(avpBooter: romName, avpSEPBooter: sepromName),
             )
             try manifest.write(to: dir.appendingPathComponent("config.plist"))
 
@@ -96,6 +101,100 @@ public enum VPhoneBundleOperations {
             try? fm.removeItem(at: dir)
             throw error
         }
+    }
+
+    // MARK: - Boot ROM
+
+    /// The kind of the ROM at `url`, refusing a file that cannot be read.
+    static func bootROMKind(of url: URL) throws -> VPhoneBootROM {
+        guard let kind = VPhoneBootROM.kind(at: url) else {
+            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return kind
+    }
+
+    /// Makes `source` the machine's boot ROM: copies it into the folder under
+    /// the name of its kind, unless it is already that file, and points
+    /// `romImages.avpBooter` at it. vphone-vm reads the ROM when the machine
+    /// starts, so a running machine takes it from its next start.
+    ///
+    /// The ROM it replaces stays in the folder. An Apple ROM there carries the
+    /// digest patch `fw patch` applied, which a fresh copy from the framework
+    /// would not, so going back to it needs only this call again.
+    ///
+    /// Only normal boot reads the ROM after a restore, and both ROMs load the
+    /// same patched LLB, so a restored machine can change ROM without another
+    /// restore. A restore through OpenAVB needs a bundle that uploads the iBSS
+    /// identity, which bundles from before OpenAVB do not.
+    @discardableResult
+    public static func installBootROM(from source: URL, in bundle: VPhoneBundle) throws -> VPhoneBundle {
+        let name = try bootROMKind(of: source).fileName
+        try placeROM(from: source, named: name, in: bundle)
+        let images = VPhoneVirtualMachineManifest.ROMImages(
+            avpBooter: name,
+            avpSEPBooter: bundle.manifest.romImages?.avpSEPBooter
+                ?? VPhoneVirtualMachineManifest.ROMImages.default.avpSEPBooter,
+        )
+        return try write(romImages: images, to: bundle)
+    }
+
+    // MARK: - SEP ROM
+
+    /// The kind of the SEP ROM at `url`, refusing a file that cannot be read.
+    static func sepROMKind(of url: URL) throws -> VPhoneSEPROM {
+        guard let kind = VPhoneSEPROM.kind(at: url) else {
+            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return kind
+    }
+
+    /// Makes `source` the machine's SEP ROM, as ``installBootROM(from:in:)``
+    /// does for the boot ROM: copied in under the name of its kind and named by
+    /// `romImages.avpSEPBooter`, from the next start. The ROM it replaces
+    /// stays in the folder.
+    ///
+    /// Neither SEP ROM is patched, and both boot the SEP firmware the restore
+    /// installed, so a restored machine can change SEP ROM without another
+    /// restore.
+    @discardableResult
+    public static func installSEPROM(from source: URL, in bundle: VPhoneBundle) throws -> VPhoneBundle {
+        let name = try sepROMKind(of: source).fileName
+        try placeROM(from: source, named: name, in: bundle)
+        let images = VPhoneVirtualMachineManifest.ROMImages(
+            avpBooter: bundle.manifest.romImages?.avpBooter
+                ?? VPhoneVirtualMachineManifest.ROMImages.default.avpBooter,
+            avpSEPBooter: name,
+        )
+        return try write(romImages: images, to: bundle)
+    }
+
+    /// Copies `source` into the folder as `name`, unless it is already that
+    /// file, replacing an earlier copy in one step.
+    private static func placeROM(from source: URL, named name: String, in bundle: VPhoneBundle) throws {
+        let fm = FileManager.default
+        let destination = bundle.url.appendingPathComponent(name)
+        if source.standardizedFileURL.path != destination.standardizedFileURL.path {
+            let staged = bundle.url.appendingPathComponent(".\(name).\(UUID().uuidString)")
+            try fm.copyItem(at: source, to: staged)
+            do {
+                if fm.fileExists(atPath: destination.path) {
+                    _ = try fm.replaceItemAt(destination, withItemAt: staged)
+                } else {
+                    try fm.moveItem(at: staged, to: destination)
+                }
+            } catch {
+                try? fm.removeItem(at: staged)
+                throw error
+            }
+        }
+        try VPhoneHostFilePermissions.makeAccessible(at: destination)
+    }
+
+    private static func write(romImages: VPhoneVirtualMachineManifest.ROMImages, to bundle: VPhoneBundle) throws -> VPhoneBundle {
+        let updated = bundle.manifest.updating(romImages: romImages)
+        try updated.write(to: bundle.configURL)
+        try VPhoneHostFilePermissions.makeAccessible(at: bundle.configURL)
+        return VPhoneBundle(url: bundle.url, manifest: updated)
     }
 
     // MARK: - Config editing
@@ -192,16 +291,47 @@ public enum VPhoneBundleOperations {
     }
 
     /// `afterCopy` runs between the copy and the second running check, so
-    /// tests can start the source while it is being copied.
+    /// tests can start the source while it is being copied. `readerWait` is
+    /// how long each check waits out holders that do not run the source.
     static func clone(
         bundleNamed name: String,
         to newName: String,
         in library: VPhoneLibrary,
         newIdentity: Bool,
+        readerWait: TimeInterval = VPhoneBundleActivity.readerWait,
         afterCopy: () throws -> Void,
     ) throws -> VPhoneBundle {
         try requireValidName(newName)
         let source = try library.bundle(named: name)
+        return try clone(
+            source, sourceName: name, to: newName, in: library, newIdentity: newIdentity,
+            readerWait: readerWait, afterCopy: afterCopy,
+        )
+    }
+
+    /// Clones a machine folder that need not be in `library`, such as a
+    /// template in `.templates`, into `library` as `newName`. `sourceName` is
+    /// the name a derived mDNS name follows from.
+    public static func clone(
+        _ source: VPhoneBundle,
+        sourceName name: String,
+        to newName: String,
+        in library: VPhoneLibrary,
+        newIdentity: Bool,
+    ) throws -> VPhoneBundle {
+        try clone(source, sourceName: name, to: newName, in: library, newIdentity: newIdentity, afterCopy: {})
+    }
+
+    static func clone(
+        _ source: VPhoneBundle,
+        sourceName name: String,
+        to newName: String,
+        in library: VPhoneLibrary,
+        newIdentity: Bool,
+        readerWait: TimeInterval = VPhoneBundleActivity.readerWait,
+        afterCopy: () throws -> Void,
+    ) throws -> VPhoneBundle {
+        try requireValidName(newName)
         let src = source.url
         let dst = library.url(forName: newName)
         let fm = FileManager.default
@@ -212,7 +342,12 @@ public enum VPhoneBundleOperations {
         // copying anything, and again after it: the source may have started
         // while it was copied (off APFS that takes minutes), and the copy may
         // then hold state files from different moments.
-        try VPhoneBundleActivity.requireStopped(source)
+        //
+        // A clone only reads the source, so a holder that runs no machine
+        // (Launchpad's disk meter mapping a template that just appeared) is
+        // waited out for up to `readerWait` instead of failing the clone. A
+        // VM process holding the source, or its live socket, refuses at once.
+        try VPhoneBundleActivity.requireStopped(source, waitingForReaders: readerWait)
 
         // Roll back a half-made copy, so a retry with the same name is not
         // blocked by the alreadyExists check.
@@ -232,7 +367,7 @@ public enum VPhoneBundleOperations {
                 }
             }
             try afterCopy()
-            try VPhoneBundleActivity.requireStopped(source)
+            try VPhoneBundleActivity.requireStopped(source, waitingForReaders: readerWait)
             var clone = try VPhoneBundle.load(at: dst)
             if newIdentity {
                 clone = try resetIdentity(of: clone, clonedFrom: name)
@@ -246,8 +381,13 @@ public enum VPhoneBundleOperations {
     }
 
     /// Left out of every clone: snapshots record the source's history, not
-    /// the copy's, and the control socket is the stopped source's.
-    private static let droppedFromClone: Set<String> = [VPhoneMachineSnapshots.directoryName, "vphone.sock"]
+    /// the copy's, the control socket is the stopped source's, and a
+    /// template's record would make its clone a template that never boots.
+    private static let droppedFromClone: Set<String> = [
+        VPhoneMachineSnapshots.directoryName,
+        "vphone.sock",
+        VPhoneMachineTemplates.recordFileName,
+    ]
 
     /// The network settings a new-identity clone drops, described for display.
     /// Each would collide with the source's when both run: a fixed address,
@@ -336,7 +476,8 @@ public enum VPhoneBundleOperations {
     /// temporary cloudOS VM. None of these is `--include-ipsw`'s restore tree.
     /// Snapshots stay with the machine they were taken on: in an archive each
     /// one would be another full copy of the disk. A revert's staging folder
-    /// is left behind only by a revert that was killed.
+    /// is left behind only by a revert that was killed, and a rebase's staging
+    /// folder only by a rebase that was killed.
     ///
     /// Export itself is `VPhoneBundleTransfer` in `VPhoneArchiveKit` — it needs
     /// libarchive, and this does not. The list stays here because it describes
@@ -349,6 +490,10 @@ public enum VPhoneBundleOperations {
         ".pcc-system-*",
         VPhoneMachineSnapshots.directoryName,
         ".snapshot-revert-*",
+        VPhoneDiskRebase.stagingPrefix + "*",
+        // An imported machine is a full copy that shares no block with the
+        // template its source was cloned from.
+        VPhoneMachineTemplates.sourceFileName,
     ]
 
     /// The directory holding each boot-chain file exactly as the restore tree laid

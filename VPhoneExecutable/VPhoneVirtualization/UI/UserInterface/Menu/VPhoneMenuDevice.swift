@@ -21,6 +21,17 @@ extension VPhoneMenuController {
             modifiers: [.command, .shift],
             symbol: "house",
         ))
+        // Shown only for an Apple TV guest; see `showsTVControls`.
+        let controlCenter = makeItem(
+            "Control Center",
+            action: #selector(sendTVControlCenter),
+            keyEquivalent: "t",
+            modifiers: [.command, .shift],
+            symbol: "switch.2",
+        )
+        controlCenter.isHidden = true
+        tvControlCenterItem = controlCenter
+        menu.addItem(controlCenter)
         // iOS has no back key, so this item and the Esc key both replay the
         // system back gesture. The key equivalent is here so the menu can show
         // it; VPhoneApplication intercepts Esc before the menu is consulted,
@@ -32,6 +43,11 @@ extension VPhoneMenuController {
             modifiers: [],
             symbol: "arrow.uturn.backward",
         ))
+        // Shown only for an Apple Watch guest; see `showsWatchControls`.
+        let sideButton = makeItem("Side Button", action: #selector(sendWatchSideButton), symbol: "button.vertical.right.press")
+        sideButton.isHidden = true
+        watchSideButtonItem = sideButton
+        menu.addItem(sideButton)
         menu.addItem(makeItem("Power", action: #selector(sendPower), symbol: "power"))
         menu.addItem(makeItem("Volume Up", action: #selector(sendVolumeUp), symbol: "speaker.plus"))
         menu.addItem(makeItem("Volume Down", action: #selector(sendVolumeDown), symbol: "speaker.minus"))
@@ -128,11 +144,19 @@ extension VPhoneMenuController {
         keySender.sendHome()
     }
 
+    @objc func sendTVControlCenter() {
+        keySender.sendTVControlCenter()
+    }
+
     /// iOS has no back key. Esc and this item both replay the system back
     /// gesture instead of forwarding a keystroke the guest would only read as
     /// "cancel" (or, in Safari, "stop loading").
     @objc func sendBack() {
         captureView?.performBackGesture()
+    }
+
+    @objc func sendWatchSideButton() {
+        keySender.sendWatchSideButton()
     }
 
     @objc func sendPower() {

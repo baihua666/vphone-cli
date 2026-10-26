@@ -24,11 +24,67 @@ public enum VPhoneBundleActivity {
     }
 
     /// Throws `VPhoneBundleActivityError.running` unless the machine is stopped.
+    ///
+    /// Any holder refuses, not only a process that runs the machine: a file
+    /// another program is reading or writing is not standing still either.
+    /// The error names each holder's executable, so a refusal caused by, say,
+    /// a backup tool reading `Disk.img` is not mistaken for a running VM.
     public static func requireStopped(_ bundle: VPhoneBundle) throws {
+        try requireStopped(bundle, waitingForReaders: 0)
+    }
+
+    /// How long an operation that only reads a machine waits for holders
+    /// that do not run it to close its files: Launchpad's disk meter holds an
+    /// image for 0.1 s or less, longer on a slow Mac.
+    public static let readerWait: TimeInterval = 2
+
+    /// `requireStopped` for an operation that only reads the machine's files,
+    /// a clone's source: while every holder is a process that does not run a
+    /// machine (Launchpad's disk meter, Spotlight, a backup tool), it checks
+    /// again every 0.1 s for up to `wait` seconds before refusing. A VM
+    /// process holding a file, or a live control socket, refuses at once.
+    /// Operations that write the files keep `requireStopped`.
+    public static func requireStopped(_ bundle: VPhoneBundle, waitingForReaders wait: TimeInterval) throws {
         let urls = stateFileNames(of: bundle).map { bundle.url.appendingPathComponent($0) }
-        let pids = processesHolding(urls)
-        if !pids.isEmpty || controlSocketIsLive(bundle.url.appendingPathComponent("vphone.sock")) {
-            throw VPhoneBundleActivityError.running(name: bundle.name, pids: pids)
+        let socket = bundle.url.appendingPathComponent("vphone.sock")
+        try requireStopped(
+            name: bundle.name,
+            waitingForReaders: wait,
+            holders: { processesHolding(urls).map { VPhoneProcessHolder(pid: $0) } },
+            socketIsLive: { controlSocketIsLive(socket) },
+            sleep: { Thread.sleep(forTimeInterval: $0) },
+        )
+    }
+
+    /// The decision behind `requireStopped`, with the process table, the
+    /// socket probe and the clock injected. With no holders the socket
+    /// decides. Holders refuse at once when one runs a machine or the wait
+    /// is over; otherwise, while the socket is not live, they are asked again
+    /// after `interval`. With `wait` 0 the socket is not probed for a held
+    /// machine, as before the wait existed.
+    static func requireStopped(
+        name: String,
+        waitingForReaders wait: TimeInterval,
+        interval: TimeInterval = 0.1,
+        holders: () -> [VPhoneProcessHolder],
+        socketIsLive: () -> Bool,
+        sleep: (TimeInterval) -> Void,
+    ) throws {
+        var waited: TimeInterval = 0
+        while true {
+            let found = holders()
+            if found.isEmpty {
+                if socketIsLive() {
+                    throw VPhoneBundleActivityError.running(name: name, holders: [])
+                }
+                return
+            }
+            // Compared with a margin, so 20 steps of 0.1 s make 2 s.
+            if waited + interval / 2 >= wait || found.contains(where: \.runsMachine) || socketIsLive() {
+                throw VPhoneBundleActivityError.running(name: name, holders: found)
+            }
+            sleep(interval)
+            waited += interval
         }
     }
 
@@ -71,7 +127,10 @@ public enum VPhoneBundleActivity {
             let got = proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDVNODEINFO, &info, Int32(MemoryLayout<vnode_fdinfo>.size))
             guard got == Int32(MemoryLayout<vnode_fdinfo>.size) else { continue }
             let st = info.pvi.vi_stat
-            if targets.contains(FileID(device: dev_t(st.vst_dev), inode: ino_t(st.vst_ino))) {
+            // vst_dev is unsigned and dev_t signed: devfs can be numbered past
+            // Int32.max (0xC6B21E7F on macOS 27), and every process holds
+            // /dev/null, so a plain conversion traps on any scan.
+            if targets.contains(FileID(device: dev_t(bitPattern: st.vst_dev), inode: ino_t(st.vst_ino))) {
                 return true
             }
         }
@@ -111,15 +170,30 @@ public enum VPhoneBundleActivity {
 // MARK: - Error
 
 public enum VPhoneBundleActivityError: Error, Equatable {
-    case running(name: String, pids: [pid_t])
+    /// The machine's state files are held open by `holders`, or its control
+    /// socket is live (then `holders` may be empty).
+    case running(name: String, holders: [VPhoneProcessHolder])
+
+    /// `running` with each process's executable looked up now.
+    public static func running(name: String, pids: [pid_t]) -> VPhoneBundleActivityError {
+        .running(name: name, holders: pids.map { VPhoneProcessHolder(pid: $0) })
+    }
 }
 
 extension VPhoneBundleActivityError: CustomStringConvertible, LocalizedError {
     public var description: String {
         switch self {
-        case let .running(name, pids):
-            let who = pids.isEmpty ? "" : " (process \(pids.map(String.init).joined(separator: ", ")))"
-            return "VM '\(name)' is running\(who). Stop it, then try again."
+        case let .running(name, holders):
+            let (machine, others) = VPhoneProcessHolder.classify(holders)
+            guard machine.isEmpty, !others.isEmpty else {
+                let who = holders.isEmpty ? "" : " (process \(VPhoneProcessHolder.describe(machine + others)))"
+                return "VM '\(name)' is running\(who). Stop it, then try again."
+            }
+            // No VM process holds the files: say who does, so a backup tool
+            // or Launchpad's disk meter is not taken for a running VM.
+            return "VM '\(name)' is in use: its disk or state files are open in process "
+                + "\(VPhoneProcessHolder.describe(others)), which does not run it. "
+                + "Try again once that process closes them."
         }
     }
 

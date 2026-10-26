@@ -105,11 +105,10 @@ nonisolated enum VPhoneLaunchpadIPSWCache {
                 continue
             }
             let size = Int64(values.fileSize ?? 0)
-            let facts: VPhoneLaunchpadIPSW?
-            if let partial {
-                facts = VPhoneLaunchpadIPSW(fileName: partial)
+            let facts: VPhoneLaunchpadIPSW? = if let partial {
+                VPhoneLaunchpadIPSW(fileName: partial)
             } else {
-                facts = manifestFacts(url, size: size, modified: values.contentModificationDate)
+                manifestFacts(url, size: size, modified: values.contentModificationDate)
                     ?? VPhoneLaunchpadIPSW(fileName: name)
             }
             files.append(VPhoneLaunchpadIPSWFile(
@@ -152,7 +151,7 @@ nonisolated enum VPhoneLaunchpadIPSWCache {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: originals.path)) ?? []
         // `fw prepare`'s restore tree: `iPhone17,3_…_Restore`, or for an iPad
         // `iPhoneOS_iPad16,1_…_Restore`.
-        for name in names.sorted() where name.hasPrefix("iPhone") && name.hasSuffix("_Restore") {
+        for name in names.sorted() where name.hasSuffix("_Restore") {
             if let type = VPhoneLaunchpadIPSW(fileName: name)?.productTypes.first {
                 return type
             }
