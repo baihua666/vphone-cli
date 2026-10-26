@@ -127,7 +127,7 @@ struct VPhoneCustomFirmwareInstaller {
     /// other account can reach them while they are mounted, and staged copies
     /// can be handed to patch tools by path: nobody else can change a
     /// component of a path under it.
-    private struct WorkDirectory {
+    struct WorkDirectory {
         let name: String
         let url: URL
         let directory: VPhoneConfinedDirectory
@@ -478,18 +478,10 @@ struct VPhoneCustomFirmwareInstaller {
                 try stageOTASystemApps(restore: restore, system: systemRoot, work: work, owner: callerUID)
                 priorGuest = []
             }
-            // A receipt or a selected kernel patch is not proof of the bytes
-            // that actually boot. Imported VMs may have neither record.
-            let needsHypervisorCheck = plan == nil || !Set(plan?.enabledPatches ?? [])
-                .union(priorGuest).isDisjoint(with: FirmwarePatchSetCatalog.hypervisorConcealmentPatches)
-            let hypervisorRenamed: Bool? = needsHypervisorCheck
-                ? try installedKernelHypervisorRenamed(volumes: volumes, work: work) : nil
-            if let plan, let hypervisorRenamed,
-               !FirmwareGuestPatchResolution.hypervisorGuestMatchesKernel(
-                   enabled: Set(plan.enabledPatches), kernelRenamed: hypervisorRenamed
-               ) {
-                throw ValidationError("Guest hypervisor patches do not match the installed kernel. Update the kernel and its paired selection together; guest files were not committed.")
-            }
+            let hypervisorRenamed = try VPhoneLegacyGuestRepairHooks.prepare(
+                plan: plan.map { Set($0.enabledPatches) }, priorGuest: priorGuest,
+                readKernel: { try installedKernelHypervisorRenamed(volumes: volumes, work: work) }
+            )
             switch mode {
             case .kernelUpdate:
                 break // handled by runKernelUpdate, never reached here
@@ -1236,7 +1228,7 @@ struct VPhoneCustomFirmwareInstaller {
 
     /// Open a mounted guest volume's root and confirm the expected device is
     /// what is mounted there.
-    private func openGuestVolume(_ name: String, device: String, in work: WorkDirectory) throws
+    func openGuestVolume(_ name: String, device: String, in work: WorkDirectory) throws
         -> VPhoneConfinedDirectory
     {
         let root = try work.directory.mountedVolume(name)
@@ -1248,42 +1240,6 @@ struct VPhoneCustomFirmwareInstaller {
     }
 
     // MARK: - System volume
-
-    /// Read the installed OID, never a freshly staged or receipt-only kernel.
-    private func installedKernelHypervisorRenamed(volumes: [[String: Any]], work: WorkDirectory) throws -> Bool {
-        guard let volume = volumes.first(where: { ($0["Roles"] as? [String])?.contains("Preboot") == true }),
-              let device = volume["DeviceIdentifier"] as? String else {
-            throw ValidationError("Cannot verify hypervisor patch pairing: no Preboot volume.")
-        }
-        let name = "preboot-hypervisor"
-        let mount = work.file(name)
-        _ = try work.directory.directory(name, create: true, mode: 0o700)
-        try tool("/sbin/mount_apfs", ["-o", "rdonly,nosuid,nodev,nobrowse", "/dev/\(device)", mount.path])
-        defer {
-            if (try? tool("/sbin/umount", [mount.path], quiet: true)) == nil {
-                _ = try? tool("/sbin/umount", ["-f", mount.path], quiet: true)
-            }
-        }
-        let payload: Data = try {
-            let root = try openGuestVolume(name, device: device, in: work)
-            let candidates = try root.entries().compactMap { entry -> String? in
-                let path = "\(entry)/System/Library/Caches/com.apple.kernelcaches/kernelcache"
-                guard (try? root.isDirectory(entry)) == true, (try? root.isRegularFile(path)) == true else { return nil }
-                return path
-            }
-            guard candidates.count == 1, let path = candidates.first else {
-                throw ValidationError("Cannot verify hypervisor patch pairing: expected one installed kernelcache.")
-            }
-            let staged = work.file("hypervisor-kernel.im4p")
-            try root.readData(path).write(to: staged)
-            return try IM4PHandler.load(contentsOf: staged).payload
-        }()
-        guard let renamed = FirmwareGuestPatchResolution.kernelHypervisorRenamed(in: payload) else {
-            throw ValidationError("Cannot identify the installed hypervisor OID; refusing to guess a guest patch selection.")
-        }
-        print("[*] Installed kernel hypervisor OID: \(renamed ? "renamed" : "original"); guest patches must match")
-        return renamed
-    }
 
     /// Apply the guest half of an install, both directions: every guest patch
     /// the plan turns on is written, and every one it leaves off is reverted
@@ -1330,12 +1286,16 @@ struct VPhoneCustomFirmwareInstaller {
         var failures: [String] = []
 
         // Whether the VM's plan (its guest half re-resolved from the current
-        // selection) turned this guest patch on. A legacy import keeps its
-        // recorded opt-ins, with hypervisor patches matched to the real kernel.
+        // selection) turned this guest patch on. The local hook may override
+        // the original fallback for a VM without a plan.
         func on(_ identifier: String) -> Bool {
             guard let plan else {
-                return FirmwareGuestPatchResolution.legacyEnabled(identifier, priorGuest: priorGuest,
-                    kernelHypervisorRenamed: kernelHypervisorRenamed)
+                if let override = VPhoneLegacyGuestRepairHooks.legacyEnabled(identifier, priorGuest: priorGuest,
+                    kernelHypervisorRenamed: kernelHypervisorRenamed) { return override }
+                return !FirmwareGuestSystemPatchSet.settingsRowPatches.contains(identifier)
+                    && identifier != FirmwareGuestSystemPatchSet.gyroscope
+                    && identifier != FirmwareGuestSystemPatchSet.accelerometer
+                    && identifier != FirmwareGuestSystemPatchSet.attitude
             }
             guard plan.isEnabled(identifier) else {
                 print("  [·] \(identifier): off in preset \(plan.presetIdentifier)")
@@ -2181,8 +2141,9 @@ struct VPhoneCustomFirmwareInstaller {
         failures: inout [String],
     ) throws {
         func enabled(_ id: String) -> Bool {
-            plan?.isEnabled(id) ?? FirmwareGuestPatchResolution.legacyEnabled(id, priorGuest: priorGuest,
+            plan?.isEnabled(id) ?? VPhoneLegacyGuestRepairHooks.legacyEnabled(id, priorGuest: priorGuest,
                 kernelHypervisorRenamed: kernelHypervisorRenamed)
+                ?? !FirmwareGuestSystemPatchSet.settingsRowPatches.contains(id)
         }
         func requireBootstrap(_ id: String, error: any Error) throws {
             if id == FirmwareGuestSystemPatchSet.arm64eX1CacheBootstrap {
@@ -2197,7 +2158,7 @@ struct VPhoneCustomFirmwareInstaller {
         var revertable: [String] = []
         for entry in dyld {
             let want = enabled(entry.id)
-            let had = priorGuest.contains(entry.id) || recorded.contains(entry.id)
+            let had = VPhoneLegacyGuestRepairHooks.wasApplied(prior: priorGuest.contains(entry.id), undo: recorded.contains(entry.id))
             switch (want, had) {
             case (true, true):
                 // Already applied; leave it, no scan — unless the bytes on disk
@@ -2263,14 +2224,8 @@ struct VPhoneCustomFirmwareInstaller {
                 }
             }
         }
-        let hypervisor = "dyld-exp-hv_vmm"
-        let hadHypervisor = priorGuest.contains(hypervisor) || recorded.contains(hypervisor)
-        if hadHypervisor != live.contains(hypervisor) {
-            // Hardware answers derived from the old query name persist on Data.
-            // Only the running guest can invalidate that FileVault-backed cache.
-            try system.writeFile(FirmwareGuestPatchResolution.mobileGestaltInvalidationMarker,
-                contents: Data(UUID().uuidString.utf8), mode: 0o644, owner: Self.guestOwner)
-            print("  [+] MobileGestalt cache invalidation scheduled for the hypervisor state change; restart after the first boot")
+        try VPhoneLegacyGuestRepairHooks.didFinishDyld(prior: priorGuest, recorded: recorded, live: live) { path, data in
+            try system.writeFile(path, contents: data, mode: 0o644, owner: Self.guestOwner)
         }
     }
 
@@ -2322,8 +2277,7 @@ struct VPhoneCustomFirmwareInstaller {
     /// A preset that cannot be resolved from the bundled sets — one naming an
     /// external `.vphonepatchset` — leaves the plan as it is: root loads no
     /// external set, so it cannot re-resolve such a selection and must not guess.
-    /// A VM with no plan stays nil; the verified legacy policy preserves its
-    /// existing opt-ins and matches hypervisor guest patches to its kernel.
+    /// A VM with no plan stays nil; the guest pass owns its legacy fallback.
     private func resolveGuestSelection(
         _ plan: VPhoneVirtualMachinePatchPlan?,
         in bundleDirectory: VPhoneConfinedDirectory,
@@ -2364,14 +2318,14 @@ struct VPhoneCustomFirmwareInstaller {
     /// The plan `fw patch` wrote into the VM, or nil when it never ran with one.
     private func readPatchPlan(in bundleDirectory: VPhoneConfinedDirectory) -> VPhoneVirtualMachinePatchPlan? {
         guard let data = try? bundleDirectory.readData(VPhonePatchPresetStore.planFileName) else {
-            print("[*] No patch plan recorded; preserving recorded opt-ins and verifying hypervisor pairing")
+            print(VPhoneLegacyGuestRepairHooks.missingPlanMessage)
             return nil
         }
         guard let plan = try? PropertyListDecoder().decode(
             VPhoneVirtualMachinePatchPlan.self,
             from: data,
         ) else {
-            print("[!] \(VPhonePatchPresetStore.planFileName) is unreadable; using the verified legacy guest policy")
+            print(VPhoneLegacyGuestRepairHooks.unreadablePlanMessage)
             return nil
         }
         print("[*] Patch preset: \(plan.presetIdentifier)  (\(plan.enabledPatches.count) patches on)")
@@ -3142,10 +3096,10 @@ struct VPhoneCustomFirmwareInstaller {
         otaRestore: VPhoneConfinedDirectory? = nil,
     ) throws -> Set<String> {
         var live = Set<String>()
-        // Keep unrecorded experimental identity rewrites off on legacy imports.
+        // The local hook may override the original no-plan fallback.
         func enabled(_ identifier: String) -> Bool {
-            plan?.isEnabled(identifier) ?? FirmwareGuestPatchResolution.legacyEnabled(identifier,
-                priorGuest: priorGuest, kernelHypervisorRenamed: nil)
+            plan?.isEnabled(identifier) ?? VPhoneLegacyGuestRepairHooks.legacyEnabled(identifier,
+                priorGuest: priorGuest, kernelHypervisorRenamed: nil) ?? true
         }
 
         let identity = FirmwareGuestIdentityPatchSet.prebootDeviceTreeIdentity
@@ -3997,7 +3951,7 @@ struct VPhoneCustomFirmwareInstaller {
     }
 
     @discardableResult
-    private func tool(_ path: String, _ arguments: [String], quiet: Bool = false) throws -> String {
+    func tool(_ path: String, _ arguments: [String], quiet: Bool = false) throws -> String {
         let result = try VPhoneProcessRunner.runCapturing(URL(fileURLWithPath: path), arguments)
         if !quiet {
             if !result.stdout.isEmpty {

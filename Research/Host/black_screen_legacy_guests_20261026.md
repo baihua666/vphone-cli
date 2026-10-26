@@ -77,7 +77,7 @@
 - `VPhoneCustomFirmwareInstaller`：从私有磁盘克隆的 Preboot 只读提取实际 kernelcache，校验 NUL 分隔 OID。普通 guest 与 dyld、Preboot pass 共用 legacy 策略；undo 记录也作为真实已应用状态。状态改变后仅安排上述硬件能力缓存失效。
 - `patch-dsc-revert`：读取失败不能冒充没有日志；所有触及签名页 fully attested 后才移除 undo 记录。
 - `GuestMobileGestaltCache`：保留设备树时间失效逻辑，增加 hypervisor 修复标记，重建后的新缓存不会反复清理。跨 host/guest 路径有显式契约测试。
-- 这是既有通用更新/撤销逻辑的 bug 修复，不增加业务模块或实验开关，不新增补丁或改变 preset。没有新增内核指令补丁；现有 experimental hv_vmm 声明与选择开关保留。
+- 以上为最初部署修复的源码形态：未新增补丁或改变 preset，没有新增内核指令补丁；现有 experimental hv_vmm 声明与选择开关保留。后续维护隔离已增加具名编译开关，见下节，未替换本机已部署包。
 
 ### 构建、测试与部署
 
@@ -113,3 +113,13 @@
 证据：本工作树 `.build/legacy-guest-repair/`，含 red/green/final tests、完整构建日志、helper 安装与更新输出、两台修前/修后应用与容器清单、实际宿主帧、两次启动 health 状态、配置/绑定备份及签名 seal。快照在各自 VM 的 Snapshots 内。
 
 最终空闲验收：2 号回到主屏幕后无输入 250 秒，3 号最终 Core 冷启动后无输入 865 秒，均有真实宿主帧、screen_off=false、locked=false。两台均确认 Auto-Lock=Never，最终 Core/guestEnvironment 身份一致。再次检查 1 号 boot_session_uuid 与最初只读取证一致，证实未重启；两台修前快照仍在。39 项最终回归、缓存真实文件测试、最终已安装 Core deep strict 签名全部通过。本次构建中间文件的可选清理被工具拒绝（不允许 rm -f 类命令），未绕过限制，构建缓存保留。
+
+## 后续维护隔离（源码整理，未部署）
+
+用户要求本地改动易维护、尽量通过 Hook 隔离。已将 legacy 策略、内核读取适配和 guest 修复标记判断移入各所属 target 的 `Customizations/LegacyGuestRepair/`。上游 `FirmwareGuestPatchResolution.swift` 恢复原样，安装器和缓存原入口仅保留静态调用；不是动态注入。宿主使用闭包复用既有受限读取/写入能力，guest Hook 只读，删除和重启状态仍归原模块。
+
+编译条件 `VPHONE_CUSTOM_LEGACY_GUEST_REPAIR` 在 CLI / FirmwarePatcher / 测试与 guest 的既有 target 配置默认开启；`VPHONE_LEGACY_GUEST_REPAIR=` 可关闭，StageBundle 显式传递到嵌套构建。关闭时不读内核、不读修复标记、不写 guest 标记，并恢复原 no-plan 策略。签名页完整性检查作为通用修正仍留在原代码，不受此本地策略开关控制。
+
+开启的 39 项回归、关闭的 34 项基础回归、guest 两种编译状态测试及关闭宿主 Hook 的零读取/零写入测试通过。完整构建与签名证据位于 `.build/legacy-guest-isolation/`；维护、停用和移除方式见 [静态 Hook 维护说明](../../Documents/Guides/legacy-guest-repair-customization.md)。本轮不安装新包、不改变 VM 绑定或 guest，不把源码开关当作已部署系统回退。
+
+最终完整 VPhone Debug 构建的开关两态均通过 bundle admission 和 deep strict 签名；实际 CLI / vphoned 的标记字串随开关出现或消失，确认嵌套构建没有吞掉空值。仅供本地测试的 ON seal 为 `9e7ad669610ff6f413d27d1ad5d19d6ddd27624324018c60590930944fb9dbfe`，OFF seal 为 `324a75499c2a25923af46dbcfd69b3d8c0c177d82a169cb86343f4e2cd8f106c`。验证期间发现 Xcode 不导出空构建设置，已增加非空前缀转发，并重做完整两态构建，而非仅根据 build 成功判定关闭有效。`verification.json` 记录实际包核对；已安装 `1da558c7` seal 和所有实例的 Core / guestEnvironment 绑定与本轮前一致。新产物未安装、未发布。

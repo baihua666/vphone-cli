@@ -33,8 +33,6 @@ import Foundation
 enum GuestMobileGestaltCache {
     static let cachePath =
         "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
-    // Cross-process contract with FirmwareGuestPatchResolution; not app data.
-    static let hypervisorMarker = "/System/Library/Caches/com.vphone.MobileGestalt.invalidate"
     /// The Preboot volume. The tree the guest boots is
     /// `<boot manifest hash>/usr/standalone/firmware/devicetree.img4` in it,
     /// the same file `cfw install` and `cfw update-environment` patch.
@@ -46,30 +44,23 @@ enum GuestMobileGestaltCache {
     // MARK: - Startup
 
     static func dropIfStaleOnStartup() {
+        guard let cache = modificationTime(cachePath) else { return }
         let trees = (try? FileManager.default.contentsOfDirectory(atPath: preboot))?
             .map { "\(preboot)/\($0)/usr/standalone/firmware/devicetree.img4" }
             .filter { modificationTime($0) != nil } ?? []
-        guard trees.count == 1 else {
+        guard trees.count == 1, let tree = modificationTime(trees[0]) else {
             NSLog("vphoned: MobileGestalt cache: found %ld device trees in %@, left the cache alone", trees.count, preboot)
             return
         }
-        guard dropIfOlder(cache: cachePath, sources: [trees[0], hypervisorMarker]) else { return }
+        guard isEarlier(cache, than: tree) || GuestLegacyGuestRepairHooks.needsInvalidation(cache: cachePath) else { return }
+        guard unlink(cachePath) == 0 || errno == ENOENT else {
+            NSLog("vphoned: MobileGestalt cache: cannot remove %@: %@", cachePath, String(cString: strerror(errno)))
+            return
+        }
         if let session = bootSession() {
             try? Data(session.utf8).write(to: URL(fileURLWithPath: dropMarker), options: .atomic)
         }
-        NSLog("vphoned: MobileGestalt cache predates the device tree or hypervisor repair, removed it; a restart makes the new answers take effect")
-    }
-
-    /// Sources written by the stopped-guest installer invalidate only older
-    /// hardware answers. A cache rebuilt after the repair is left alone.
-    static func dropIfOlder(cache path: String, sources: [String]) -> Bool {
-        guard let cache = modificationTime(path),
-              sources.compactMap(modificationTime).contains(where: { isEarlier(cache, than: $0) }) else { return false }
-        guard unlink(path) == 0 || errno == ENOENT else {
-            NSLog("vphoned: MobileGestalt cache: cannot remove %@: %@", path, String(cString: strerror(errno)))
-            return false
-        }
-        return true
+        NSLog("vphoned: MobileGestalt cache predates the device tree or a repair, removed it; a restart makes the new answers take effect")
     }
 
     /// True when vphoned dropped the cache during this boot: the guest has

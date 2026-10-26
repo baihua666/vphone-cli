@@ -4400,3 +4400,5 @@ of the same names do not override it.
 回退源码不等于回退已修复 guest；2/3 均保留停机快照和原绑定，可按官方快照恢复流程恢复同一时刻的 Disk、SEP 和 NVRAM。本轮先 3 号验收，再处理 2 号，保留应用数据；实际结果见 Research/Host/black_screen_legacy_guests_20261026.md。
 
 补充实测：撤销 hv_vmm 字符串后仍需失效旧 MobileGestalt 能力缓存。现将该失效处理接在既有补丁状态切换后；复用 vphoned 启动时缓存校验及 restart_pending，不增加独立 patch ID、preset 或公开协议。3 号手工备份缓存的单变量验证成功，2 号使用最终 Core 自动失效、二次冷启动后出图，原应用和 Data 容器目录保留。最终本机包为 2.13.4-local.1da558c7；未公开发布。
+
+后续按用户要求将本地策略隔离到各 target 的 `Customizations/LegacyGuestRepair/`，通过静态 Hook 和默认开启的 `VPHONE_CUSTOM_LEGACY_GUEST_REPAIR` 接入；原补丁选择器恢复上游实现。此为源码结构调整，不新增二进制补丁、patch ID 或 preset，不安装/回退任何现有 guest。通用 DSC 签名完整性修正保留在原撤销代码。编译开关不撤销已写入系统，维护说明见 `Documents/Guides/legacy-guest-repair-customization.md`。

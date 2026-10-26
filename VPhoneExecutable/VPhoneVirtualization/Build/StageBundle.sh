@@ -18,8 +18,12 @@ location_app="$bundle/Contents/Helpers/VPhoneLocation.app"
 # Xcode exports the bundle target's SDK and package paths to build phases. Nested
 # xcodebuild must resolve each project's own graph, especially the iOS daemon.
 build_project() {
+    # Xcode omits empty build settings from the environment. A nonempty prefix
+    # preserves an explicit OFF value when forwarding to nested projects.
+    local repair_condition="${VPHONE_LEGACY_GUEST_REPAIR_FORWARD:?}"
     /usr/bin/env -i HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" \
-        PATH="/usr/bin:/bin:/usr/sbin:/sbin" /usr/bin/xcodebuild "$@"
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin" /usr/bin/xcodebuild "$@" \
+        "VPHONE_LEGACY_GUEST_REPAIR=${repair_condition#condition:}"
 }
 
 build_project -project "$root/VPhoneExecutable/VPhoneCommand/VPhoneRestore/VPhoneRestore.xcodeproj" \
