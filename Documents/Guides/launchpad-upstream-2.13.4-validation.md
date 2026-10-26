@@ -24,3 +24,17 @@
 - 构建测试日志保留在本机 `/tmp/vphone-upstream-*.log`、`/tmp/vphone-sync-*.log`。首次 Release 测试因未启用测试访问失败，改用 Debug 后通过；首次签名因上述重复键失败，去重后通过。
 
 现有五台的配置与停止状态基线保存于本地 `.build/upstream-sync-evidence/vms-before.json`。部署和验收后再次核对 CPU、内存、网络、身份及 Core/guest/boot-chain 绑定。
+
+## 本机部署与真实验收（2026-10-26）
+
+- 合并源码：`130e90761419b43fddc796e198cd781db0b17909`。App 2.13.4 / 修订 5，内部 Apple Development 签名，未公证；Helper 21 经用户系统认证后就绪。
+- Core：`2.13.4-local.666ac4da`。安装、执行策略和主机预检通过，成为新实例默认 Core；原五台不改绑。
+- 本机 Xcode 27 在脚本签名之后再次处理 Info.plist，导致完整构建返回成功但最终签名失效。构建完成后用原 `StageBundle.sh` 重新封装并签名，`ValidateBundle.sh` 和 `codesign --verify --strict --deep` 均通过。发布 ZIP 保存该最终 seal，源码 hash 为 `130e9076`，没有 dirty 标记。没有改动虚拟机逻辑来绕过此检查。
+- 在主 APP「文件 → 导入」导入已校验的干净归档，得到专用测试来源 `image-clean-20261024`；仅将此新导入对象的宿主绑定改为新 Core。
+- 主 APP「克隆 → 新的设备身份」创建 `upstream-check-20261026` 成功，没有旧版 SIGTRAP。源 UDID `0000FE01-9A56968F9288091A`，克隆 UDID `0000FE01-F1AC9E45913EB962`。
+- 主 APP 启动测试副本成功，等待客体命令在 15 秒后确认就绪，`device.info` 成功，真实窗口显示 iPhone 桌面和 NAT 地址。
+- 停止后仅对测试副本 Disk.img 临时设置模式 000，主 APP 启动失败、返回停止状态，日志记录权限错误和退出码 1；恢复原模式 0777 后再次点击启动，客体就绪且桌面恢复。不改磁盘内容，不重复导入。
+- 再次逐项比较五台业务实例的绑定文件 SHA-256、CPU、内存、网络、UDID、启动设置、Core/guest/boot-chain 和停止状态，全部与部署前一致。
+- 镜像 `26.6.2-r2` 仅更新分发修订及匹配宿主 Core；归档 SHA-256 仍为 `20707f45165d68de6766f365e6b23bd9d4e12aa904f2a6ea1419c7350ee56adf`，客体环境/引导链仍为原 2.8.0。不会将本次结果表述为已更新客体或重新编译镜像。
+
+以上为本机已有权限环境验收，不代替另一台干净 Mac 的恢复模式、Gatekeeper 与首次权限流程。线上下载及四步向导的发布后检查单独记录，不能以主窗口导入测试替代。
