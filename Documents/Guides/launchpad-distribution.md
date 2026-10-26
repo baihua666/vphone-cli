@@ -203,9 +203,9 @@ GitHub 对附件/CDN 的网络限制仍可能存在；本改动消除的是 REST
 
 用户已选择仅保留最新线上 Release。版本管理仍保留 APP 修订、Core seal、镜像 id/version/revision 与每台实例的来源记录；新清单 `previousTags: []`。历史遍历保留为旧目录兼容能力，不表示继续保留历史二进制。新版本通过真实下载和启动验收后，使用 `scripts/prune-releases.zsh` 清理旧产品 Release；该开发机工具使用已登录的 gh，APP 的更新检查仍不使用 GitHub REST API。完整顺序见镜像发布指南第 7 节。
 
-### 2026-10-26：主 APP 四步首次使用向导（源码开发版，尚未发布）
+### 2026-10-26：主 APP 四步首次使用向导（r4 草稿，创建验收阻塞）
 
-此更新尚未包含在已发布的 r3 DMG，也未替换本机 `/Applications` 内的 APP。
+此更新已部署到本机 `/Applications/vphone-launchpad.app`，App 基线 2.8.0、修订 4；源码为 `9d521d3bbe748b08b2e70f99b92e2873186b00d6`。发布及真实验收结果统一记录在 [r4 向导验收](launchpad-wizard-r4-validation.md)。
 主窗口「版本与镜像」与首次打开使用同一向导，依次展示：
 
 1. **权限设置**：说明开发者工具、Helper 管理员认证及系统设置边界；直接打开既有主机设置，并可重新检查。完成状态使用实时主机检查结果。
@@ -219,4 +219,4 @@ GitHub 对附件/CDN 的网络限制仍可能存在；本改动消除的是 REST
 
 实现只涉及 `VPhoneLaunchpad/Distribution/` 和独立 `Integrations/Distribution` 状态模块；Core、CLI、guest、Helper 和实例绑定格式不变。继续使用默认开启的 `VPHONE_CUSTOM_DISTRIBUTION`，定义位置仍为 `VPhoneLaunchpad/Configuration/VPhoneLaunchpad.xcconfig`；设置 `VPHONE_DISTRIBUTION=` 即关闭向导组装及其操作，恢复原有基础入口。没有新增编译开关、后台任务或永久状态文件；回退本次界面与状态模块不会更改已有实例。
 
-验证：Distribution 的 25 项测试通过，覆盖失败后重试、镜像/实例/资料库状态隔离、取消与继续，以及真实文件下载中断后的分片复用与完整校验；Launchpad Debug 启用/关闭分发宏构建均通过。未在本轮进行签名部署、真实 UI 点击或新 Mac 首装验收；此前 r3 的真实整机验收不冒充本轮新向导的现场测试。
+验证：Distribution 的 25 项测试通过，覆盖失败后重试、镜像/实例/资料库状态隔离、取消与继续，以及真实文件下载中断后的分片复用与完整校验；Launchpad Debug 启用/关闭分发宏构建均通过。本轮已完成内部签名部署及真实 UI 的权限检查、镜像缓存读取失败重试、暂停恢复、无效名称及空间不足校验；具体创建启动及发布结果见上述验收记录。本机升级验收不代替另一台干净 Mac 的首次系统授权与首次 Core 安装。
