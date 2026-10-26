@@ -129,6 +129,7 @@ final class VPhoneDistributionModel {
         let scope = launchScope(using: model)
         run {
             try await self.performStep(.launch, scope: scope) {
+                self.status = "检查创建条件…"
                 guard self.receiptError.isEmpty else { throw DistributionError(self.receiptError) }
                 guard model.host.requiredPassed else { throw DistributionError("请先完成第一步主机设置，再继续创建") }
                 let root = model.machines.libraryRoot
@@ -177,6 +178,7 @@ final class VPhoneDistributionModel {
         let scope = launchScope(using: model)
         run {
             try await self.performStep(.launch, scope: scope) {
+                self.status = "重新启动已导入实例并检查客体…"
                 await model.machines.refresh()
                 try await self.start(path, using: model)
                 self.status = "\(path.name) 客体已就绪"

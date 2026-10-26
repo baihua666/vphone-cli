@@ -46,6 +46,7 @@ extension VPhoneDistributionModel {
     func recheckPermissions(using model: VPhoneLaunchpadModel) {
         run {
             try await self.performStep(.permissions, scope: "host") {
+                self.status = "重新检查权限与主机环境…"
                 await model.refreshHost()
                 guard model.host.requiredPassed else {
                     throw DistributionError("主机检查尚未通过。请打开主机设置处理未通过的项目，然后重新检查。")
@@ -56,6 +57,7 @@ extension VPhoneDistributionModel {
     }
     func fetchImage(_ image: DistributionImage, catalog: DistributionCatalog) async throws -> URL {
         try await performStep(.image, scope: image.cacheKey) {
+            self.status = "下载并校验镜像…已有缓存将先校验，请稍候。"
             self.canPause = true
             defer { self.canPause = false }
             return try await self.downloads.image(image, tag: catalog.tag, progress: self.progress)
