@@ -5,84 +5,110 @@ import VPhoneDistribution
 struct VPhoneDistributionView: View {
     @Environment(VPhoneLaunchpadModel.self) private var platform
     @Environment(\.openWindow) private var openWindow
+    private var distribution: VPhoneDistributionModel { platform.distribution }
+    private var permissionsReady: Bool { platform.host.requiredPassed }
+    private var coreReady: Bool { distribution.stepState(.core, using: platform) == .completed }
+
     var body: some View {
-        @Bindable var distribution = platform.distribution
+        @Bindable var distribution = distribution
         VStack(alignment: .leading) {
             HStack {
                 Text("开始使用与版本更新").font(.title2)
                 Spacer()
-                Button("检查更新") { distribution.check() }.disabled(distribution.busy)
+                Button("检查更新／重试") { distribution.check() }.disabled(distribution.busy)
                 Button("稍后设置") {
                     UserDefaults.standard.set(true, forKey: "distribution.setupSeen")
                     NSApp.keyWindow?.close()
                 }.disabled(distribution.busy)
             }.padding()
             Form {
-                Section("1 · 主机准备") {
-                    LabeledContent("当前主机", value: platform.host.requiredPassed ? "检查通过" : "需要完成设置")
-                    Text("需要实体 Apple Silicon Mac。首次可能需要管理员认证或在恢复模式调整 Research Guests 设置；重启后可继续。")
+                Section {
+                    let completed = [DistributionSetupProgress.Step.permissions, .core, .image, .launch]
+                        .filter { distribution.stepState($0, using: platform) == .completed }.count
+                    Text("准备进度：\(completed) / 4 步已完成").font(.headline)
+                    Text("只需安装主 APP，Core 和镜像均由此向导在线下载。按下面四步完成准备；不需要手动下载、拼接镜像或使用命令行。")
+                    Text("需要实体 Apple Silicon Mac、本机 APFS 资料库和管理员权限。当前镜像约 11.61 GB，建议开始前预留 90 GiB 空闲空间；实际要求以所选镜像为准。")
                         .font(.caption).foregroundStyle(.secondary)
-                    Button("打开主机设置") { openWindow(id: "main"); platform.present(.hostSetup) }
+                    Link("完整安装说明", destination: URL(string: "https://github.com/baihua666/vphone-cli/blob/tb_dev/Documents/Guides/launchpad-internal-user-guide.md")!)
                 }
-                Section("2 · App 与 Core 版本") {
-                    Text(distribution.appStatus)
+                Section {
+                    stepStatus(.permissions)
+                    Text("打开主机设置，允许开发者工具访问，并按提示安装 Helper；管理员密码只输入 macOS 系统弹窗。返回后点击重新检查。")
+                    Text("未公证内部版的首次打开许可需在系统设置中确认。若 Core 检查要求 Research Guests 设置，需在恢复模式操作，重启后回到此处继续；APP 不能代替系统授权。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button("打开主机设置") { openWindow(id: "main"); platform.present(.hostSetup) }
+                        Button("重新检查权限") { distribution.recheckPermissions(using: platform) }
+                            .disabled(distribution.busy || platform.host.isChecking)
+                    }
+                    Text("主机检查：\(platform.host.passedRequiredCount) / \(platform.host.required.count) 项通过")
+                        .font(.caption)
+                } header: { Text("1 · 权限设置") }
+                Section {
+                    stepStatus(.core)
                     Picker("发行版本", selection: $distribution.selectedTag) {
                         Text("请选择").tag("")
                         ForEach(distribution.catalogs, id: \.tag) { catalog in
                             Text("\(catalog.tag) · App 修订 \(catalog.app.revision)").tag(catalog.tag)
                         }
                     }.disabled(distribution.busy)
-                    if let catalog = distribution.selected {
-                        if catalog.app.signingMode == .internalDevelopment {
-                            Text("内部开发签名版（未公证）：首次打开可能需要在系统设置中允许；Helper 仍需管理员认证。").font(.caption).foregroundStyle(.secondary)
-                        }
-                        LabeledContent("官方基线", value: catalog.app.baseline)
+                    if let catalog = distribution.setupCatalog {
                         LabeledContent("匹配 Core", value: catalog.core.version)
-                        HStack {
-                            Button("下载 App 更新安装包") { distribution.downloadApp() }.disabled(distribution.busy)
-                            Button("安装匹配 Core") { distribution.installCore(using: platform) }
-                                .disabled(distribution.busy || !platform.canInstallBundles || platform.bundles.isUsable(catalog.core.version))
-                        }
+                        Text("Core 是运行组件，不是 iPhone 镜像。点击下方按钮后自动下载、校验并通过 Helper 安装；不会改绑已有实例。")
+                        Button(coreReady ? "Core 已就绪" : "安装匹配 Core／重试") {
+                            distribution.installCore(using: platform)
+                        }.disabled(distribution.busy || !permissionsReady || !platform.canInstallBundles || coreReady)
+                    } else {
+                        Text("请先点击窗口顶部的“检查更新／重试”获取发行目录。")
                     }
-                    if let installer = distribution.installer {
-                        Button("在 Finder 中显示安装包") { NSWorkspace.shared.activateFileViewerSelecting([installer]) }
-                        Text("安装前正常停止实例并退出 Launchpad，保留旧 app。此操作不会自动替换运行中的程序。")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Section("3 · 镜像版本库与创建实例") {
+                    if !permissionsReady { Text("请先完成第 1 步权限设置。").foregroundStyle(.secondary) }
+                } header: { Text("2 · Core 安装") }
+                Section {
+                    stepStatus(.image)
                     Picker("镜像版本（全部发行版）", selection: $distribution.selectedImageID) {
                         Text("请选择").tag("")
                         ForEach(distribution.imageVersions) { version in
                             Text("\(version.image.title) · \(version.image.version)（修订 \(version.image.revision)）").tag(version.id)
                         }
                     }.disabled(distribution.busy)
-                    if !distribution.catalogs.isEmpty && distribution.imageVersions.isEmpty {
-                        Text("尚未发布镜像。可在主窗口通过“＋”从固件新建或导入已有镜像；发布镜像后点击“检查更新”即可显示。")
-                    }
                     if let image = distribution.image {
                         LabeledContent("所需 Core", value: image.coreVersion)
-                        LabeledContent("Core 状态", value: platform.bundles.isUsable(image.coreVersion) ? "已就绪" : "创建时自动下载并安装，可能需要管理员认证")
-                        LabeledContent("镜像来源", value: distribution.imageVersion?.catalog.tag ?? "")
-                        LabeledContent("导入所需可用空间", value: ByteCountFormatter.string(fromByteCount: image.expandedBytes * 2 + 1_073_741_824, countStyle: .file))
                         LabeledContent("下载大小", value: ByteCountFormatter.string(fromByteCount: image.archiveBytes, countStyle: .file))
-                        LabeledContent("目标资料库", value: platform.machines.libraryRoot)
-                        TextField("新实例名称", text: $distribution.machineName).disabled(distribution.busy)
-                        Text("使用新设备身份；模板更新只创建新实例，不升级或覆盖已有实例的磁盘。")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            Button("仅下载／继续下载") { distribution.downloadImage() }.disabled(distribution.busy)
-                            Button("创建并启动新虚拟机") { distribution.installImage(using: platform) }
-                                .disabled(distribution.busy || !platform.host.requiredPassed || (!platform.bundles.isUsable(image.coreVersion) && !platform.canInstallBundles) || distribution.machineName.isEmpty)
-                        }
+                        LabeledContent("导入所需可用空间", value: ByteCountFormatter.string(fromByteCount: image.expandedBytes * 2 + 1_073_741_824, countStyle: .file))
+                        Text("APP 自动下载所有分片、合并并校验。可暂停后继续，已校验分片会复用；不需要到 Release 页面逐个下载。重新打开 APP 后需重新校验缓存，才能显示本步完成。")
+                        Button("下载镜像／继续／重试") { distribution.downloadImage() }
+                            .disabled(distribution.busy || !permissionsReady || !coreReady)
+                    } else {
+                        Text("尚无可用镜像。请检查更新；已有完整镜像归档也可从主窗口“＋ → 导入…”导入。")
                     }
-                    if !platform.host.requiredPassed {
-                        Text("请先完成第 1 步主机设置；完成后可继续，无需手动安装 Core。").font(.caption).foregroundStyle(.secondary)
-                    } else if let image = distribution.image, !platform.bundles.isUsable(image.coreVersion), !platform.canInstallBundles {
-                        Text("请在主机设置中完成 Helper 和开发者工具授权，才能自动安装 Core。").font(.caption).foregroundStyle(.secondary)
+                    if !coreReady { Text("请先完成第 2 步 Core 安装。").foregroundStyle(.secondary) }
+                } header: { Text("3 · 镜像下载") }
+                Section {
+                    stepStatus(.launch)
+                    LabeledContent("目标资料库", value: platform.machines.libraryRoot)
+                    TextField("新实例名称", text: $distribution.machineName).disabled(distribution.busy)
+                    Text("名称只用英文字母、数字、点、横线或下划线，且不能与现有实例重名。创建时使用新设备身份，不覆盖已有磁盘。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if distribution.importedMachine(using: platform) != nil {
+                        Text("当前实例已导入。可直接启动并检查客体，不需要再次下载或导入。")
+                        Button("重试启动已导入实例") { distribution.retryStart(using: platform) }
+                            .disabled(distribution.busy || !permissionsReady || !coreReady)
+                    } else {
+                        Text("完成下载后点击创建；也可直接点击下方按钮，APP 会先完成镜像下载校验，再导入并启动。等待显示“已启动且客体就绪”后，检查 iPhone 桌面及网络。")
+                        Button("创建并启动新虚拟机") { distribution.installImage(using: platform) }
+                            .disabled(distribution.busy || !permissionsReady || !coreReady || distribution.image == nil || distribution.machineName.isEmpty)
                     }
-                    if distribution.createdMachine != nil {
-                        Button("重试启动已导入实例") { distribution.retryStart(using: platform) }.disabled(distribution.busy)
+                    Text("导入期间请勿退出 APP、拔盘或让 Mac 休眠。完成后可在主列表正常启动、停止实例。重开 APP 后，请从主列表启动已创建的实例；本步完成表示本次已通过启动检查，不代表实例会始终运行。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } header: { Text("4 · 创建启动") }
+                Section("后续 App 更新") {
+                    Text(distribution.appStatus)
+                    Text("内部开发签名版未公证。安装更新前先停止实例并退出 APP；更新包不会自动替换正在运行的程序。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("下载 App 更新安装包") { distribution.downloadApp() }
+                        .disabled(distribution.busy || distribution.selected == nil)
+                    if let installer = distribution.installer {
+                        Button("在 Finder 中显示安装包") { NSWorkspace.shared.activateFileViewerSelecting([installer]) }
                     }
                 }
                 if !distribution.receipts.isEmpty {
@@ -92,7 +118,7 @@ struct VPhoneDistributionView: View {
                             VStack(alignment: .leading) {
                                 Text("\(receipt.imageID) · \(receipt.imageVersion)")
                                 Text(receipt.machinePath).font(.caption).textSelection(.enabled)
-                                Text(newer.map { "有新模板 \($0.version)，可在镜像版本库选择并创建新实例" } ?? "未发现更新模板（这是导入记录，不代表当前客体系统版本）")
+                                Text(newer.map { "有新模板 \($0.version)，可选择并创建新实例" } ?? "未发现更新模板（这是导入记录，不代表当前客体系统版本）")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -108,8 +134,27 @@ struct VPhoneDistributionView: View {
             }.padding()
         }
         .frame(minWidth: 720, minHeight: 650)
+        .onChange(of: distribution.selectedTag) {
+            if distribution.imageVersion?.catalog.tag != distribution.selectedTag {
+                distribution.selectedImageID = distribution.imageVersions.first { $0.catalog.tag == distribution.selectedTag }?.id ?? ""
+            }
+        }
+        .onChange(of: distribution.selectedImageID) {
+            if let tag = distribution.imageVersion?.catalog.tag { distribution.selectedTag = tag }
+        }
         .task { if distribution.catalogs.isEmpty && !distribution.busy { distribution.check() } }
+    }
 
+    @ViewBuilder private func stepStatus(_ step: DistributionSetupProgress.Step) -> some View {
+        switch distribution.stepState(step, using: platform) {
+        case .pending: Label("未完成", systemImage: "circle").foregroundStyle(.secondary)
+        case .running: Label("进行中", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(.blue)
+        case .completed: Label("已完成", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .paused: Label("已暂停，可继续", systemImage: "pause.circle").foregroundStyle(.orange)
+        case let .failed(message):
+            Label("失败，可重试", systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+        }
     }
 }
 #endif

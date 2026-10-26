@@ -19,10 +19,12 @@ final class VPhoneDistributionModel {
     var receipts: [DistributionReceipt] = []
     var receiptError = ""
     var createdMachine: VPhoneLaunchpadMachinePath?
+    var setup = DistributionSetupProgress()
+    var createdScope = ""
     private var task: Task<Void, Never>?
     static let root = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/vphone-launchpad/Distribution", isDirectory: true)
-    private let downloads = DistributionDownload(root: root.appendingPathComponent("Downloads", isDirectory: true))
+    let downloads = DistributionDownload(root: root.appendingPathComponent("Downloads", isDirectory: true))
     private var receiptFile: URL { Self.root.appendingPathComponent("images.json") }
     var selected: DistributionCatalog? { catalogs.first { $0.tag == selectedTag } }
     var imageVersions: [DistributionImageVersion] { DistributionImageVersion.all(in: catalogs) }
@@ -65,7 +67,7 @@ final class VPhoneDistributionModel {
             self.status = catalogs.isEmpty ? "尚无可用发行目录；发布工具上传正式 Release 后即可使用。" : "版本目录已更新；仅检查，不会替换 App、Core 或实例。"
         }
     }
-    private var progress: DistributionDownload.Progress {
+    var progress: DistributionDownload.Progress {
         { [weak self] message, done, total in
             Task { @MainActor in
                 self?.status = message
@@ -85,10 +87,15 @@ final class VPhoneDistributionModel {
         }
     }
     func installCore(using model: VPhoneLaunchpadModel) {
-        guard let catalog = selected else { return }
+        guard let catalog = setupCatalog else { return }
         run { try await self.ensureCore(catalog, using: model) }
     }
     private func ensureCore(_ catalog: DistributionCatalog, using model: VPhoneLaunchpadModel) async throws {
+        try await performStep(.core, scope: catalog.core.version) {
+            try await self.installRequiredCore(catalog, using: model)
+        }
+    }
+    private func installRequiredCore(_ catalog: DistributionCatalog, using model: VPhoneLaunchpadModel) async throws {
         guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= catalog.app.minimumMacOS else {
             throw DistributionError("此发行版本需要 macOS \(catalog.app.minimumMacOS) 或更新版本")
         }
@@ -111,60 +118,71 @@ final class VPhoneDistributionModel {
     func downloadImage() {
         guard let image, let catalog = imageVersion?.catalog else { return }
         run {
-            self.canPause = true
-            _ = try await self.downloads.image(image, tag: catalog.tag, progress: self.progress)
+            _ = try await self.fetchImage(image, catalog: catalog)
             self.status = "镜像 \(image.title) \(image.version) 下载并校验完成；已有实例保持不变。"
         }
     }
     func installImage(using model: VPhoneLaunchpadModel) {
         guard let image, let catalog = imageVersion?.catalog else { return }
+        if importedMachine(using: model) != nil { retryStart(using: model); return }
         let name = machineName
+        let scope = launchScope(using: model)
         run {
-            guard self.receiptError.isEmpty else { throw DistributionError(self.receiptError) }
-            guard model.host.requiredPassed else { throw DistributionError("请先完成第一步主机设置，再继续创建") }
-            let root = model.machines.libraryRoot
-            if let issue = VPhoneLaunchpadMachineLocations.problem(with: root) { throw DistributionError(issue) }
-            guard DistributionAsset.safeName(name), VPhoneLaunchpadMachineLocations.socketPathFits(root: root, name: name) else {
-                throw DistributionError("实例名无效或路径过长")
+            try await self.performStep(.launch, scope: scope) {
+                guard self.receiptError.isEmpty else { throw DistributionError(self.receiptError) }
+                guard model.host.requiredPassed else { throw DistributionError("请先完成第一步主机设置，再继续创建") }
+                let root = model.machines.libraryRoot
+                if let issue = VPhoneLaunchpadMachineLocations.problem(with: root) { throw DistributionError(issue) }
+                guard DistributionAsset.safeName(name), VPhoneLaunchpadMachineLocations.socketPathFits(root: root, name: name) else {
+                    throw DistributionError("实例名无效或路径过长")
+                }
+                let path = VPhoneLaunchpadMachinePath(libraryRoot: root, name: name)
+                guard !FileManager.default.fileExists(atPath: path.url.path) else { throw DistributionError("实例名称已存在，请使用新名称") }
+                let folder = URL(fileURLWithPath: root, isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try DistributionDownload.requireSpace(at: folder, bytes: image.expandedBytes * 2)
+                try await self.ensureCore(catalog, using: model)
+                guard let cli = model.bundles.commandLine(version: image.coreVersion) else {
+                    throw DistributionError("匹配的 Core 不可用，请检查主机设置后重试")
+                }
+                let archive = try await self.fetchImage(image, catalog: catalog)
+                try Task.checkCancellation()
+                self.canPause = false
+                self.status = "导入并创建独立身份，请勿退出 Launchpad…"
+                try DistributionDownload.requireSpace(at: folder, bytes: image.expandedBytes * 2)
+                _ = try await ImageInstallation.prepare(archive: archive, library: folder, name: name, finalize: { ready in
+                    let staged = VPhoneLaunchpadMachinePath(libraryRoot: ready.deletingLastPathComponent().path, name: ready.lastPathComponent)
+                    try VPhoneLaunchpadMachineBinding(bundle: image.coreVersion).save(to: staged)
+                }) { arguments in
+                    try await cli.runChecked(arguments)
+                }
+                self.createdMachine = path
+                self.createdScope = scope
+                // Keep the authoritative binding format; provenance stays in our own receipt.
+                try model.machines.bind(path, VPhoneLaunchpadMachineBinding(bundle: image.coreVersion))
+                self.receipts.append(DistributionReceipt(image: image, machinePath: path.url.path))
+                try FileManager.default.createDirectory(at: Self.root, withIntermediateDirectories: true)
+                do { try JSONEncoder().encode(self.receipts).write(to: self.receiptFile, options: .atomic) }
+                catch { self.receiptError = "实例已导入但安装记录保存失败：\(error.localizedDescription)"; throw error }
+                await model.machines.refresh()
+                self.status = "实例已导入，正在启动…"
+                try await self.start(path, using: model)
+                self.status = "\(name) 已启动且客体就绪；镜像版本 \(image.version)。"
+                UserDefaults.standard.set(true, forKey: "distribution.setupSeen")
             }
-            let path = VPhoneLaunchpadMachinePath(libraryRoot: root, name: name)
-            guard !FileManager.default.fileExists(atPath: path.url.path) else { throw DistributionError("实例名称已存在，请使用新名称") }
-            let folder = URL(fileURLWithPath: root, isDirectory: true)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try DistributionDownload.requireSpace(at: folder, bytes: image.expandedBytes * 2)
-            try await self.ensureCore(catalog, using: model)
-            guard let cli = model.bundles.commandLine(version: image.coreVersion) else {
-                throw DistributionError("匹配的 Core 不可用，请检查主机设置后重试")
-            }
-            self.canPause = true
-            let archive = try await self.downloads.image(image, tag: catalog.tag, progress: self.progress)
-            try Task.checkCancellation()
-            self.canPause = false
-            self.status = "导入并创建独立身份，请勿退出 Launchpad…"
-            try DistributionDownload.requireSpace(at: folder, bytes: image.expandedBytes * 2)
-            _ = try await ImageInstallation.prepare(archive: archive, library: folder, name: name, finalize: { ready in
-                let staged = VPhoneLaunchpadMachinePath(libraryRoot: ready.deletingLastPathComponent().path, name: ready.lastPathComponent)
-                try VPhoneLaunchpadMachineBinding(bundle: image.coreVersion).save(to: staged)
-            }) { arguments in
-                try await cli.runChecked(arguments)
-            }
-            self.createdMachine = path
-            // Keep the authoritative binding format; provenance stays in our own receipt.
-            try model.machines.bind(path, VPhoneLaunchpadMachineBinding(bundle: image.coreVersion))
-            self.receipts.append(DistributionReceipt(image: image, machinePath: path.url.path))
-            try FileManager.default.createDirectory(at: Self.root, withIntermediateDirectories: true)
-            do { try JSONEncoder().encode(self.receipts).write(to: self.receiptFile, options: .atomic) }
-            catch { self.receiptError = "实例已导入但安装记录保存失败：\(error.localizedDescription)"; throw error }
-            await model.machines.refresh()
-            self.status = "实例已导入，正在启动…"
-            try await self.start(path, using: model)
-            self.status = "\(name) 已启动且客体就绪；镜像版本 \(image.version)。"
-            UserDefaults.standard.set(true, forKey: "distribution.setupSeen")
         }
     }
     func retryStart(using model: VPhoneLaunchpadModel) {
-        guard let path = createdMachine else { return }
-        run { try await self.start(path, using: model); self.status = "\(path.name) 客体已就绪" }
+        guard let path = importedMachine(using: model) else { return }
+        let scope = launchScope(using: model)
+        run {
+            try await self.performStep(.launch, scope: scope) {
+                await model.machines.refresh()
+                try await self.start(path, using: model)
+                self.status = "\(path.name) 客体已就绪"
+                UserDefaults.standard.set(true, forKey: "distribution.setupSeen")
+            }
+        }
     }
     private func start(_ path: VPhoneLaunchpadMachinePath, using model: VPhoneLaunchpadModel) async throws {
         model.machines.actionError = nil
