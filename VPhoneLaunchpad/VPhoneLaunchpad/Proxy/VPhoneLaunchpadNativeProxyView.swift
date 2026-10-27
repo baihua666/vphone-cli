@@ -21,40 +21,38 @@ struct VPhoneLaunchpadNativeProxyView: View {
                 }
                 if value.isp { if let catalog { VPhoneLaunchpadLocationPicker(value: catalog) } }
                 else { TextField("美国 ZIP", text: $value.zip) }
-                Picker("物理网络", selection: $value.interface) {
-                    Text("Wi-Fi").tag("wifi"); Text("以太网").tag("ethernet")
-                }
-                TextField("检测使用的网卡", text: $value.device)
-                Text("例如 Wi-Fi 的 en1，请按此 Mac 的实际网卡填写。")
-                    .font(.caption).foregroundStyle(.secondary)
-                Button(NativeDecodoController.stagedWorkflowEnabled ? "检测所选地区出口" : "直连检测（不应用到虚拟机）") {
-                    Task { await value.testDirect(location: catalog?.selectedLocation) }
-                }.disabled(value.isp && catalog?.selectedLocation == nil)
-                HStack {
-                    if NativeDecodoController.stagedWorkflowEnabled {
-                        Button("保存并应用已检测出口") { Task { await perform { await value.saveTested(location: catalog?.selectedLocation) } } }
-                            .disabled(model.machines.state(of: machine.path) != .running || !value.canSaveTested(location: catalog?.selectedLocation))
-                    } else {
-                        Button(value.enabled ? "一键换 IP" : "应用原生出口") { Task { await perform { await value.rotate(location: catalog?.selectedLocation) } } }
-                            .disabled(!value.supported || (value.isp && catalog?.selectedLocation == nil))
-                    }
-                }
-                if NativeDecodoController.stagedWorkflowEnabled {
-                    Text("选择地区 → 检测候选 IP → 保存同一出口 → 虚拟机验证。再次检测会申请新的候选入口；保存前复检，失败不切换。")
+                DisclosureGroup("高级网络设置") {
+                    Picker("物理网络", selection: $value.interface) {
+                        Text("Wi-Fi").tag("wifi"); Text("以太网").tag("ethernet")
+                    }.onChange(of: value.interface) { _, _ in value.selectPhysicalInterface() }
+                    TextField("物理网卡", text: $value.device)
+                    Text("仅在自动选择的网络不正确时调整。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                Button("检测并应用") {
+                    Task { await perform { await value.rotate(location: catalog?.selectedLocation) } }
+                }.disabled(model.machines.state(of: machine.path) != .running || (value.isp && catalog?.selectedLocation == nil))
+                Text("自动检测所选地区，检测通过后保存并应用，再验证虚拟机实际出口。检测失败不会切换出口。")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("仅操作当前实例；切换会断开它的现有连接。ISP 换新端口，动态住宅使用独立五分钟会话。仅使用原生 HTTPS 代理，不自动改用其他网络方案。")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            if let configurationMessage = value.configurationMessage {
+                Section("设置结果") { Text(configurationMessage).textSelection(.enabled) }
+            }
             Section("检测结果") {
+                if !value.enabled {
+                    Text("原生出口尚未应用；当前公网 IP 仅表示虚拟机现有网络出口。请点击“检测并应用”。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 LabeledContent("代理入口", value: value.endpoint)
                 if let location = value.location {
-                    LabeledContent("候选出口 IP · 直连检测", value: location.ip)
+                    LabeledContent("代理出口 IP", value: location.ip)
                     LabeledContent("城市 / 地区", value: location.area)
                     LabeledContent("邮编 · Decodo/IPInfo", value: location.postal ?? "未知")
                 }
                 VPhoneLaunchpadCurrentIPView(path: machine.path)
-                Button("检测当前虚拟机 IP") { Task { await perform { await value.detectGuest() } } }
+                Button("重新检测") { Task { await perform { await value.detectGuest() } } }
                     .disabled(model.machines.state(of: machine.path) != .running)
                 if model.machines.state(of: machine.path) != .running {
                     Text("请先启动此虚拟机，再检测实际公网 IP。")
@@ -62,7 +60,7 @@ struct VPhoneLaunchpadNativeProxyView: View {
                     Button("启动此虚拟机") { Task { await model.machines.start(machine.path); await value.waitForCore() } }
                         .disabled(model.machines.state(of: machine.path) != .stopped)
                 }
-                Text(value.message).textSelection(.enabled)
+                if value.message != value.configurationMessage { Text(value.message).textSelection(.enabled) }
             }
             Text("实验范围：IPv4 TCP 与 DNS-over-HTTPS；其他 UDP/QUIC 被阻止，不绕过代理。当前运行的旧核心不会被自动更新或重启。")
                 .font(.caption).foregroundStyle(.secondary)

@@ -68,6 +68,7 @@ private actor WorkflowProbe {
         let probe = self.probe
         controller = NativeDecodoController(client: client, name: "a", probe: .init(
             validate: { _, _ in }, resolve: { _, _ in "192.0.2.2" }, probe: { config, _ in try await probe.run(config) }))
+        controller.device = "en1"
         controller.credentialsPath = credentialFile.path
     }
     func cleanup() {
@@ -140,5 +141,41 @@ private actor WorkflowProbe {
     await fixture.controller.saveTested()
     #expect(await fixture.runner.mutations == 1)
     #expect(fixture.controller.guestIP == "192.0.2.1")
+}
+#endif
+
+#if VPHONE_CUSTOM_NATIVE_PROXY_WORKFLOW
+@MainActor @Test func guestDetectionCannotHideCandidateFailure() async throws {
+    let fixture = try WorkflowFixture(); defer { fixture.cleanup() }
+    await fixture.probe.setFailure()
+    await fixture.controller.testDirect()
+    let failure = fixture.controller.configurationMessage
+    #expect(failure?.contains("407") == true)
+    #expect(!fixture.controller.canSaveTested(location: nil))
+    await fixture.controller.detectGuest()
+    #expect(fixture.controller.guestIP == "192.0.2.1")
+    #expect(fixture.controller.configurationMessage == failure)
+}
+#endif
+
+#if VPHONE_CUSTOM_NATIVE_PROXY_WORKFLOW
+@MainActor @Test func singleActionTestsAppliesSameEndpointAndVerifiesGuest() async throws {
+    let fixture = try WorkflowFixture(); defer { fixture.cleanup() }
+    await fixture.controller.rotate()
+    let configs = await fixture.probe.configs
+    #expect(configs.count == 1)
+    #expect(await fixture.runner.saved?.port == configs.first?.port)
+    #expect(await fixture.runner.mutations == 1)
+    #expect(fixture.controller.guestIP == "192.0.2.1")
+    #expect(fixture.controller.message.contains("一致"))
+}
+
+@MainActor @Test func singleActionDoesNotApplyWhenProviderDetectionFails() async throws {
+    let fixture = try WorkflowFixture(); defer { fixture.cleanup() }
+    await fixture.probe.setFailure()
+    await fixture.controller.rotate()
+    #expect(await fixture.runner.mutations == 0)
+    #expect(fixture.controller.guestIP == nil)
+    #expect(fixture.controller.message.contains("407"))
 }
 #endif

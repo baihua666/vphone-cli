@@ -12,6 +12,9 @@ let nativeProxyWorkflowSettings: [SwiftSetting] = ProcessInfo.processInfo.enviro
 let embeddedDecodoSettings: [SwiftSetting] = ProcessInfo.processInfo.environment["VPHONE_DISABLE_EMBEDDED_DECODO_CREDENTIALS"] == "1"
     ? [] : [.define("VPHONE_CUSTOM_EMBEDDED_DECODO_CREDENTIALS")]
 
+let nativeInterfaceSettings: [SwiftSetting] = ProcessInfo.processInfo.environment["VPHONE_DISABLE_NATIVE_INTERFACE_SELECTION"] == "1"
+    ? [] : [.define("VPHONE_CUSTOM_NATIVE_INTERFACE_SELECTION")]
+
 let package = Package(
     name: "vphone-ws",
     platforms: [.macOS(.v15)],
@@ -19,7 +22,7 @@ let package = Package(
     dependencies: [.package(url: "https://github.com/jpsim/Yams.git", exact: "6.1.0")],
     targets: [
         .target(name: "VPhoneWSCore", dependencies: ["Yams"], path: "Sources/VPhoneWSCore",
-                swiftSettings: decodoLocationSettings + nativeProxyWorkflowSettings + embeddedDecodoSettings),
+                swiftSettings: decodoLocationSettings + nativeProxyWorkflowSettings + embeddedDecodoSettings + nativeInterfaceSettings),
         .executableTarget(
             name: "vphone-ws",
             dependencies: ["VPhoneWSCore"],
@@ -27,6 +30,6 @@ let package = Package(
         .testTarget(
             name: "VPhoneWSCoreTests",
             dependencies: ["VPhoneWSCore"],
-            path: "tests/VPhoneWSCoreTests", swiftSettings: decodoLocationSettings + nativeProxyWorkflowSettings + embeddedDecodoSettings),
+            path: "tests/VPhoneWSCoreTests", swiftSettings: decodoLocationSettings + nativeProxyWorkflowSettings + embeddedDecodoSettings + nativeInterfaceSettings),
     ]
 )

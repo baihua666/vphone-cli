@@ -9,7 +9,7 @@ final class VPhoneLaunchpadFlywheelNetwork {
     var city = UserDefaults.standard.string(forKey: "flywheel.decodo.city") ?? "new_york_city" {
         didSet { UserDefaults.standard.set(city, forKey: "flywheel.decodo.city") }
     }
-    var device = UserDefaults.standard.string(forKey: "flywheel.decodo.device") ?? "en1" {
+    var device = UserDefaults.standard.string(forKey: "flywheel.decodo.device") ?? "" {
         didSet { UserDefaults.standard.set(device, forKey: "flywheel.decodo.device") }
     }
     var credentialsPath = UserDefaults.standard.string(forKey: "flywheel.decodo.credentialsPath")
@@ -126,7 +126,7 @@ final class VPhoneLaunchpadFlywheelNetwork {
                         let native = NativeDecodoController(client: guest.client, name: machine.name)
                         native.credentialsPath = credentialsPath
                         native.city = city
-                        native.device = device
+                        if !device.isEmpty { native.device = device }
                         await native.refresh()
                         guard native.supported else { throw VPhoneFlywheelError("当前运行核心不支持原生 DECODO；请先在代理出口中配置 Clash / DECODO 后重试。") }
                         await native.rotate()

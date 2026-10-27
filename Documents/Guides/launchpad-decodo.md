@@ -106,3 +106,11 @@ App 的具名静态启动 Hook 将缺少的两个文件写入当前用户 `~/.vp
 Launchpad 的检查网络、准备出口、打开业务网页与代理面板共用按实例路径保存的实测 IP / 检测时间。操作开始时清除旧结果，成功后更新；失败不把旧 IP 当作当前结果。URL 参数行与操作完成提示不再保存或显示另一份 IP。Clash / 原生代理应用和换 IP 完成后，以 guest 只读检测刷新共享结果；独立入口直连检测不覆盖 guest 结果。
 
 验证：VPhoneLaunchpad Debug 构建通过，`zsh VPhoneLaunchpad/Tests/FlywheelWebActionTests.sh` 通过，包含时间更新、实例隔离、打开网页后同步、失败清除以及现有 RPC/实例校验回归。本轮没有操作运行中 VM、切换代理或替换已安装 app；运行中的管理界面仍为旧版，需在允许更新管理 app 的窗口部署后验证视觉效果。
+
+### 2026-10-27：原生代理简化操作与本机网卡选择
+
+原生页主操作为「检测并应用」：复用 `NativeDecodoController.rotate`，先检测新入口，成功后保存同一个配置并调用实例绑定的 CLI，再读取 guest 实测出口。检测失败不调用应用接口。「重新检测」只读取当前出口，不换 IP。设置结果单独保留，避免被只读检测的成功消息覆盖。高级网卡设置折叠；不再要求用户分别检测候选、保存、检测 guest。
+
+`VPHONE_CUSTOM_NATIVE_INTERFACE_SELECTION` 在 `VPhoneWorkstation/Package.swift` 为业务 target 和测试集中定义，默认开启；以 `VPHONE_DISABLE_NATIVE_INTERFACE_SELECTION=1` 关闭。开启时使用 SystemConfiguration 枚举当前 Mac 的 Wi-Fi/以太网和 IPv4 状态，优先活动主接口，排除 utun；不从另一台 Mac 保存的接口类型覆盖本机选择。FLYWHEEL 无本机显式设置时也保留自动结果。关闭后恢复原来的手动 en1 默认，不改变已有代理、Core 或 guest。删除此能力需移除 `NativePhysicalNetwork.swift`、对应测试、Package 设置及 controller 条件组装点。
+
+验证：单操作成功使用同一已检测端口，供应商检测失败不应用，Wi-Fi en0/en1、USB Ethernet、utun 主路由及无可用接口均有隔离测试。另一台 Mac 无远程连接，未获得真实候选失败日志，尚未完成目标机器验收；自动网卡修复不能证明其所有网络故障已解决。

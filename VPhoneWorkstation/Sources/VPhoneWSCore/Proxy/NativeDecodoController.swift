@@ -10,7 +10,12 @@ public final class NativeDecodoController {
     public var city = "new_york_city"
     public var zip = "10001"
     public var interface = "wifi"
+    #if VPHONE_CUSTOM_NATIVE_INTERFACE_SELECTION
+    public var device = ""
+    #else
     public var device = "en1"
+    #endif
+    public private(set) var configurationMessage: String?
     public private(set) var supported = false
     public private(set) var enabled = false
     public private(set) var busy = false
@@ -41,10 +46,24 @@ public final class NativeDecodoController {
         #endif
     }
 
-    public init(client: VPhoneCLIClient, name: String) { self.client = client; self.name = name }
+    public init(client: VPhoneCLIClient, name: String) {
+        self.client = client; self.name = name
+        #if VPHONE_CUSTOM_NATIVE_INTERFACE_SELECTION
+        if let physical = NativePhysicalNetwork.preferred() {
+            interface = physical.kind; device = physical.device
+        }
+        #endif
+    }
+
+    public func selectPhysicalInterface() {
+        #if VPHONE_CUSTOM_NATIVE_INTERFACE_SELECTION
+        device = NativePhysicalNetwork.preferred(kind: interface)?.device ?? ""
+        #endif
+    }
 
     init(client: VPhoneCLIClient, name: String, probe: NativeDecodoProbe) {
         self.client = client; self.name = name; self.probe = probe
+
     }
 
     public func canSaveTested(location: DecodoLocation?) -> Bool {
@@ -83,7 +102,9 @@ public final class NativeDecodoController {
         if let context = try? client.context(name: name),
            let config = try? NativeDecodoService.savedConfiguration(directory: context.directory) {
             isp = config.host == "isp.decodo.com"
+            #if !VPHONE_CUSTOM_NATIVE_INTERFACE_SELECTION
             interface = config.interface
+            #endif
             endpoint = "\(config.host):\(config.port)（已保存）"
         }
         do {
@@ -93,7 +114,9 @@ public final class NativeDecodoController {
             if let context = try? client.context(name: name),
                let config = try? NativeDecodoService.savedConfiguration(directory: context.directory) {
                 isp = config.host == "isp.decodo.com"
+                #if !VPHONE_CUSTOM_NATIVE_INTERFACE_SELECTION
                 interface = config.interface
+                #endif
             }
             message = supported ? "当前核心支持原生代理；选择选项不会立即切换。" : "当前核心尚不支持原生 HTTPS 代理，无法应用此方案。"
         } catch { supported = false; message = "无法读取运行核心能力：" + error.localizedDescription }
@@ -115,6 +138,8 @@ public final class NativeDecodoController {
 
     private func execute(apply: Bool, target: DecodoLocation?, useTested: Bool = false) async {
         guard !busy else { return }; busy = true; defer { busy = false }
+        configurationMessage = nil
+        defer { configurationMessage = message }
         location = nil; guestIP = nil
         var applied = false
         var reservedPort: Int?
@@ -131,7 +156,7 @@ public final class NativeDecodoController {
                 supported = status.nativeProxySupported == true
                 guard status.nativeProxySupported == true else { throw ProxyRouteError("此运行核心不支持原生代理，未修改任何出口") }
             }
-            guard device.range(of: #"^en[0-9]+$"#, options: .regularExpression) != nil else { throw ProxyRouteError("请指定物理网卡，例如 en1") }
+            guard device.range(of: #"^en[0-9]+$"#, options: .regularExpression) != nil else { throw ProxyRouteError("未找到可用的物理网络，请连接 Wi-Fi 或以太网后重试；也可在高级网络设置中选择网卡") }
             try probe.validate(device, interface)
             let credentials = try NativeDecodoService.credentials(path: credentialsPath)
             let occupied = try NativeDecodoService.occupiedPorts(context: context).union(Self.pendingPorts)
@@ -150,7 +175,7 @@ public final class NativeDecodoController {
                 isp: isp, city: city, zip: zip, interface: interface, location: target, occupied: occupied)
             #endif
             if isp { reservedPort = config.port; Self.pendingPorts.insert(config.port) }
-            message = "正在直连 Decodo 检测新入口…"
+            message = "正在检测所选地区的代理出口…"
             if !useTested { config.address = try await probe.resolve(config.host, device) }
             let detected = try await probe.probe(config, device)
             location = detected
@@ -171,14 +196,16 @@ public final class NativeDecodoController {
                 return
             }
             guard try client.context(name: name).executable == context.executable else { throw ProxyRouteError("实例核心绑定发生变化，未应用") }
+            message = "代理检测通过，正在保存并应用…"
             let file = try NativeDecodoService.save(config, context: context)
             try await client.setNativeProxy(name: name, path: file.path)
             applied = true; enabled = true
             endpoint = "\(config.host):\(config.port)"
+            message = "已应用，正在验证虚拟机实际出口…"
             let status = try await client.networkStatus(name: name, probe: true)
             guestIP = status.egress?.ip
             if guestIP == location?.ip { message = "已应用原生出口，虚拟机实测 IP 与 Decodo 一致。" }
-            else { message = "已应用；虚拟机检测尚未确认一致：\(status.egressError ?? guestIP ?? "未返回结果")。请重试当前虚拟机 IP 检测。" }
+            else { message = "已应用；虚拟机检测尚未确认一致：\(status.egressError ?? guestIP ?? "未返回结果")。请点击“重新检测”。" }
             if let target, target.kind == .city,
                DecodoLocation.token(location?.city ?? "") != DecodoLocation.token(target.city) {
                 message += " 实测城市与所选城市不同，不能视为地区定位通过。"
