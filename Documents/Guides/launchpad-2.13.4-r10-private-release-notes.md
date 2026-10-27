@@ -1,5 +1,9 @@
 # Launchpad 2.13.4 / 修订 10 — 私下分发
 
+> 分发决策更新：用户于 2026-10-27 明确要求将此预设账号构建直接发布到现有 GitHub Releases。以下私下传递、不公开上传及无法检查更新的说明记录此前决策，现已被覆盖。当前安装包为相同 r10，通过公开 Release 和 APP 检查更新分发；Core 未改，镜像不上传。
+
+下载与更新：[r10 Release](https://github.com/baihua666/vphone-cli/releases/tag/launchpad-2.13.4-r10)。
+
 2026-10-27。基于已提交的 r9（`2e89a40f3d2f0e9b0b1d7e287c4378e6680f5ffe`）整理本次 ARM Store 改动。官方产品基线仍为 2.13.4，Helper 内部构建号仍为 21。本次只生成内部开发签名 APP，不公证、不创建公开 Release、不上传安装包或镜像。
 
 ## 更新内容

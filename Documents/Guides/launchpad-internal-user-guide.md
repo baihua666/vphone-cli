@@ -1,6 +1,6 @@
 # VPhone Launchpad 安装与使用
 
-> 2026-10-27：ARM Store 静默登录的 2.13.4 / 修订 10 仅私下分发，不在公开 Release 下载。已取得私有 DMG 的用户按[私有版使用说明](launchpad-arm-store-login.md)安装与更新；下文公开下载链接不包含该预设账号功能。
+> 2026-10-27：ARM Store 静默登录版 2.13.4 / 修订 10 已按用户要求改为 GitHub Releases 分发。前往 [r10 下载](https://github.com/baihua666/vphone-cli/releases/tag/launchpad-2.13.4-r10)，或在 APP 中检查更新。安装包保留预设账号；Core 不变，镜像由本地目录管理。
 
 当前版本：**2.13.4 / 修订 7**。镜像文件只在线下管理，不再随 App 发布上传或在线下载。
 

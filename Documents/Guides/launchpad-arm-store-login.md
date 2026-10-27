@@ -1,10 +1,14 @@
-# ARM Store 私下分发版使用说明
+# ARM Store 内部测试版使用说明
 
-适用：Launchpad 2.13.4 修订 10 私下分发版。该安装包内置预设账号，按用户要求仅在线下传递，不上传公开 GitHub Releases。公开仓库只保存不含凭据的业务代码。
+> 分发决策更新：用户于 2026-10-27 明确要求将此预设账号构建直接发布到现有 GitHub Releases。以下私下传递、不公开上传及无法检查更新的说明记录此前决策，现已被覆盖。当前安装包为相同 r10，通过公开 Release 和 APP 检查更新分发；Core 未改，镜像不上传。
+
+下载与更新：[r10 Release](https://github.com/baihua666/vphone-cli/releases/tag/launchpad-2.13.4-r10)。
+
+适用：Launchpad 2.13.4 修订 10 私下分发版。该安装包内置预设账号，按用户最新要求直接在 GitHub Releases 分发。公开仓库只保存不含凭据的业务代码。
 
 ## 其它 Mac 安装与使用
 
-1. 从管理员取得 `vphone-launchpad-internalDevelopment-r10.dmg`，打开后将 APP 拖入 Applications。更新前正常退出旧 Launchpad；保留原资料库与实例。
+1. 从 r10 Release 下载 `vphone-launchpad-launchpad-2.13.4-r10.dmg`，打开后将 APP 拖入 Applications。更新前正常退出旧 Launchpad；保留原资料库与实例。
 2. 首次运行如被系统阻止，进入“系统设置 → 隐私与安全性 → 仍要打开”。这是未公证的开发签名版。按 APP 首次使用向导完成开发者工具权限和 Helper 管理员认证；密码只在 macOS 弹窗输入。
 3. 新 Mac 按[完整安装说明](launchpad-internal-user-guide.md)安装兼容 Core，从管理员提供的本地镜像目录导入并创建实例。已有 Mac 沿用原 Core 与实例；本次更新不要求升级 Core，也不包含镜像。
 4. 在主窗口启动目标虚拟机，打开工具栏“应用管理”，选择该实例，等待已安装列表读取成功。未选择、未启动或连接未就绪时，界面显示对应引导；不会猜测安装对象。
@@ -15,9 +19,9 @@
 
 官网密码登录可能跳转至 iOSGods 授权页，再返回 armconverter.com；这是本次已验收的预设账号流程，不复用 Chrome 的 Google 会话。验证码需用户处理，账号失效或网站流程改变可能需要重新构建更新。
 
-## 私有版本更新
+## 版本更新
 
-管理员私下提供新的 DMG，用户退出旧 APP 后覆盖 Applications 中的 APP。GitHub“检查更新”只能发现公开发行，**不会发现或下载这个私有修订**。本次没有私有更新服务器，不发布含预设账号的公开附件或发行清单。
+在 APP 中点击“检查更新”，发现 2.13.4 修订 10 后下载并安装；也可以从 Release 下载 DMG，退出旧 APP 后覆盖 Applications 中的 APP。更新沿用现有 GitHub 发行清单，无需新增服务器。
 
 ## 构建与维护
 
