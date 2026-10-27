@@ -91,9 +91,9 @@ Launchpad「ISP / Decodo 出口与换 IP」打开时同步官网地区，也可�
 
 ### 内置账号的私有安装包（2026-10-27）
 
-用户要求其它 Mac 安装后无需重复输入账号。内部打包时可设置 `VPHONE_DECODO_DEFAULTS_DIR`，指向包含 `decodo-account.json`（email/password）和 `decodo-isp.json`（username/password）的本机目录。打包器只提取这四个字段，在签名前写入 App 的 `Contents/Resources/DecodoPrivateDefaults/`；不复制 Public API Key、accessToken 或 refreshToken，也不将真实值写入源码或日志。此包只在线下交付，安装者可以提取内置凭据，因此不可上传公开 GitHub 发行。
+用户要求其它 Mac 安装后无需重复输入账号。内部打包时可设置 `VPHONE_DECODO_DEFAULTS_DIR`，指向包含 `decodo-account.json`（email/password）和 `decodo-isp.json`（username/password）的本机目录。打包器只提取这四个字段，在签名前写入 App 的 `Contents/Resources/DecodoPrivateDefaults/`；不复制 Public API Key、accessToken 或 refreshToken，也不将真实值写入源码或日志。默认仅线下交付；安装者可以提取内置凭据。2026-10-27 用户在获知该影响后明确要求上传修订 11，改为通过现有 GitHub 更新渠道分发该包，见 `Research/Host/launchpad_r11_publication_20261027.md`。
 
-App 的具名静态启动 Hook 将缺少的两个文件写入当前用户 `~/.vphone/`，权限 0600，保留已存在的配置。随后全部复用已有账号登录／续期、ISP 地区和原生代理流程，不改公共账号模块、CLI 或 Core。普通公开包没有私有资源，Hook 不创建文件；公共发布器在签名包验证阶段拒绝包含该资源目录的 App。
+App 的具名静态启动 Hook 将缺少的两个文件写入当前用户 `~/.vphone/`，权限 0600，保留已存在的配置。随后全部复用已有账号登录／续期、ISP 地区和原生代理流程，不改公共账号模块、CLI 或 Core。普通公开包没有私有资源，Hook 不创建文件；公共发布器默认拒绝包含该资源目录的 App。已获明确分发授权时，用 `VPHONE_APPROVED_ACCOUNT_DMG_SHA256` 指定本次确切安装包的摘要；缺失或不匹配仍拒绝，镜像禁止上传的规则不受影响。
 
 编译条件 `VPHONE_CUSTOM_DECODO_PRIVATE_DEFAULTS` 由 `VPhoneLaunchpad.xcconfig` 的 `VPHONE_DECODO_PRIVATE_DEFAULTS` 默认启用；设为空可关闭，此时启动调用和实现均编译移除。实现和测试分别位于 App 的 `Proxy/Customizations/DecodoPrivateDefaults/` 与 `Tests/DecodoPrivateDefaultsTests.swift`。移除时一并删除实现、启动接入点、宏和打包分支；公共发布的凭据拦截应保留。关闭宏不删除已写入用户目录的配置。
 
