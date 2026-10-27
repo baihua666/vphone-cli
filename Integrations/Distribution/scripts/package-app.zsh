@@ -24,7 +24,7 @@ mkdir -p "$output"
 # Optional environment override for machines without Developer.xcconfig.
 team_args=()
 [[ -z "${VPHONE_LAUNCHPAD_TEAM:-}" ]] || team_args+=("VPHONE_LAUNCHPAD_TEAM=$VPHONE_LAUNCHPAD_TEAM")
-# Preset credentials are permitted only in explicitly private internal artifacts.
+# Preserve the existing ARM Store preset build path when preparing a combined installer.
 if [[ -n "${VPHONE_ARM_STORE_PRESET_ACCOUNT:-}" ]]; then
   [[ "$mode" == internalDevelopment && "$VPHONE_ARM_STORE_PRESET_ACCOUNT" == VPHONE_CUSTOM_ARM_STORE_PRESET_ACCOUNT ]] || {
     print -u2 'Preset accounts require private internal distribution'; exit 2
@@ -35,6 +35,31 @@ xcodebuild -project VPhoneLaunchpad/VPhoneLaunchpad.xcodeproj -scheme VPhoneLaun
   -configuration Release -derivedDataPath "$output/DerivedData" -jobs 4 \
   "VPHONE_DISTRIBUTION_REVISION=$revision" "VPHONE_DISTRIBUTION_SIGNING=$mode" "${team_args[@]}" build
 app="$output/DerivedData/Build/Products/Release/vphone-launchpad.app"
+if [[ -n "${VPHONE_DECODO_DEFAULTS_DIR:-}" ]]; then
+  [[ "$mode" == internalDevelopment ]] || { print -u2 'Account defaults are private internal installers only'; exit 2; }
+  # Keep only login/proxy credentials, never copy live tokens or API keys.
+  (
+    umask 077
+    private_defaults="$app/Contents/Resources/DecodoPrivateDefaults"
+    mkdir "$private_defaults"
+    chmod 755 "$private_defaults"
+    xcrun swift - "$VPHONE_DECODO_DEFAULTS_DIR" "$private_defaults" <<'SWIFT'
+import Foundation
+let source = URL(fileURLWithPath: CommandLine.arguments[1])
+let destination = URL(fileURLWithPath: CommandLine.arguments[2])
+for (name, key) in [("decodo-account.json", "email"), ("decodo-isp.json", "username")] {
+    let data = try Data(contentsOf: source.appendingPathComponent(name))
+    let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    guard let user = object?[key] as? String, !user.isEmpty,
+          let password = object?["password"] as? String, !password.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
+    let output = try JSONSerialization.data(withJSONObject: [key: user, "password": password])
+    guard FileManager.default.createFile(atPath: destination.appendingPathComponent(name).path, contents: output,
+                                         attributes: [.posixPermissions: 0o644]) else { throw CocoaError(.fileWriteUnknown) }
+}
+SWIFT
+  )
+  print -- 'Private account defaults included. Do not upload this installer to public releases.'
+fi
 zsh VPhoneLaunchpad/Build/SignLaunchpad.sh "$app" "$identity"
 mkdir "$output/image"
 ditto "$app" "$output/image/vphone-launchpad.app"
