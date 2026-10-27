@@ -4,11 +4,12 @@ import Foundation
     static func main() async throws {
         let dmg = URL(fileURLWithPath: CommandLine.arguments[1])
         let destination = URL(fileURLWithPath: CommandLine.arguments[2])
-        let prepared = try await VPhoneLaunchpadAppUpdate.prepare(dmg: dmg, destination: destination, revision: 6, baseline: "2.13.4")
+        let revision = CommandLine.arguments.count > 3 ? Int(CommandLine.arguments[3])! : 6
+        let prepared = try await VPhoneLaunchpadAppUpdate.prepare(dmg: dmg, destination: destination, revision: revision, baseline: "2.13.4")
         defer { try? FileManager.default.removeItem(at: prepared.directory) }
         precondition(prepared.application != destination)
         precondition(prepared.directory.deletingLastPathComponent() == destination.deletingLastPathComponent())
-        try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: 6, baseline: "2.13.4", requirement: prepared.requirement)
+        try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: revision, baseline: "2.13.4", requirement: prepared.requirement)
         for hasReplacement in [false, true] {
             let root = prepared.directory.appendingPathComponent(UUID().uuidString)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -23,17 +24,17 @@ import Foundation
             precondition(restored == "old")
         }
         do {
-            try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: 7, baseline: "2.13.4", requirement: prepared.requirement)
+            try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: revision + 1, baseline: "2.13.4", requirement: prepared.requirement)
             fatalError("accepted a wrong revision")
         } catch {}
         do {
-            try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: 6, baseline: "2.13.4", requirement: "identifier another.app")
+            try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: revision, baseline: "2.13.4", requirement: "identifier another.app")
             fatalError("accepted a wrong signer identity")
         } catch {}
         let info = prepared.application.appendingPathComponent("Contents/Info.plist")
         var data = try Data(contentsOf: info); data.append(Data("\n".utf8)); try data.write(to: info)
         do {
-            try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: 6, baseline: "2.13.4", requirement: prepared.requirement)
+            try VPhoneLaunchpadAppUpdate.validate(prepared.application, revision: revision, baseline: "2.13.4", requirement: prepared.requirement)
             fatalError("accepted a tampered App")
         } catch {}
         let script = prepared.directory.appendingPathComponent("installer.zsh")

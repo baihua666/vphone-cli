@@ -7,4 +7,4 @@ xcrun swiftc -swift-version 6 -parse-as-library -D VPHONE_CUSTOM_DISTRIBUTION -D
   "$launchpad/VPhoneLaunchpad/Distribution/AppUpdate/VPhoneLaunchpadAppUpdate.swift" \
   "$launchpad/VPhoneLaunchpad/Distribution/AppUpdate/VPhoneLaunchpadAppUpdateInstaller.swift" \
   "$launchpad/Tests/AppUpdateTests.swift" -o "$temporary/tests"
-"$temporary/tests" "${1:?signed DMG}" "${2:?installed App}"
+"$temporary/tests" "${1:?signed DMG}" "${2:?installed App}" "${3:-6}"
