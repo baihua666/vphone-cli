@@ -20,7 +20,12 @@ struct VPhoneLaunchpadDecodoView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("代理出口 · \(machine.name)").font(.headline)
+            HStack {
+                Text("代理出口 · \(machine.name)").font(.headline)
+                Spacer()
+                Button("关闭", systemImage: "xmark") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
             Picker("网络方案", selection: $nativeSelected) {
                 Text("Clash · 现有方案").tag(false)
                 Text("原生 HTTPS · 实验").tag(true)
@@ -39,7 +44,6 @@ struct VPhoneLaunchpadDecodoView: View {
             } else {
                 ProgressView()
             }
-            HStack { Spacer(); Button("完成") { dismiss() }.disabled(controller?.busy == true || nativeController?.busy == true) }
         }
         .padding(20)
         .frame(width: 600, height: 650)
