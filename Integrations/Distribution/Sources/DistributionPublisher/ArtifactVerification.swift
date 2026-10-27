@@ -22,8 +22,13 @@ func verifyArtifacts(dmg: URL, core: URL, baseline: String, revision: Int, coreV
         if (try? command("/usr/bin/hdiutil", ["detach", mount.path])) != nil { try? FileManager.default.removeItem(at: mount) }
     }
     let app = mount.appendingPathComponent("vphone-launchpad.app")
-    guard !FileManager.default.fileExists(atPath: app.appendingPathComponent("Contents/Resources/DecodoPrivateDefaults").path) else {
-        throw DistributionError("安装包含私有 Decodo 账号，禁止上传公开发行；仅可线下交付。")
+    if FileManager.default.fileExists(atPath: app.appendingPathComponent("Contents/Resources/DecodoPrivateDefaults").path) {
+        // Public account distribution requires approval of this exact signed
+        // installer; an approval must not authorize a different future build.
+        guard let approved = ProcessInfo.processInfo.environment["VPHONE_APPROVED_ACCOUNT_DMG_SHA256"],
+              try DistributionDownload.digest(dmg) == approved else {
+            throw DistributionError("安装包含私有 Decodo 账号，禁止上传公开发行；用户明确批准后须用 VPHONE_APPROVED_ACCOUNT_DMG_SHA256 指定该包的精确 SHA-256。")
+        }
     }
     _ = try command("/usr/bin/codesign", ["--verify", "--strict", "--deep", "-R=anchor apple generic and identifier com.vphone.launchpad", app.path])
     if signing == .notarized { _ = try command("/usr/sbin/spctl", ["--assess", "--type", "execute", app.path]) }
