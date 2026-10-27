@@ -83,6 +83,31 @@ struct FlywheelWebActionTests {
         precondition(network.measurements[first.path] == nil)
         precondition(network.measurements[second.path]?.ip == "5.6.7.8")
 
+// Native detection already has a guest result. A second RPC must never gate its display.
+VPhoneLaunchpadGuestSocket.requests = []
+VPhoneLaunchpadGuestSocket.handler = { _ in throw VPhoneFlywheelError("second probe unavailable") }
+var nativeCalls = 0
+await network.performMeasured(on: first.path) {
+    nativeCalls += 1
+    precondition(network.measurements[first.path] == nil)
+    precondition(network.messages[first.path]?.contains("正在检测") == true)
+    return ("23.24.25.26", "检测完成，未修改代理。")
+}
+precondition(nativeCalls == 1)
+precondition(VPhoneLaunchpadGuestSocket.requests.isEmpty, "Do not repeat a completed guest probe")
+precondition(network.measurements[first.path]?.ip == "23.24.25.26", "Successful native detection must be displayed")
+for failure in ["Guest egress check timed out", "实例尚未运行"] {
+    await network.performMeasured(on: first.path) { (nil, failure) }
+    precondition(network.measurements[first.path] == nil, "Do not show a stale IP after failure")
+    precondition(network.messages[first.path] == failure, "Show the failure in the current IP view")
+}
+network.record("23.24.25.26", for: first.path)
+try await VPhoneLaunchpadFlywheelWebAction.shared.exclusively(on: second.path) {
+    await network.performMeasured(on: first.path) { preconditionFailure("Must not overlap") }
+    precondition(network.measurements[first.path]?.ip == "23.24.25.26")
+}
+precondition(network.measurements[second.path]?.ip == "5.6.7.8")
+
         var expectedURL = "https://business.example/?x=1&ip=23.24.25.26"
         func response(_ request: [String: Any]) throws -> [String: Any] {
             let result: [String: Any]

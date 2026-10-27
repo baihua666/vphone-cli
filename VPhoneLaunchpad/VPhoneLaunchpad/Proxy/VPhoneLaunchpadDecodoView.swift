@@ -13,6 +13,7 @@ struct VPhoneLaunchpadDecodoView: View {
     @Environment(VPhoneLaunchpadModel.self) private var model
     @State private var ispMode = true
     @State private var controller: DecodoProxyController?
+    @State private var nativeCatalog: DecodoProxyController?
     @State private var nativeController: NativeDecodoController?
     @State private var nativeSelected = false
     @State private var credentialsPath = DecodoLocalConfiguration.resolvedPath ?? DecodoLocalConfiguration.defaultPath
@@ -25,11 +26,11 @@ struct VPhoneLaunchpadDecodoView: View {
             }.pickerStyle(.segmented)
                 .disabled(nativeController?.busy == true || controller?.busy == true)
             if nativeSelected, let nativeController {
-                VPhoneLaunchpadNativeProxyView(value: nativeController, catalog: controller, machine: machine, perform: perform)
+                VPhoneLaunchpadNativeProxyView(value: nativeController, catalog: nativeCatalog, machine: machine, perform: NativeDecodoController.stagedWorkflowEnabled ? performNative : perform)
             } else if let controller {
                 if nativeController?.enabled == true {
-                    Text("此实例正在使用原生出口，请先明确切回 Clash，再操作原有代理配置。")
-                    Button("切回 Clash") { Task { await perform { await nativeController?.restoreClash() } } }
+                    Text("Clash 方案尚未启用。启用后使用此页的独立配置。")
+                    Button("启用 Clash 方案") { Task { await perform { await nativeController?.restoreClash() } } }
                         .disabled(nativeController?.busy == true)
                 }
                 form(controller)
@@ -53,12 +54,26 @@ struct VPhoneLaunchpadDecodoView: View {
             controller = value
             await value.refresh()
             await value.syncLocations()
-            if native.enabled { value.selectedLocation = native.configuredLocation(in: value.locations) }
+            let nativeLocations = DecodoProxyController(client: client, proxy: VPhoneLaunchpadProxyServices.proxy, name: machine.name)
+            nativeCatalog = nativeLocations
+            await nativeLocations.syncLocations()
+            if let saved = native.configuredLocation(in: nativeLocations.locations) {
+                nativeLocations.selectedLocation = saved
+                nativeSelected = true
+            }
             if value.route == nil && native.supported { nativeSelected = true }
             // No file is required when rotating an already configured session.
             if FileManager.default.fileExists(atPath: credentialsPath) {
                 value.loadCredentials(path: credentialsPath)
             }
+        }
+    }
+
+    private func performNative(_ operation: () async -> Void) async {
+        guard let nativeController else { return }
+        await VPhoneLaunchpadFlywheelNetwork.shared.performMeasured(on: machine.path) {
+            await operation()
+            return (nativeController.guestIP, nativeController.message)
         }
     }
 
