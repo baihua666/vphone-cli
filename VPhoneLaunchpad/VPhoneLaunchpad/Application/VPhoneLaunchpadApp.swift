@@ -14,6 +14,10 @@ struct VPhoneLaunchpadApp: App {
         // in it never opens the control socket, and after a crash AppKit
         // holds the launch at an alert about reopening windows.
         UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
+        #if VPHONE_CUSTOM_DECODO_PRIVATE_DEFAULTS
+        do { try VPhoneLaunchpadDecodoPrivateDefaults.install() }
+        catch { NSLog("Decodo defaults: %@", error.localizedDescription) }
+        #endif
     }
 
     var body: some Scene {

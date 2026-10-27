@@ -89,6 +89,16 @@ Launchpad「ISP / Decodo 出口与换 IP」打开时同步官网地区，也可�
 
 ## 原生网络备用方案（按能力检测的实验功能）
 
+### 内置账号的私有安装包（2026-10-27）
+
+用户要求其它 Mac 安装后无需重复输入账号。内部打包时可设置 `VPHONE_DECODO_DEFAULTS_DIR`，指向包含 `decodo-account.json`（email/password）和 `decodo-isp.json`（username/password）的本机目录。打包器只提取这四个字段，在签名前写入 App 的 `Contents/Resources/DecodoPrivateDefaults/`；不复制 Public API Key、accessToken 或 refreshToken，也不将真实值写入源码或日志。此包只在线下交付，安装者可以提取内置凭据，因此不可上传公开 GitHub 发行。
+
+App 的具名静态启动 Hook 将缺少的两个文件写入当前用户 `~/.vphone/`，权限 0600，保留已存在的配置。随后全部复用已有账号登录／续期、ISP 地区和原生代理流程，不改公共账号模块、CLI 或 Core。普通公开包没有私有资源，Hook 不创建文件；公共发布器在签名包验证阶段拒绝包含该资源目录的 App。
+
+编译条件 `VPHONE_CUSTOM_DECODO_PRIVATE_DEFAULTS` 由 `VPhoneLaunchpad.xcconfig` 的 `VPHONE_DECODO_PRIVATE_DEFAULTS` 默认启用；设为空可关闭，此时启动调用和实现均编译移除。实现和测试分别位于 App 的 `Proxy/Customizations/DecodoPrivateDefaults/` 与 `Tests/DecodoPrivateDefaultsTests.swift`。移除时一并删除实现、启动接入点、宏和打包分支；公共发布的凭据拦截应保留。关闭宏不删除已写入用户目录的配置。
+
+免输入不代表自动启动 VM、修改代理或迁移 Core。需要使用已支持原生出口的 Core，并根据实际设备选择网卡。首次代理应用和真实 guest 出口须在目标 Mac 验收。本机已验证无历史 token 的密码登录能获取 52 个 ISP 地区。
+
 代理出口页新增网络方案选择，Clash 原逻辑保留。原生 HTTPS 在每个 VM 的用户态网络中独立应用，不读取 Clash；提供直连检测、应用/换 IP 与明确切回 Clash。使用方法、版本及验收边界见 [原生代理说明](native-decodo-proxy.md)。当前运行的 2.8 实例不会被自动升级或改变出口。
 
 ### 2026-10-23：统一实测公网 IP 显示（源码验证，尚未部署）
