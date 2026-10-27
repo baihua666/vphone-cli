@@ -79,6 +79,19 @@ struct VPhoneLaunchpadApp: App {
             }
         }
 
+        WindowGroup("代理出口", id: "proxy-egress", for: URL.self) { $path in
+            VPhoneLaunchpadProxyWindow(path: path).environment(model)
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentMinSize)
+        .defaultWindowPlacement { _, context in
+            let available = context.defaultDisplay.visibleRect
+            return WindowPlacement(.center, size: CGSize(
+                width: min(600, available.width - 32), height: min(560, available.height - 56)))
+        }
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
         Window("FLYWHEEL", id: "flywheel") {
             VPhoneLaunchpadFlywheelWindow()
                 .environment(model)

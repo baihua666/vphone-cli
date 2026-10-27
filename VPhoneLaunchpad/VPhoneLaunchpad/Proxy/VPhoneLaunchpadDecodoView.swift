@@ -11,7 +11,6 @@ struct VPhoneLaunchpadDecodoView: View {
     let roots: [String]
     let isRunning: Bool
     @Environment(VPhoneLaunchpadModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
     @State private var ispMode = true
     @State private var controller: DecodoProxyController?
     @State private var nativeController: NativeDecodoController?
@@ -20,12 +19,6 @@ struct VPhoneLaunchpadDecodoView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("代理出口 · \(machine.name)").font(.headline)
-                Spacer()
-                Button("关闭", systemImage: "xmark") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-            }
             Picker("网络方案", selection: $nativeSelected) {
                 Text("Clash · 现有方案").tag(false)
                 Text("原生 HTTPS · 实验").tag(true)
@@ -46,7 +39,7 @@ struct VPhoneLaunchpadDecodoView: View {
             }
         }
         .padding(20)
-        .frame(width: 600, height: 650)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             guard controller == nil else { return }
             let store = VPhoneLaunchpadBundleStore.root
@@ -156,16 +149,18 @@ struct VPhoneLaunchpadDecodoView: View {
                     Text("尚无检测结果；代理入口名称不代表实际公网 IP。").foregroundStyle(.secondary)
                 }
             }
+            Section("状态") {
+                if value.busy { ProgressView().controlSize(.small) }
+                Text(value.message).font(.callout).textSelection(.enabled)
+                if !isRunning { Text("请先启动此虚拟机，再应用或更换出口。").foregroundStyle(.secondary) }
+                if !ispMode {
+                    Text("每台机器使用独立的五分钟 IP Lock 会话；点击换新会话才执行操作，不会定时断网。随机重复 IP 仍可能发生。ZIP 是区域筛选；此处验证 HTTPS/TCP 出口，不保证全部 App、DNS 或 UDP。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .disabled(value.busy)
-        if value.busy { ProgressView().controlSize(.small) }
-        Text(value.message).font(.callout).textSelection(.enabled)
-        if !isRunning { Text("请先启动此虚拟机，再应用或更换出口。").foregroundStyle(.secondary) }
-        if !ispMode {
-            Text("每台机器使用独立的五分钟 IP Lock 会话；点击换新会话才执行操作，不会定时断网。随机重复 IP 仍可能发生。ZIP 是区域筛选；此处验证 HTTPS/TCP 出口，不保证全部 App、DNS 或 UDP。")
-                .font(.caption).foregroundStyle(.secondary)
-        }
     }
 
     @ViewBuilder

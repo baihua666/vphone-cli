@@ -85,7 +85,7 @@ struct VPhoneLaunchpadMachineInspector: View {
     let machine: VPhoneLaunchpadMachine
     let onShowProgress: (VPhoneLaunchpadMachinePath) -> Void
     @Environment(VPhoneLaunchpadModel.self) private var model
-    @State private var showsDecodo = false
+    @Environment(\.openWindow) private var openWindow
     @State private var patchCatalog: VPhoneLaunchpadPatchCatalog?
     @State private var patchCatalogError: String?
     /// The machine the catalogue above was read for, so another machine's
@@ -194,13 +194,8 @@ struct VPhoneLaunchpadMachineInspector: View {
         }
 
 Section("代理出口") {
-    Button("ISP / Decodo 出口与换 IP…") { showsDecodo = true }
+    Button("ISP / Decodo 出口与换 IP…") { openWindow(id: "proxy-egress", value: machine.path.url) }
         .disabled(VPhoneLaunchpadFlywheelWebAction.shared.active != nil)
-        .sheet(isPresented: $showsDecodo) {
-            VPhoneLaunchpadDecodoView(machine: machine, roots: model.machines.roots,
-                isRunning: model.machines.state(of: machine.path) == .running)
-                .id(machine.path)
-        }
 }
 VPhoneLaunchpadFlywheelWebSection(machine: machine)
 
