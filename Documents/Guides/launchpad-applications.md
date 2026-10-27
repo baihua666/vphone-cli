@@ -2,14 +2,14 @@
 
 2026-10-23，本地测试功能。部署及真实验收见 [现场记录](../../Research/Host/launchpad_app_management_deployment_20261023.md)。
 
-首次在其它 Mac 使用前，按 [部署指南](launchpad-mac-setup.md) 配置签名、实例和 ARM 私有会话。
+首次在其它 Mac 使用前，按 [部署指南](launchpad-mac-setup.md) 配置签名和实例。ARM Store 新流程见[私下分发版说明](launchpad-arm-store-login.md)。
 
 ## 使用
 
 主窗口工具栏「应用管理」打开独立单实例窗口。默认扫描 Downloads 顶层与
 `~/Library/Application Support/vphone-launchpad/Applications`；导入 IPA 时校验并复制到应用库。
 显示包内名称、Bundle ID、真实版本与文件路径。选择目标后可读取已安装列表、安装本地包，
-或从 ARM Store 搜索并选择仅下载／下载并安装。下载可能消耗账户额度，复用有效的 0600 私有会话文件。
+或从 ARM Store 搜索并选择仅下载／下载并安装。下载可能消耗账户额度；私下分发版在 APP 内静默登录并复用 WebKit 会话，无需选择 Cookie 文件。
 搜索使用 Apple 应用目录（与 ARM Store 前端相同）；下载使用已有 ARM Store 下载器。
 商店标称版本与包内真实版本可能不同，以本地包及客体读回结果为准。
 

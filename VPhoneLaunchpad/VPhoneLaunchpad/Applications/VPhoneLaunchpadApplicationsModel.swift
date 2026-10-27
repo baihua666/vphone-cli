@@ -17,7 +17,7 @@ final class VPhoneLaunchpadApplicationsModel {
     var status = ""
     var query = ""
     var country = "us"
-    var cookieFile = UserDefaults.standard.string(forKey: "applications.cookieFile") ?? ""
+    let storeLogin = VPhoneARMStoreLogin()
     var machinePath = ""
     #if VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
     var memoryRetry: (app: VPhoneLocalApplication, machine: VPhoneLaunchpadMachine, reason: String)?
@@ -56,11 +56,18 @@ final class VPhoneLaunchpadApplicationsModel {
         status = "找到 \(online.count) 个应用；下载可用性以 ARM Store 返回为准"
     }
     func download(_ app: VPhoneStoreApplication) async throws {
-        guard !cookieFile.isEmpty else { throw VPhoneLaunchpadError("请先选择 ARM Store 私有会话文件。") }
-        UserDefaults.standard.set(cookieFile, forKey: "applications.cookieFile")
+        status = "正在自动登录 ARM Store…"
+        let (cookie, agent) = try await storeLogin.credentials(for: app)
         status = "正在请求 ARM Store、等待并下载 \(app.trackName)…"
         let destination = cache.appendingPathComponent("\(app.trackId)-\(app.version).ipa")
-        try await VPhoneApplicationLibrary.download(app, country: country, cookieFile: cookieFile, output: destination)
+        do {
+            try await VPhoneApplicationLibrary.download(app, country: country, sessionCookie: cookie, userAgent: agent, output: destination)
+        } catch let error as ARMStoreLoginRequired {
+            storeLogin.verified = false
+            storeLogin.message = error.localizedDescription
+            storeLogin.open()
+            throw error
+        }
         try await refresh()
         status = "下载完成，已加入本地应用。请核对包内版本后选择安装。"
     }

@@ -374,3 +374,6 @@ setup_logs/
 VPhoneLaunchpad/Configuration/Developer.xcconfig
 VPhoneLaunchpad/Configuration/DevelopmentDeveloper.xcconfig
 .claude/worktrees
+
+# Private distribution preset; compiled only by an explicit build flag.
+/VPhoneLaunchpad/VPhoneLaunchpad/Applications/VPhonePrivateARMStoreAccount.swift

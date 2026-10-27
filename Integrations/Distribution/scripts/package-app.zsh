@@ -24,6 +24,13 @@ mkdir -p "$output"
 # Optional environment override for machines without Developer.xcconfig.
 team_args=()
 [[ -z "${VPHONE_LAUNCHPAD_TEAM:-}" ]] || team_args+=("VPHONE_LAUNCHPAD_TEAM=$VPHONE_LAUNCHPAD_TEAM")
+# Preset credentials are permitted only in explicitly private internal artifacts.
+if [[ -n "${VPHONE_ARM_STORE_PRESET_ACCOUNT:-}" ]]; then
+  [[ "$mode" == internalDevelopment && "$VPHONE_ARM_STORE_PRESET_ACCOUNT" == VPHONE_CUSTOM_ARM_STORE_PRESET_ACCOUNT ]] || {
+    print -u2 'Preset accounts require private internal distribution'; exit 2
+  }
+  team_args+=("VPHONE_ARM_STORE_PRESET_ACCOUNT=$VPHONE_ARM_STORE_PRESET_ACCOUNT")
+fi
 xcodebuild -project VPhoneLaunchpad/VPhoneLaunchpad.xcodeproj -scheme VPhoneLaunchpad \
   -configuration Release -derivedDataPath "$output/DerivedData" -jobs 4 \
   "VPHONE_DISTRIBUTION_REVISION=$revision" "VPHONE_DISTRIBUTION_SIGNING=$mode" "${team_args[@]}" build

@@ -76,6 +76,16 @@ public enum VPhoneApplicationLibrary {
         return try JSONDecoder().decode(Result.self, from: data).results
     }
 
+    public static func download(_ app: VPhoneStoreApplication, country: String, sessionCookie: String,
+                                userAgent: String, output: URL) async throws {
+        let options = try Options(["--app-id", String(app.trackId), "--bundle-id", app.bundleId,
+            "--version", app.version, "--country", country, "--download", "--output", output.path], hasSession: true)
+        do { try await Client(options, sessionCookie: sessionCookie, userAgent: userAgent).run() }
+        catch let error as ARMStoreLoginRequired { throw error }
+        catch let error as DownloadError { throw error }
+        catch { throw fail("下载或文件操作失败，请检查网络后重试；可打开 ARM Store 登录窗口检查账号状态。") }
+    }
+
     public static func download(_ app: VPhoneStoreApplication, country: String, cookieFile: String, output: URL) async throws {
         let options = try Options(["--app-id", String(app.trackId), "--bundle-id", app.bundleId,
             "--version", app.version, "--country", country, "--cookie-file", cookieFile,

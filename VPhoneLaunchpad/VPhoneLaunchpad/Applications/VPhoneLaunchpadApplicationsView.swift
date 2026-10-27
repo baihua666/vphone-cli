@@ -28,6 +28,15 @@ struct VPhoneLaunchpadApplicationsView: View {
                     if let machine { Task { try? await model.refreshInstalled(machine) } }
                 }.disabled(machine == nil || model.installedLoading)
             }.disabled(model.busy)
+            if machine == nil {
+                Label(platform.machines.machines.isEmpty
+                      ? "尚无虚拟机：请先在主窗口创建或导入虚拟机并启动，再回到这里选择目标。当前只能下载。"
+                      : "请在上方选择目标虚拟机并启动，读取已安装列表后即可安装。未选择时只能下载。",
+                      systemImage: "info.circle").foregroundStyle(.orange)
+            } else if !model.installedLoaded && !model.installedLoading {
+                Text("请先在主窗口启动所选虚拟机，再点击“读取已安装”；连接成功后显示安装按钮。")
+                    .foregroundStyle(.secondary)
+            }
             if model.installedLoading { Text("正在读取目标机已安装版本…").font(.caption).foregroundStyle(.secondary) }
             if !model.installedError.isEmpty { Text(model.installedError).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             Picker("应用来源", selection: $tab) {
@@ -67,10 +76,11 @@ struct VPhoneLaunchpadApplicationsView: View {
             } else {
                 HStack {
                     Text("ARM Store 会话")
-                    Text(model.cookieFile.isEmpty ? "未配置" : URL(fileURLWithPath: model.cookieFile).lastPathComponent)
-                    Button("选择私有文件…") { chooseSession() }.disabled(model.busy)
+                    Text(model.storeLogin.verified ? "已登录" : "待登录／验证")
+                    Button("登录／管理账号…") { model.storeLogin.open() }.disabled(model.busy)
+                    Button("退出登录") { model.storeLogin.logout() }.disabled(model.busy || model.storeLogin.checking || model.storeLogin.authenticating)
                 }
-                Text("复用有效登录会话；下载可能消耗账户额度。需登录或验证码时请在 ARM Store 正常完成。")
+                Text("在 APP 内登录后即可下载；会话仅保存在当前 Mac。下载可能消耗账户额度。")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("只显示目标机未安装的应用", isOn: $model.hideInstalled).disabled(!model.installedLoaded || model.busy)
                 List(model.online.filter { !model.hideInstalled || model.installed[$0.bundleId] == nil }) { app in
@@ -108,6 +118,9 @@ struct VPhoneLaunchpadApplicationsView: View {
             if state == .running, let machine { Task { try? await model.refreshInstalled(machine) } }
             else if state == .stopped { model.clearInstalled() }
         }
+        .sheet(isPresented: Binding(get: { model.storeLogin.presented }, set: { model.storeLogin.presented = $0 })) {
+            VPhoneARMStoreLoginView(login: model.storeLogin)
+        }
         .fileImporter(isPresented: $importFile, allowedContentTypes: [.data]) { result in
             if case let .success(url) = result { model.perform { try await model.importPackage(url) } }
         }
@@ -130,7 +143,7 @@ struct VPhoneLaunchpadApplicationsView: View {
         #endif
         .alert("从 ARM Store 下载？", isPresented: Binding(get: { downloadCandidate != nil }, set: { if !$0 { downloadCandidate = nil } })) {
             Button("取消", role: .cancel) { downloadCandidate = nil }
-            if let machine {
+            if let machine, model.installedLoaded {
                 Button("下载并安装到 \(machine.name)") {
                     if let app = downloadCandidate { model.perform { try await model.downloadAndInstall(app, machine: machine) } }
                     downloadCandidate = nil
@@ -163,13 +176,6 @@ struct VPhoneLaunchpadApplicationsView: View {
             Button("安装…") { installCandidate = app }.disabled(machine == nil || model.busy)
         } else {
             Text(machine == nil ? "请选择目标虚拟机" : "等待读取安装状态").foregroundStyle(.secondary)
-        }
-    }
-    private func chooseSession() {
-        let panel = NSOpenPanel(); panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url {
-            model.cookieFile = url.path
-            UserDefaults.standard.set(url.path, forKey: "applications.cookieFile")
         }
     }
 }

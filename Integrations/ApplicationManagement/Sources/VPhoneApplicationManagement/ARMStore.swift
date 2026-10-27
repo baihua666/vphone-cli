@@ -11,7 +11,7 @@ struct Options {
     let cookie: String?, output: String?
     let download: Bool, historical: Bool
     let timeout: TimeInterval
-    init(_ args: [String]) throws {
+    init(_ args: [String], hasSession: Bool = false) throws {
         var values: [String: String] = [:]
         var flags = Set<String>()
         var i = 0
@@ -37,7 +37,7 @@ struct Options {
         else { throw fail("需要有效 app-id、bundle-id、version、两位 country；timeout 为 3–3600 秒") }
         timeout = seconds; cookie = values["--cookie-file"]; output = values["--output"]
         download = flags.contains("--download"); historical = flags.contains("--historical")
-        if download && (cookie == nil || output == nil) { throw fail("下载需要 --cookie-file 和 --output") }
+        if download && ((!hasSession && cookie == nil) || output == nil) { throw fail("下载需要 --cookie-file 和 --output") }
         if let output, !output.hasPrefix("/") || !output.hasSuffix(".ipa") || FileManager.default.fileExists(atPath: output) {
             throw fail("output 必须是尚不存在的绝对 .ipa 路径")
         }
@@ -66,9 +66,12 @@ struct Client {
     let cookie: String?
     let session: URLSession
     var base: String { "https://armconverter.com/decryptedappstore/download/\(options.app)/\(options.bundle)/\(options.version)" }
-    init(_ options: Options) throws {
+    init(_ options: Options, sessionCookie: String? = nil, userAgent: String? = nil) throws {
         self.options = options
-        if let path = options.cookie {
+        if let sessionCookie {
+            guard !sessionCookie.isEmpty, sessionCookie.rangeOfCharacter(from: .newlines) == nil else { throw ARMStoreLoginRequired() }
+            cookie = sessionCookie
+        } else if let path = options.cookie {
             let attrs = try FileManager.default.attributesOfItem(atPath: path)
             guard attrs[.type] as? FileAttributeType == .typeRegular,
                   let mode = attrs[.posixPermissions] as? Int, mode & 0o077 == 0,
@@ -78,6 +81,7 @@ struct Client {
             cookie = value
         } else { cookie = nil }
         let config = URLSessionConfiguration.ephemeral
+        if let userAgent { config.httpAdditionalHeaders = ["User-Agent": userAgent] }
         config.httpShouldSetCookies = false; config.httpCookieStorage = nil
         config.timeoutIntervalForRequest = 30; config.timeoutIntervalForResource = options.timeout
         session = URLSession(configuration: config, delegate: RedirectPolicy(), delegateQueue: nil)
@@ -91,12 +95,12 @@ struct Client {
     func api(_ suffix: String, method: String = "GET") async throws -> [String: Any] {
         let (data, response) = try await session.data(for: request(URL(string: base + suffix)!, method: method))
         guard let http = response as? HTTPURLResponse else { throw fail("接口响应无效") }
-        guard http.statusCode != 401 else { throw fail("登录失效：请更新本机 Cookie 文件") }
+        guard http.statusCode != 401 else { throw ARMStoreLoginRequired() }
         guard (200...299).contains(http.statusCode), data.count < 1_048_576,
               let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw fail("接口未返回正常 JSON；可能需要登录、浏览器验证或接口已变化（HTTP \(http.statusCode)）")
         }
-        if object["loginRequired"] as? Bool == true { throw fail("需要登录，请更新本机 Cookie 文件") }
+        if object["loginRequired"] as? Bool == true { throw ARMStoreLoginRequired() }
         if let error = object["error"] as? String, !error.isEmpty { throw fail("服务端拒绝请求；请在网页查看配额、会员或应用限制") }
         return object
     }
