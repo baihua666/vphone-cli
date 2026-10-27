@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Observation
 import Security
@@ -13,193 +12,40 @@ final class VPhoneLaunchpadHelperClient {
         case notInstalled
         case outdated(installed: String, bundled: String)
         case ready(String)
+        case unavailable(String)
         /// This build has no team in its requirements, so SMJobBless and the
         /// XPC checks cannot succeed. See VPhoneLaunchpad.xcconfig.
         case unconfigured
     }
 
-    private(set) var state: State = .unknown
-    private var connection: NSXPCConnection?
+    var state: State = .unknown
+    var connection: NSXPCConnection?
     /// Machines with a CFW install or update running, by `firmwareKey`.
     private var firmwareMachines: Set<String> = []
-    private let authorizationSession = VPhoneLaunchpadHelperAuthorizationSession()
+    let authorizationSession = VPhoneLaunchpadHelperAuthorizationSession()
 
-    private nonisolated static let label = VPhoneLaunchpadHelperIdentity.label
+    nonisolated static let label = VPhoneLaunchpadHelperIdentity.label
 
-    init() {
+    let installation: VPhoneLaunchpadHelperCompatibility
+    let versionProbe: (@MainActor () async throws -> String)?
+    let blessHelper: @Sendable () throws -> Void
+
+    init(
+        installation: VPhoneLaunchpadHelperCompatibility = .init(),
+        versionProbe: (@MainActor () async throws -> String)? = nil,
+        blessHelper: (@Sendable () throws -> Void)? = nil
+    ) {
+        self.installation = installation
+        self.versionProbe = versionProbe
+        self.blessHelper = blessHelper ?? { try Self.bless(installation: installation) }
         state = installedState()
-    }
-
-    // MARK: - Status
-
-    /// CFBundleVersion of the helper embedded in this app.
-    var bundledVersion: String? {
-        let info = CFBundleCopyInfoDictionaryForURL(bundledHelper as CFURL) as? [String: Any]
-        return info?["CFBundleVersion"] as? String
-    }
-
-    private var bundledHelper: URL {
-        Bundle.main.bundleURL.appendingPathComponent("Contents/Library/LaunchServices/\(Self.label)")
-    }
-
-    private var installedHelper: URL {
-        URL(fileURLWithPath: "/Library/PrivilegedHelperTools/\(Self.label)")
-    }
-
-    private var installedHelperMatches: Bool {
-        guard let bundled = try? Data(contentsOf: bundledHelper, options: .mappedIfSafe),
-              let installed = try? Data(contentsOf: installedHelper, options: .mappedIfSafe)
-        else { return false }
-        return SHA256.hash(data: bundled) == SHA256.hash(data: installed)
-    }
-
-    /// The requirement the app holds the helper to, from SMPrivilegedExecutables.
-    private var helperRequirement: String? {
-        let executables = Bundle.main.object(forInfoDictionaryKey: "SMPrivilegedExecutables") as? [String: String]
-        return executables?[Self.label]
-    }
-
-    var isConfigured: Bool {
-        guard let helperRequirement else {
-            return false
-        }
-        return !helperRequirement.contains("subject.OU] = \"\"")
-    }
-
-    /// What the files on disk say, without asking the helper. A helper
-    /// identical to the embedded copy counts as ready until XPC says
-    /// otherwise, so launch shows it installed straight away.
-    private func installedState() -> State {
-        guard isConfigured else {
-            return .unconfigured
-        }
-        let hasJob = FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/\(Self.label).plist")
-        let hasExecutable = FileManager.default.fileExists(atPath: installedHelper.path)
-        guard hasJob || hasExecutable else {
-            return .notInstalled
-        }
-        let bundled = bundledVersion ?? "?"
-        guard hasJob, hasExecutable else {
-            return .outdated(installed: "unknown", bundled: bundled)
-        }
-        return installedHelperMatches ? .ready(bundled) : .unknown
-    }
-
-    func refresh() async {
-        let installed = installedState()
-        switch installed {
-        case .unconfigured, .notInstalled, .outdated:
-            state = installed
-            return
-        case .unknown, .ready:
-            break
-        }
-        let bundled = bundledVersion ?? "?"
-        do {
-            let installed = try await version()
-            state = installed == bundled && installedHelperMatches
-                ? .ready(installed)
-                : .outdated(installed: installed, bundled: bundled)
-        } catch {
-            state = .outdated(installed: "unknown", bundled: bundled)
-        }
-    }
-
-    // MARK: - Install
-
-    /// Asks for an administrator and blesses the embedded helper.
-    func install() async throws {
-        guard isConfigured else {
-            throw VPhoneLaunchpadError(
-                String(localized: "Unable to Install Helper"),
-                detail: String(localized: "This build has no signing team. Rebuild and sign the app with your team, then try again."),
-            )
-        }
-        try await Task.detached { try Self.bless() }.value
-        connection?.invalidate()
-        connection = nil
-        await refresh()
-        guard case .ready = state else {
-            throw VPhoneLaunchpadError(
-                String(localized: "Unable to Install Helper"),
-                detail: String(localized: "The installed helper did not match the copy in this app. Try again."),
-            )
-        }
-    }
-
-    func uninstall() async throws {
-        let authorization = try await authorizationSession.externalForm()
-        try await call { proxy, done in
-            proxy.uninstallHelper(authorization: authorization) { message in
-                done(message.map { VPhoneLaunchpadError($0) })
-            }
-        }
-        connection?.invalidate()
-        connection = nil
-        state = .notInstalled
-    }
-
-    private typealias JobBless = @convention(c) (
-        CFString,
-        CFString,
-        AuthorizationRef,
-        UnsafeMutablePointer<Unmanaged<CFError>?>?,
-    ) -> DarwinBoolean
-
-    /// `SMJobBless`, looked up in ServiceManagement at run time. macOS 13
-    /// deprecated it in favour of `SMAppService`, but it still works, and the
-    /// helper's install, update and client checks are built on it
-    /// (SMPrivilegedExecutables and SMAuthorizedClients). Moving to
-    /// `SMAppService.daemon` would change all three. The lookup keeps that
-    /// choice here instead of as a standing deprecation warning.
-    private nonisolated static let jobBless: JobBless? = dlopen(
-        "/System/Library/Frameworks/ServiceManagement.framework/ServiceManagement",
-        RTLD_LAZY,
-    )
-    .flatMap { dlsym($0, "SMJobBless") }
-    .map { unsafeBitCast($0, to: JobBless.self) }
-
-    private nonisolated static func bless() throws {
-        var authorization: AuthorizationRef?
-        var status = AuthorizationCreate(nil, nil, [], &authorization)
-        guard status == errAuthorizationSuccess, let authorization else {
-            throw VPhoneLaunchpadError(String(localized: "Unable to Get Administrator Permission"), detail: String(localized: "Try again."))
-        }
-        defer { AuthorizationFree(authorization, []) }
-
-        status = kSMRightBlessPrivilegedHelper.withCString { name in
-            var item = AuthorizationItem(name: name, valueLength: 0, value: nil, flags: 0)
-            return withUnsafeMutablePointer(to: &item) { pointer in
-                var rights = AuthorizationRights(count: 1, items: pointer)
-                return AuthorizationCopyRights(
-                    authorization,
-                    &rights,
-                    nil,
-                    [.interactionAllowed, .extendRights, .preAuthorize],
-                    nil,
-                )
-            }
-        }
-        guard status == errAuthorizationSuccess else {
-            if status == errAuthorizationCanceled {
-                throw CancellationError()
-            }
-            throw VPhoneLaunchpadError(String(localized: "Unable to Get Administrator Permission"), detail: String(localized: "Try again."))
-        }
-
-        var error: Unmanaged<CFError>?
-        guard let jobBless = Self.jobBless,
-              jobBless(kSMDomainSystemLaunchd, label as CFString, authorization, &error).boolValue
-        else {
-            let detail = error?.takeRetainedValue().localizedDescription ?? String(localized: "Try again.")
-            throw VPhoneLaunchpadError(String(localized: "Unable to Install Helper"), detail: detail)
-        }
     }
 
     // MARK: - Calls
 
     func version() async throws -> String {
-        try await withTimeout(seconds: 5) { proxy, done in
+        if let versionProbe { return try await versionProbe() }
+        return try await withTimeout(seconds: 5) { proxy, done in
             proxy.helperVersion { done(.success($0)) }
         }
     }
@@ -231,6 +77,9 @@ final class VPhoneLaunchpadHelperClient {
         await refresh()
         if case .outdated = state {
             try await install()
+        }
+        if case let .unavailable(detail) = state {
+            throw VPhoneLaunchpadError(detail)
         }
         guard case .ready = state else {
             throw VPhoneLaunchpadError(
@@ -310,6 +159,9 @@ final class VPhoneLaunchpadHelperClient {
         await refresh()
         if case .outdated = state {
             try await install()
+        }
+        if case let .unavailable(detail) = state {
+            throw VPhoneLaunchpadError(detail)
         }
         guard case .ready = state else {
             throw VPhoneLaunchpadError(String(localized: "Update the privileged helper in Host Setup, then try again."))
@@ -400,7 +252,7 @@ final class VPhoneLaunchpadHelperClient {
             connection.exportedInterface = NSXPCInterface(with: VPhoneLaunchpadHelperClientProtocol.self)
             connection.exportedObject = receiver
         }
-        if let helperRequirement {
+        if let helperRequirement = installation.requirement {
             connection.setCodeSigningRequirement(helperRequirement)
         }
         connection.invalidationHandler = invalidationHandler
@@ -429,7 +281,7 @@ final class VPhoneLaunchpadHelperClient {
     }
 
     /// One request whose reply carries only an optional error.
-    private func call(
+    func call(
         _ body: (VPhoneLaunchpadHelperProtocol, @escaping @Sendable (Error?) -> Void) -> Void,
     ) async throws {
         let _: Bool = try await request { proxy, done in

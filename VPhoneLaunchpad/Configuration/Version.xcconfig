@@ -1,4 +1,5 @@
 MARKETING_VERSION = 2.8.0
-// Bump whenever the helper changes. The app blesses the helper again when the
-// installed helper's version or bytes differ from the copy it embeds.
+// Bump whenever the helper implementation changes; later builds must preserve
+// the existing XPC interface. App-only updates reuse a compatible installed
+// helper. Raise HelperCompatibility.minimumVersion for required helper fixes.
 CURRENT_PROJECT_VERSION = 15

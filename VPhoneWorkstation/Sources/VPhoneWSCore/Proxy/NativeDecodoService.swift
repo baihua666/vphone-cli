@@ -15,7 +15,7 @@ struct NativeDecodoConfiguration: Codable, Sendable {
 
 /// Standalone transport: no Clash configuration, API, or process-path dependency.
 enum NativeDecodoService {
-    struct Credentials: Decodable { let username: String; let password: String }
+    struct Credentials: Decodable, Equatable { let username: String; let password: String }
 
     static func validateDevice(_ device: String, type: String) throws {
         let expected = type == "wifi" ? kSCNetworkInterfaceTypeIEEE80211 : kSCNetworkInterfaceTypeEthernet
@@ -27,11 +27,15 @@ enum NativeDecodoService {
     }
 
     static func credentials(path: String) throws -> Credentials {
+        #if VPHONE_CUSTOM_EMBEDDED_DECODO_CREDENTIALS
+        return DecodoEmbeddedCredentials.account
+        #else
         let attrs = try FileManager.default.attributesOfItem(atPath: path)
         guard attrs[.type] as? FileAttributeType == .typeRegular,
               (attrs[.posixPermissions] as? Int ?? 0) & 0o077 == 0,
               (attrs[.size] as? Int ?? Int.max) < 65536 else { throw ProxyRouteError("凭据文件必须是 0600 普通文件") }
         return try JSONDecoder().decode(Credentials.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        #endif
     }
 
     static func configuration(context: VMCommandContext, credentials: Credentials, isp: Bool,
@@ -76,7 +80,7 @@ enum NativeDecodoService {
     static func resolve(host: String, device: String) async throws -> String {
         let data = try await curl(arguments: ["--noproxy", "*", "--interface", device,
             "--resolve", "dns.alidns.com:443:223.5.5.5",
-            "https://dns.alidns.com/resolve?name=\(host)&type=A"])
+            "https://dns.alidns.com/resolve?name=\(host)&type=A"], stage: "网关 DNS 解析")
         let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let answers = root?["Answer"] as? [[String: Any]] ?? []
         guard let address = answers.first(where: { $0["type"] as? Int == 1 })?["data"] as? String,
@@ -98,7 +102,7 @@ enum NativeDecodoService {
         let input = "proxy = \"https://\(config.host):\(config.port)\"\nproxy-user = \"\(escape(config.username + ":" + config.password))\"\n"
         let data = try await curl(arguments: ["--interface", device,
             "--resolve", "\(config.host):\(config.port):\(config.address)", "--config", "-",
-            "https://ip.decodo.com/json?provider=IPinfo"], input: input)
+            "https://ip.decodo.com/json?provider=IPinfo"], input: input, stage: "代理出口检测")
         let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let ip = (root?["proxy"] as? [String: Any])?["ip"] as? String else { throw ProxyRouteError("代理未返回公网 IP") }
         return try IPLocationLookup.decodeDecodo(data, expectedIP: ip)
@@ -116,17 +120,42 @@ enum NativeDecodoService {
         return file
     }
 
-    private static func curl(arguments: [String], input: String = "") async throws -> Data {
+    private static func curl(arguments: [String], input: String = "", stage: String) async throws -> Data {
         try await Task.detached {
             let process = Process(), stdin = Pipe(), stdout = Pipe()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-            process.arguments = ["--disable", "--silent", "--fail", "--connect-timeout", "8", "--max-time", "20"] + arguments
+            process.arguments = ["--disable", "--silent", "--fail", "--connect-timeout", "8", "--max-time", "20",
+                "--write-out", "\nVPHONE_STATUS:%{http_code}:%{http_connect}"] + arguments
             process.environment = ProcessInfo.processInfo.environment.filter { !["http_proxy", "https_proxy", "all_proxy", "no_proxy"].contains($0.key.lowercased()) }
             process.standardInput = stdin; process.standardOutput = stdout; process.standardError = FileHandle.nullDevice
             try process.run(); try stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8)); try stdin.fileHandleForWriting.close()
             let data = stdout.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-            guard process.terminationStatus == 0 else { throw ProxyRouteError("Decodo 物理网卡直连失败（curl \(process.terminationStatus)），未切换出口") }
-            return data
+            return try decodeCurl(data, exitCode: process.terminationStatus, stage: stage)
         }.value
+    }
+
+    /// Only status codes reach the UI; curl stderr and provider bodies may contain credentials.
+    static func decodeCurl(_ data: Data, exitCode: Int32, stage: String) throws -> Data {
+        let marker = Data("\nVPHONE_STATUS:".utf8)
+        guard let boundary = data.range(of: marker, options: .backwards) else {
+            throw ProxyRouteError("\(stage)失败（curl \(exitCode)），未收到 HTTP 状态")
+        }
+        let codes = String(decoding: data[boundary.upperBound...], as: UTF8.self).split(separator: ":")
+        let http = codes.first.flatMap { Int($0) } ?? 0
+        let connect = codes.last.flatMap { Int($0) } ?? 0
+        let status = connect >= 400 ? connect : http
+        if exitCode != 0 || status >= 400 {
+            let reason: String
+            switch status {
+            case 407: reason = "Decodo 拒绝代理认证（HTTP 407）；请核对代理账号、套餐及剩余流量"
+            case 400: reason = "Decodo 拒绝请求参数（HTTP 400）；请重新选择官网支持的地区"
+            case 403: reason = "服务拒绝访问（HTTP 403）"
+            case 429: reason = "服务请求过于频繁（HTTP 429），请稍后重试"
+            case 500...599: reason = "代理或检测服务暂不可用（HTTP \(status)）"
+            default: reason = exitCode == 28 ? "连接超时" : "HTTP \(status)，curl \(exitCode)"
+            }
+            throw ProxyRouteError("\(stage)失败：\(reason)。未应用新出口。")
+        }
+        return Data(data[..<boundary.lowerBound])
     }
 }

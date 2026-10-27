@@ -34,6 +34,25 @@ final class VPhoneLaunchpadFlywheelNetwork {
         messages[path] = nil
     }
 
+    /// Publish the guest measurement already made by the native workflow. Never probe twice.
+    func performMeasured(on path: VPhoneLaunchpadMachinePath,
+                         operation: () async -> (ip: String?, message: String)) async {
+        do {
+            try await VPhoneLaunchpadFlywheelWebAction.shared.exclusively(on: path) {
+                invalidate(path)
+                messages[path] = "正在检测虚拟机公网 IP…"
+                let result = await operation()
+                if let ip = result.ip {
+                    record(ip, for: path)
+                } else {
+                    messages[path] = result.message
+                }
+            }
+        } catch {
+            // An overlapping operation owns its existing measurement and progress.
+        }
+    }
+
     func check(_ machine: VPhoneLaunchpadMachine, library: VPhoneLaunchpadMachineLibrary) async {
         guard VPhoneLaunchpadFlywheelWebAction.shared.active == nil else { return }
         let path = machine.path

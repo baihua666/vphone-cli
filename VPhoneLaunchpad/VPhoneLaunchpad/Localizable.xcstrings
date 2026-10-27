@@ -1,6 +1,76 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Unable to verify the installed helper. It has not been replaced." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法验证已安装的帮助程序，未对其进行替换。"
+          }
+        }
+      }
+    },
+    "The helper's launch service is missing. It has not been replaced." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮助程序的启动服务缺失，未对其进行替换。"
+          }
+        }
+      }
+    },
+    "The running helper does not match its installed version. Restart the helper service, then check again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在运行的帮助程序与磁盘上的版本不一致，请重启帮助程序服务后重新检查。"
+          }
+        }
+      }
+    },
+    "This app does not contain a compatible helper. Update the app, then check again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 App 未包含兼容的帮助程序，请更新 App 后重新检查。"
+          }
+        }
+      }
+    },
+    "The installed helper is the same version or newer. It has not been replaced." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装的帮助程序版本相同或更高，未对其进行替换。"
+          }
+        }
+      }
+    },
+    "Unable to verify helper compatibility. It has not been replaced." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法验证帮助程序的兼容性，未对其进行替换。"
+          }
+        }
+      }
+    },
+    "The installed helper did not pass compatibility checks. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装的帮助程序未通过兼容性检查，请重试。"
+          }
+        }
+      }
+    },
     "Device" : {
       "localizations" : {
         "en" : {

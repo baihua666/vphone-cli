@@ -1,5 +1,75 @@
-## J-2026-10-16 — 新版镜像迁移，纠正管理员认证入口判断
+## 2026-10-27 Launchpad 复用兼容帮助程序，阻止自动降级
 
+用户要求修复主 App 更新时重复安装帮助程序，以及已安装高版本被误判过期的问题。
+原客户端要求 XPC 版本与内附版本相等，并比较整个已签名文件的 SHA-256；签名／编译
+差异和较高版本都会触发 outdated，连接失败也会进入同一自动重装路径。
+
+修复只在 Launchpad 客户端：使用独立最低兼容构建 15，保留静态签名校验与原 XPC
+对端签名要求；实际运行版本须与磁盘上的受信任版本一致。相同或更高兼容版本复用，
+App 内附更高版本也不强迫更新已有兼容 helper。连接失败、签名损坏、未知版本及
+服务缺失显示 unavailable，不触发启动／preflight／DHCP 清理中的自动安装。
+安装入口统一拒绝相同版本替换和降级；在 XPC await 后及管理员认证完成后重新读盘
+检查，防止等待时另一 App 已升级 helper。首次安装和低于最低要求的真实升级仍保留。
+后续 helper 必须保持旧 XPC 方法兼容，最低构建只随必要能力或安全修复调整。
+对照当前已安装 21 的部署源码（launchpad-wizard-r4 的 arm-deploy-source）协议，
+相对本 checkout 的 15 仅新增两个方法，既有方法签名未变；未修改该部署源码。
+
+未修改 helper 实现／协议、CLI、Core、guest、VM 绑定或配置；官方产品版本及 helper
+构建号保持 2.8.0／15。属于既有通用校验修复，未新增业务能力或实验编译宏，未新增
+固件补丁，因此不改二进制补丁计数。本轮未部署主 App、安装 helper、启停 VM 或发布。
+系统 helper 的 SHA-256 仍为
+`377e5c695b7f218cbb5875c9173663ab74fcd8048827c7c6da738a58198c9a2e`。
+
+验证：`VPhoneLaunchpad/Tests/HelperCompatibilityTests.sh` 编译真实客户端及签名校验，
+使用临时真实签名 Mach-O，仅替换 XPC 回复和安装动作；覆盖同版不同字节、21 对 15、
+兼容旧版复用、数字版本、非法版本、签名破坏／身份不符、XPC 失败、服务缺失、
+磁盘／运行版本不符、升级竞态、首次安装、必要升级及安装后验证失败。
+`HostPolicyTests.sh`、`FirmwareAdmissionTests.sh`、`CreationInitializationTests.sh`
+和 `scripts/dev.sh build launchpad` 通过。日志在 `.build/helper-compatibility-tests.log`
+与 `.build/helper-compatibility-build.log`；尚未进行新 App 的真实 XPC／UI 部署验收。
+
+官方依据通过 MCP 查询：[XPC 对端签名校验](https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:))、
+[静态签名校验](https://developer.apple.com/documentation/security/secstaticcodecheckvalidity(_:_:_:))。
+最低构建与前向复用是本项目维护契约，并非 Apple 保证任意高版本协议必然兼容。
+
+## 2026-10-27 IP 检测修复部署与真实实例验证
+
+用户授权部署并启动 1-20261023，要求 Core 与代理配置不变。最初误将本 checkout 的
+2.8.0 Debug 产物替换安装，实际原 app 为 2.13.4 / build 21；发现 Helper 版本差异后
+停止本次启动的实例并纠正，未安装/降级 Helper。最终使用原 app 可执行文件逐字节匹配的
+`~/.codex/worktrees/launchpad-wizard-r4/vphone-cli/.build/arm-deploy-source` 源码，
+仅移入本次三个文件的修复，沿原 Release 构建参数（2.13.4 / 21）重新构建。
+保留原签名的 Helper、CLI、launcher，主 app 使用原团队重新签名；严格深度验签通过，
+status 返回 Helper ready (21)、hostReady true。已部署到 /Applications/vphone-launchpad.app。
+
+原 app 备份及文件校验在 `.build/validation/ip-detection-20261027/`。
+155 个文件（绑定、config.plist、原生代理引用与配置、Decodo 凭据、Clash 配置和
+绑定的 Core Bundle 内容）前后 SHA-256 全部一致。未更换 Core、guest、Helper、代理入口，
+未重新应用代理/轮换 IP；只有 1-20261023 启动，其它实例保持停止。
+早期启动后 guest network --probe 返回 48.45.90.127（origin guest，api.ipify.org）；
+最终版本重启后 UI 第一次检测与独立 CLI 检测均返回 NSURLErrorDomain -1001 请求超时，
+真实错误已显示且未残留旧 IP，不把早期成功当作最终当前出口已验证。
+UI 独立重试一次仍为 -1001；保留现有代理配置与运行实例，当前成功出口验收未通过。
+
+## 2026-10-27 IP 检测错误被 Foundation 通用提示遮蔽
+
+用户截图：原生代理页检测当前虚拟机 IP，显示 `VPhoneWSCore.VPhoneCLIError 错误 0`。
+本机只读复现：`1-20261023` 绑定 `2.13.4-local.666ac4da`，没有运行中的 VM 进程；
+用绑定 CLI 执行 `vm network 1-20261023 --library-root ~/.vphone/machines --json --probe`
+返回退出码 64，明确提示实例未运行或 control socket 不响应。截图时是否也是停机不能仅凭当前状态证明。
+`VPhoneCLIError` 已有 `userMessage`，但未实现 `LocalizedError`，原生代理 controller
+读取 `error.localizedDescription` 因而丢失 stderr。界面检测按钮也未按实例运行态禁用。
+
+修复：管理层错误类型复用既有 `userMessage` 接入 `LocalizedError`；原生代理页使用现有
+机器库运行态禁用检测并提示先启动；controller 每次检测先清除上次 guest IP，失败后可独立重试。
+没有修改 CLI/Core、guest、helper、网络配置或 pinned 绑定。没有新增业务能力或宏；
+既有原生代理模块尚未整体完成具名编译宏隔离，本次错误修复不宣称补齐该历史缺口。
+来源：Workstation/Launchpad 本地适配；GitHub MCP 核对官方 main
+`7d633c9ab373880bf00f6964a29964269e8eb53b` 的 network 命令也要求运行中的实例，未同步或升级基线。
+验证：`scripts/dev.sh test gui` 的 123 项测试通过，包括 Foundation 错误桥接和
+检测成功→停机失败→重试成功、失败清除旧 IP、只发只读 network 命令。
+`scripts/dev.sh build launchpad` 构建通过（测试产物，未发布/部署）。
+本次未启动 VM，真实 guest 成功出口检测及已安装 app 验收仍待进行；构建不等于部署。
 
 ## 2026-10-23 本地应用版本状态读回与部署
 
@@ -45,6 +115,273 @@ guest Jetsam 相符，但未采集客体分配栈，不把宿主数据冒充客�
 安装已串行；现有 apps.install 强制客体重签，宿主预签无法绕过。apps.register 不等同完整
 容器安装，不能伪造标记绕行。当前第三方主进程总 footprint 仅约 3.5 MiB，清后台无明显收益证据。
 未改 Core、内存、运行应用、未部署或重试；详见 [调查](Host/launchpad_tiktok_install_failure_20261023.md)。
+
+## 2026-10-23 M0宿主无RF原型接真实jCardSim
+
+在Integrations/NFCNoRF独立实现Swift NCI/HCP子集、有限credit、单请求deadline／generation及
+loopback TCP adapter，外置45行Java wrapper复用真实Simulator与现成HelloWorldApplet，无reloader。
+实际后端为Maven Central com.klinec:jcardsim:3.0.5.11，固定JAR SHA256并审查对应sources.jar；
+不是前轮Licel HEAD的本机重建。默认Maven选择JDK26启动SIGBUS，最终runner显式JDK17且不需Maven。
+真实SELECT9000、双独立nonce原样echo、未知INS6d00通过；零credit暂停／单pair恢复、253／254边界、
+真实255B nonce及257B R-APDU双向分片、容量不足、busy／Off拒绝、cancel和等待超时已检查。
+最终108项断言通过；Tests暂停／终止本工具拥有的真实Java验证timeout／EOF，新进程reset／SELECT／echo恢复；
+人工旧generation帧不能满足新请求。状态字和数据来自applet，不补9000，不把模型completion当Apple ABI。
+VPHONE_EXPERIMENTAL_NFC_NO_RF默认关闭，Swift／Java研究源集分别门控；产物只在忽略.build目录。
+复用现有独立swiftc runner模式，无产品target／CoreKit／guest／系统／门槛／卡修改，不启动VM。
+见[实现与验收](Guest/nfc_no_rf_m0_implementation_20261023.md)。
+
+## 2026-10-23 23G90最小无RF原型方案与代码复用核对
+
+将现有初始化、HCI child、event75、SE对象及APDU契约收敛为逐层方案。首期为隔离宿主
+Swift子集模型＋外置jCardSim真实HelloWorldApplet执行，SELECT／双nonce echo／未知INS；
+复用上游TCP协议但新增瘦wrapper，避免完整main的额外8099 reloader，不引入Python链。
+现有camera方向VSOCK、FD生命周期与guest worker可作为后续窄接入模式，尚非NFC前端。
+Comet固定HAL的14个TML导入是候选边界，但完整ABI、合法绑定和guest运行准入未证；
+M0模型成功、原Comet成功、PN LoadStack成功和stock nfcd能力分开验收，不声称Wallet可用。
+明确缺少模式／取消／WTX／移除确认；单请求与generation屏障隔离晚到数据，不能编造9000。
+未来实验使用独立VPHONE_EXPERIMENTAL_NFC_NO_RF，默认关闭；host／guest／C／Java构建
+分别门控，产品bundle不带JVM。没有新增代码、宏、target、补丁或运行态，无系统／卡修改。
+专项报告及官方／作者源码来源、定向取证保存在研究目录与忽略的小型证据目录；只做静态检查。
+见[整合方案](Guest/nfc_no_rf_minimum_prototype_plan_20261023.md)。
+
+## 2026-10-23 SetMode到普通APDU最终callback离线契约
+
+继续仅离线读取同版23G90 Comet／PN548与原DSC小段，无Apple库／VM／后端执行。
+五套数值分开：PN配置routing1→Comet API2→event8c→SE软件Apdu3，full wire仍mode1；
+条件standby、NFCEE RSP／EoOp／兼容timer及pipe查询接至模式五参callback，同步0另走PN block。
+普通8d／8e→HCP type1 ins10(DATA event)，正常回答也为同pipe DATA；ANY_OK不完成。
+逐NCI片扣credit、零额度等待／timer、NCI PBF与HCP分片、RX CID／pipe路由已补齐；
+普通数据终结经a4／a5恢复原event，先清18c8槽后六参callback；WTX独立五参并重设计时。
+PN验证status／response len>1、等待结果及buffer后交NFData；超容量08、超时2c／da、移除41等
+保留原错误／恢复路径，不能用发送成功、WTX、模式成功或列表非空冒充APDU业务成功。
+原模式序列表和18项相关SE行独立比对一致；PN原text274720B及9函数字节复核一致。
+仅更新研究报告，未改产品、补丁、版本、宏、系统或卡；后续代码独立宏默认关闭。
+已划分前端framing／CID／credit／状态与宿主SE真实执行／响应责任；没有模拟成功数据或运行trace。
+见[整合报告](Guest/comet_apdu_minimum_contract_20261023.md)。
+
+## 2026-10-23 后置SE四事件与真实eSE对象生命周期
+
+继续离线只读23G90 Comet／PN548及保留原DSC小段，6张SE表98行逐字复核一致。
+82为通用Host槽，87／93／98为eSE／UICC／SE2槽；正常无pending只同步归一软件状态，
+Lib状态1→Off1，2→Removed5并返回d6，其它ff。6b5b0忽略结果，无新NCI发送或异步等待，
+不能用其0证明SE可用。真实链经NFCEE内嵌record→Lib列表→PN GetList／creator→context+210。
+纠正前轮两处误读：本版eSE NFCEE ID是c0，80只是比较分界；PN枚举removed对象恢复失败
+记录错误后仍继续循环并可return0，且removed标志未清。已同步修正四份相关旧报告并保留纠正说明。
+Enumerated只看指针，部分IsOSReady为空槽／软件缓存放行；均不等于真实数据通道验证。
+无产品代码、宏、补丁、系统修改或运行态操作；后续实验仍独立宏默认关闭。下一步聚焦
+SetMode到APDU及一笔真实数据callback的前置和完成契约。见[整合报告](Guest/comet_se_post_init_closure_20261023.md)。
+
+## 2026-10-23 event75至初始callback与LoadStack静态路由补齐
+
+同版23G90离线恢复12个主状态共458行，新增原DSC目录／表项读取全部逐字一致。
+普通event05返回pending只保存target3、pending及原event，current仍Idle1；75因此查Idle表，
+提交target并恢复原event05后进入IdleTransComplete，先清17d8／17e0再同步调用初始callback。
+76保留原错误交出，不证明89到43转换。1aa8／1ab0另属RawCtrlMsg event46。
+初始callback先于82／87／93／98四个后置SE内部事件；其派发返回未检查。继续接到PN等待对象、
+LoadMW loaded提交及24项原条件／容错后的普通LoadStack return0，区分旧loaded和DL-only。
+HCI child、SE软件状态校验、真实eSE record与APDU数据可用分层验收；没有库／VM／后端运行trace。
+本轮没有产品代码、补丁、宏定义、系统修改或绑卡。临时DSC提取仅核对IPSW，完成后清理大文件；
+目标Disk.img stat不变。见[本轮整合](Guest/comet_event75_final_closure_20261023.md)。
+
+## 2026-10-23 HCI child、逻辑连接与admin pipe离线恢复
+
+继续只读23G90 Comet及既有原始段，无VM/库/后端执行，无系统、门槛或卡状态修改。
+HCI逻辑连接请求本版destination3、NFCEE TLV，保存动态ConnID/MPS/credit；HCP承载于
+NCI DATA，两个头及分片状态分开。Admin OPEN为8103，ANY_OK为8180；初始化未见主动
+CreatePipe，管道由通知创建/打开并登记。allow list为admin寄存器3，Session查询另经
+CORE_GET_CONFIG A0EA/EB/1E而非HCI GET；后者的已定位直接caller用于ATR。
+Child/Session/pipe检查与条件清Session、eSE重初始化、静态feature收尾已恢复；不能以
+固定成功RSP替代credit、pipe、Session、EoOp及通知状态。callback消费点17d8/17e0已定位，
+与InitTransComplete的1aa8槽不同；event75到完整SM completion的所有路由仍未全证。
+只交付协议/完成条件，不宣称原生LoadStack或eSE事务运行通过。未来产品实现受本日具名
+编译宏规则控制，纯研究不添加未使用宏。证据位于忽略目录comet-hci-20261023。
+见 [整合报告](Guest/comet_hci_minimum_closure_20261023.md)。
+
+## 2026-10-23 定制与实验功能必须使用具名编译宏
+
+用户要求所有本地定制、实验功能（包括Apple钱包相关实现）以宏标注并可停用、回退或删除。
+已在AGENTS.md与architecture-boundaries.md固化编译条件命名、集中定义、实验默认关闭、
+独立组装与删除边界、开启/关闭两种验证及跨target传播要求；不是只加注释或运行时bool。
+经MCP核对Swift／Xcode／SwiftPM官方编译条件文档。纯研究不增加未使用的产品宏。
+本轮未修改现有产品默认开关，未声称全库已有定制已逐项宏改造；新增钱包研究未部署
+Wallet/SE支持，已有可选Wallet设置行隐藏补丁另行区分。关闭新构建的宏不能撤销已部署
+固件/DSC/guest补丁，规则要求另列原始输入恢复、重建部署与验收步骤。规范空白检查通过。
+见 [编译开关规则](../Documents/Guides/architecture-boundaries.md#定制与实验功能的编译开关)。
+
+## 2026-10-23 routing／NFCEE 至 SE枚举与LoadStack完成判据
+
+本轮用户已允许后续系统修改、门槛绕过和绑卡，但本轮继续只离线读取同版23G90副本，
+未启动/挂载实例或执行HAL/Comet/后端，未使用运行态授权。复核Comet身份与此前保留原DSC六段一致。
+恢复默认4条routing TLV、2条mapping、SWP A0EC/ED配置读回、22 00发现与62 00设备通知；
+普通mapping要求RF interface count非0，INIT parser接受n0不保证后续mapping成功。
+ModeSet22 01有独立7f18/7f20正常完成通知与timer；Session参数A0EA/A0EB/A01E严格8B。
+StaticListenModeRouting实际为standby/disable SE/flush/状态校验，不是另一个21 01别名；
+flush2f21仅部分平台发，RSP00/06均接受。eSE电源对象已追至Comet SetMode状态机，
+PN模式与wire mode不是同一个枚举；部分返回语义差异、LoadMW43完整来源仍未全证。
+Comet预建NULL-handle Host条目；GetSEList只读缓存，PN枚举失踪清理仍可return0；
+LoadMW先置isLoaded再跑后续步骤，不能据列表非空/isLoaded/局部RSP宣称eSE可用。
+主报告列出原callback、24步与最终返回条件，mapping错误不会被固定0 process吞掉。
+字节/包长/链接/空白检查通过，目标Disk.img stat不变；未新增大DSC或运行态产物。
+见 [整合报告](Guest/comet_nfcee_loadstack_closure_20261023.md)、
+[routing](Guest/comet_routing_mapping_20261023.md)、[发现](Guest/comet_nfcee_discovery_20261023.md)、
+[供电与枚举](Guest/comet_ese_power_enumeration_20261023.md)。
+
+## 2026-10-23 Comet 厂商配置、FW 接口与 EEPROM 子循环
+
+继续只离线读取23G90固件／既有副本，未启动或挂载实例、改系统／VM gate、
+执行HAL／Comet、加载驱动或绑卡。经MCP核对NXP官方通用NCI定义，Apple扩展以本版字节为证。
+重新定向提取同版DSC，Comet六个const/data/authstub小段与保留重建库全部逐字相同。
+纠正上轮descriptor邻行误读：精确0x2a2fc36a8为{type1,GID0}，不是{3,1}；
+已沿encoder恢复RESET200001r、INIT200100、vendor2f头，原报告同步更正。
+EnablePropExtn需5B响应status+BE32能力；standby／HSU需精确1B响应，HSU27条8B参数复核。
+FW type可查询／推断／回退，type3不证明真实身份；NCI version、manufacturer FW版本、
+vendor19接口revision来源不同，接口期望按分类为15/2f/2c/37/03/25/08，过低80／过高81。
+InitSetConfig的标准／private TLV、CRC A0BF及成功→check/skip→reset/append迁移已列明。
+MW EEPROM日志为A00F固定64B，首8B=LE16 MW/LE16 FW/LE32 marker；SET清零其余56B。
+marker仅跳内部5项；另一路公开ValidateEepromSettings仍须多参数GET/比较/SET/重读，
+cc9为配置修复重试计数。公开入口16个条件ID及期望／编码已列明，ID32期望枚举1在线为20，
+SET集合可能补入GET未选择的A0EC。PN548 step4另有3次尝试、eSE power-on43、89→外层重载等结果。
+条件write-counter已从原DSC四字节A1540101及ioctl90a1表项恢复到CORE_SET_CONFIG，
+不是线上opcode90a1；末尾standby也非无条件。完整routing/SWP/NFCEE通知/SE枚举尚缺契约，
+只收敛配置子循环规格，未声称原生LoadStack／APDU闭环。字节、HSU表、长度和文档检查通过。
+清理本轮6130088KiB可重建DSC，工具临时固件挂载已退出，小型证据保留在忽略目录；
+目标Disk.img大小／mtime／ctime不变，观察时无vphone-vm／launcher进程，无App／服务器需卸载。
+见 [主报告](Guest/comet_no_rf_loadstack_commands_20261023.md)、
+[厂商配置](Guest/comet_vendor_initialization_20261023.md)、
+[FW检查](Guest/comet_fw_compatibility_20261023.md)、
+[EEPROM](Guest/comet_eeprom_protocol_20261023.md)。
+
+## 2026-10-23 NFCC 初始化、Comet 帧／CRC 与无 RF 分层
+
+继续只离线分析，未启动／挂载实例、改系统／门槛、加载驱动、调用HAL或绑卡。
+发现PN548的phLibNfc_*实际导入同版libNFC_Comet；从已有23G90 IPSW提取并核对
+原DSC／重建text逐字相同（796896B，SHA852ae02b...）。Comet UUID AAD82B14...，
+source366.9.1，未冒称本轮与guest Comet逐字对照；PN548原始text再次与部署副本相同。
+初始化分为Open准备→MW／Comet reset/init→FW/vendor/EEPROM/NFCEE→PN54824项条件步骤。
+原表指针／flags核对通过；NFProductHasNFCRadio门控可跳过flag8的RF项，但没有执行或
+修改判定，用户无RF需求不等于判定实测false；CRC/eSEpower/SE枚举等不由该位自动跳过。
+帧恢复：NCI3字节头、DNLD2字节头，payload长度不含CRC；Comet共用CRC16，poly1021、
+seedffff、不反射、xorout0、BE尾序，256项全表与4向量复核。Stockholm正常SPMI链仅搬运，
+NCI按flag多读2B、DNLD固定多读2B；power/reset清CRC，download切模式，前端不得二次追加/剥尾。
+独立逐位／查表、长度、篡改、截短及拆包／粘包检查通过，仅为宿主公式复核，未运行Apple parser。
+无RF协议规格可分级收敛；厂商回复/FW/EEPROM/完整HCI与NFCEE状态仍阻塞原生LoadStack／APDU闭环。
+清理本轮约5.8GiB可再生DSC，保留同版Comet及小型定向证据，实例Disk.img stat与前轮一致。
+见 [总报告](Guest/nfcc_no_rf_minimum_protocol_20261023.md)、
+[初始化](Guest/pn548_nfcc_initialization_20261023.md)、
+[用户态帧／CRC](Guest/pn548_user_frames_crc_20261023.md)、
+[内核帧](Guest/stockholm_spmi_frame_crc_20261023.md)。
+
+## 2026-10-23 Stockholm 实际导入与 HAL 前端契约
+
+继续只离线读同版固件及既有取证副本，未启动／挂载 VM、改系统、绕过门槛、
+加载驱动或绑卡。重新定向提取23G90 DSC，HAL原始text与已验证部署代码段逐字相同；
+通过原岛与auth stub的指针槽／直接目标补齐关键外部调用身份，未用otool错误import标签。
+donor Stockholm 100个GOT槽地址／owner全部恢复，98 kernel／2 ARMPlatform；
+83个认证函数导入仅1个语义识别，未冒充恢复原始完整签名。相关基类vtable数量和
+PAC schema吻合target，仍不是完整ABI证明。12项同步scalar dispatch与HAL wrapper闭环；
+0/1/2/3/5为bool控制、6/7无输入、8复位要求1输入、11取低8位，4/9/10保留失败。
+正常UC初始化设置Stockholm／Hammerfest entitlement；per-method NULL不代表免授权。
+SPMI数据为Darwin stream kernel-control，5回调、4 options、单客户端／动态unit；
+stockholm-spmi-data-socket是OSBoolean true，不是名称字符串。errors get输入容量须精确64，
+返回type4..8的最多15字节TLV；IOKit另发0xe3ff8001及零终止，HAL Query读后另发清错。
+仅静态恢复，未执行有副作用的Query。最小前端仍需真实状态／背压／通知与NFCC后端；
+完整帧、CRC、vendor初始化及部分导入签名未闭环，普通APDU成功不等于兼容。
+提取器固件中间镜像已退出；收尾清理本轮约5.8GiB缓存中间件，保留小型定向证据。
+见 [主清单](Guest/stockholm_hal_frontend_contract_20261023.md)、
+[导入／vtable](Guest/stockholm_driver_imports_vtables_20261023.md)、
+[kernel-control](Guest/stockholm_kernel_control_contract_20261023.md)。
+
+## 2026-10-23 实体 Stockholm 的 KC／ABI 与 SPMI 后端
+
+继续仅离线分析，本轮未启动／挂载 VM、未改系统或 VM gate、未加载驱动、未绑卡。
+从现有 23G90 IPSW 提取正常实体 release.iphone17：Darwin25.6／T8140，
+目标实际为25.4／VRESEARCH1。Stockholm、AppleSPMI、AppleSSE 的声明依赖
+在目标全部存在且版本范围满足；关键基础类 Size 相同、ARMPlatform source version
+相同，但未证明真实 ABI。实体 entry 已 stripped／prelinked，认证 GOT 绑定 donor KC；
+专用工具抽出映像不等于恢复可加载 kext。公开 XNU 加载限制未冒充私有内核实测。
+实体 SPMI 人格需要具体 AppleSPMIController、MMIO／IRQ／队列，以及 Stockholm
+GPIO／wake／power；目标只有通用基类，没有该具体链。aop-spmi0 名称不能单独
+证明必须搬完整 AOP 固件。AppleSSE 在同版实体 iPhone 也存在，但需要 SEP sse endpoint。
+最小候选是 HAL 控制／kernel-control 前端接宿主协议后端，仍缺接口恢复与 guest 准入，
+不是现成移植或支付能力。只提出宿主普通 APDU／控制器协议 PoC，未执行。
+见 [主报告](Guest/stockholm_driver_portability_20261023.md) 与
+[兼容性报告](Guest/stockholm_kernel_compatibility_20261023.md)。
+
+## 2026-10-23 同版 NFC 库与实际启动内核离线清单
+
+按用户授权，停机只读读取 `5-20261023` 的 System／Preboot，未启动 guest、
+未改系统或 NFProductIsVM、未绑卡。用户态两库从实际 23G90 cryptex DSC
+取出，与对应 IPSW 的同工具产物逐字相同，原始 __text 也独立逐字比较通过。
+当前 HAL 仍期待 StockholmControl／SPMI provider，匹配键及 IOServiceOpen
+调用已由原始缓存交叉核对，补齐旧版反编译导航的版本边界。
+Preboot active 指定的实际 research.vphone600 来自 cloudOS 23E5207q；
+其 kext／C++ JSON 与同版原版逐字相同：162 元数据项、146 fileset、
+791 人格、1921 已发现类。无具体 StockholmControl／SPMI／UserClient；
+通用 ARMSPMI、AOPSMC／SPU 类存在。Stockholm／SSE 权限字符串不代表驱动。
+因此支持“缺具体启动驱动及可见控制器／eSE 组装”，不能缩减为只差 provider。
+只读卷与镜像设备已退出，Disk.img stat 前后相同、五台仍 stopped；保留证据，
+清理约5.8GiB原版DSC提取中间件。见 [主报告](Guest/nfc_current_stack_offline_audit_20261023.md)
+与 [内核清单](Guest/nfc_kernel_inventory_20261023.md)。
+
+## 2026-10-23 VM gate 后的驱动与 SE 后端依赖
+
+继续仅做源码和已有证据分析，未启动 VM、未装 App、未改 predicate／系统、
+未绑卡。当前同哈希 23G90 nfcd 确认 NFDriverOpen／LoadStack／SE 查询与
+Transceive 来自 libPN548_API；26.1 固定 SHA 反编译提供具体 provider、
+IOKit control、kernel-control socket／设备节点、eSE 枚举及 wired-mode 契约。
+socket 是 Darwin 内核控制接口，不能把路径环境变量或 relay 字面量当 TCP
+SE 透传 Demo；没有证明当前 kernel collection 未编入 Stockholm 驱动。
+QEMU CCID、vsmartcard、jCardSim、NXP HAL 可复用局部职责；OCLP T1 恢复
+原配真实硬件的软件栈，均未证明 vphone 原生 Wallet 真实绑卡闭环。
+官方最新 main 两个相关入口（45d8c643）仍只组装 SEP、排除 NFC 产品声明，
+只读取源码，未同步基线。详情见 [依赖分析](Guest/nfcd_after_vm_gate_dependencies_20261023.md)
+与 [开源参考](Guest/se_backend_open_source_references_20261023.md)。
+
+## 2026-10-23 NFProductIsVM 与实际 nfcd 身份验证
+
+按用户授权，仅在 `5-20261023` 安装临时只读 App。实测当前 libnfshared 的
+`NFProductIsVM()` 返回 1；运行 nfcd 路径 `/usr/libexec/nfcd` 的完整 SHA-256、
+UUID、3,022,240 字节大小均与此前分析的 23G90 原始文件相同，补齐上一条的
+两项运行验证缺口。结合已有状态 1→4，强力支持 VM unsupported gate 解释；
+不把 App 内 predicate／文件身份冒充 daemon 的逐指令分支跟踪。
+未改返回值、系统或固件，未调用支付／SE 会话，未绑卡。解析断言及身份对照
+断言通过。App／双容器／上传 IPA 清理后检查均不存在；实例恢复停机，五台
+均 stopped。详见 [运行验证报告](Guest/nfcd_vm_guard_runtime_probe_20261023.md)。
+
+## 2026-10-23 nfcd 58 的 VM gate 与原始设备树
+
+继续只读源码／日志分析，未启动 VM。26.1 作者反编译发现显式 NFProductIsVM
+分支；从现有26.6.2/23G90 IPSW提取原始nfcd后，静态核对仍有同一分支：
+VM设置内部3，映射对外4；controllerInfo非2/5统一返回58，并非必然硬件超时。
+官方cloudOS26.4原始vphone600树无NFC/Stockholm，实体D47树有完整SPMI链；
+两树均与FirmwareOriginals摘要匹配，排除该副本被本地补丁误删节点的假设。
+live日志1→4与unsupported链条吻合，但本轮未执行NFProductIsVM运行值查询，
+未核对guest nfcd全文件哈希；不能把同版原始文件冒充运行态完全一致。
+最小验证与边界见 [nfcd 58分析](Guest/nfcd58_vm_guard_analysis_20261023.md)。
+
+## 2026-10-23 临时 App 原生 PassKit／SE 探针
+
+用户追加授权在 `5-20261023` 安装并清理临时诊断 App，不改系统、不绑卡。
+公开 API 实测票券库 true，一般支付、Visa/MasterCard 支付及添加支付卡均 false。
+普通 App 的 NearField 请求被 sandbox lookup error 159 拒绝；只在临时 App
+声明 nfcd hardware-manager 查询权限后，daemon 接受连接，返回
+`nfcd / 58: Unresponsive hardware`，控制器和 secureElements 均 nil。
+当前运行时不存在旧 getSecureElementInfo selector，未强行调用。
+没有关闭沙箱或开始支付／SE 写入会话；App 与数据容器卸载，安装 IPA 无残留，
+实例正常停机。证据、权限范围和根因边界见
+[原生探针报告](Guest/wallet_native_probe_20261023.md)。
+
+## 2026-10-23 Wallet／SE 无卡只读检查
+
+按用户要求，在现有测试实例 `5-20261023`、原绑定 `2.8.0-local.199abaf3`
+上启动并检查，不改系统、不绑卡。Wallet 可运行，nfcd/passd 与硬件管理端点
+存在；IOService 287 条、IODeviceTree 115 条中仅见 SEP，无支付 SE／Stockholm
+名称或类匹配。当前可见缺口倾向支付设备注册层，但未取得原生 SE 错误码。
+现有 RPC 无 PassKit/NearField 调用入口，USB 调试枚举两次 escrowFailure，
+三个 PassKit 布尔值及原生 SE 元数据查询均未执行，不能虚报结果。
+没有安装探针／服务器、修配对或修改权限，检查后正常停机。
+详情与证据边界见 [只读检查报告](Guest/wallet_se_readonly_probe_20261023.md)，
+本地证据在 `.build/validation/wallet-se-readonly-20261023/`。
 
 ## 2026-10-22 五台迁移到官方 2.8.0 基线的本地测试核心
 
@@ -217,100 +554,9 @@ native setter 测试、Launchpad 构建、完整 Core Bundle 构建均通过；�
 guest 的 profiled 接受写入、Settings 页面、真实空闲和冷启动持久性。
 接口来源、步骤和验收边界见 [设备初始化](../Documents/Guides/launchpad-device-initialization.md)。
 
-## J-2026-10-22 — Launchpad 基础操作被可选代理版本门槛拦截
+## J-2026-10-16 — 新版镜像迁移，纠正管理员认证入口判断
 
-用户创建/启动时收到“需要 VPhone.bundle 2.9.0 或更新版本”。本机默认仍为
-`2.8.0-local.b0ffd6cc`；本地原生代理改动把全局最低版本从 2.8.0 提到
-2.9.0，导致 `CoreBundle.prepare` 在基础操作前拒绝旧绑定。原生代理已有
-CLI 选项和运行核心能力检查，因此恢复全局 2.8.0 下限，保留功能自己的检查。
-不改 VM 绑定、默认 bundle、guest 或固件；初始化仍按 guest 写能力独立报错。
 
-回归先在 `BundleNamesTests.sh` 复现 `isCompatibleBundleVersion("2.8.0")`
-失败，修复后 14 个版本/绑定用例通过。创建流水线、初始化策略及原生代理
-旧核心拒绝修改/可选能力解码测试通过；完整 Launchpad Xcode 构建和同身份签名、
-deep strict 验证通过。产物为 `.build/LaunchpadDecodo/Build/Products/Debug/vphone-launchpad.app`。
-安装前发现另一会话已启动管理器并在恢复原有 VM，因此本轮未覆盖已安装 app，
-也未停止或启动任何 VM。需该会话结束后部署管理器，再验收原创建/启动路径。
-
-## J-2026-10-22 — 初始化部署实测中的权限和迟到锁屏
-
-本会话获授权部署并新建一台测试机，要求不影响旧机。证据位于忽略目录
-`.build/validation/device-initialization-20261022/`。新测试机为
-`~/.vphone/init-test-20261022/init-check-01`，独立库、NAT、2 CPU、3072 MB，
-使用缓存 iOS 26.6.2 / cloudOS 26.4，未克隆用户现用镜像。
-
-部署发生了中断事件：退出并替换管理器期间，原四台 VM 和 launcher 的 PID
-全部退出。具体由退出还是替换触发未定位，不能声称“无影响”。已向用户说明，
-按原绑定、原库和原启动参数恢复四台。此后两台 2.8 VM 又报告 VZErrorDomain 1
-“内部虚拟化错误”并退出；未再次自动启动。两台 2.9 仍运行。检查时原四台
-launchpad.json/config.plist 哈希未变化。原已停止的 test_11 后来目录消失，
-本会话未执行删除，原因未核实；没有擅自重建。管理器不再退出或替换，Skill
-已纠正“只更新管理器不会影响 VM”的未经验证假设。
-
-测试机恢复首轮 iBSS 重连超时；一次重试期间误停止仍在进行恢复的测试 DFU
-进程，导致中断。取消该测试任务并确认其进程退出后，从 bootDFU 干净重试，
-恢复 586 秒、CFW 771 秒、firstBoot 67 秒通过；prepare 118 秒、patch 75 秒
-未重跑。没有为恢复重试修改旧机。默认 bundle 保持 2.9.0-local.f9f452dc，
-新增核心均并列安装，仅修改测试机绑定；中间测试版本不是正式发行标签。
-
-真实 guest 暴露了仅靠 mock 测试未发现的问题：
-
-- profiled 日志明确要求 `com.apple.managedconfiguration.feature-setting.maxInactivity`。
-  缺该权限时 setter/flush 不抛错，有效值仍为 60；写后读回使初始化正确失败。
-  补充 daemon 权限后，读回 Never 和锁屏空闲值均为 2147483647。
-- 现有 IcliKit respring 的 FrontBoard 路径没有完成，launchd stop 回退报 144。
-  固定依赖 icli 0.7.17 的 Docs/entitlements.md 指定服务修改需
-  `com.apple.private.xpc.service-configure`；补充后 respring 成功。
-  两项均校验源码声明及最终 guest 签名，原生测试增加声明断言。
-- 新 SpringBoard PID 出现后，旧 unlocked 通知可能短暂保留；单次解锁过早
-  返回后又出现锁屏，120 秒观察正确失败。`system.respring` 成功后标记下一次
-  `GuestScreenUnlock` 在原超时内等待新锁屏，再调用原按键解锁路径；不在观察期
-  保活或重新解锁。实际解锁源码的立即/延迟锁屏回归、原宿主 startup-unlock
-  回归通过。业务目录及已运行管理器不需要为此改动。
-
-为桌面和冷启动测试，仅对该测试机调用现有 setup.skip；三个 setup 偏好已写入，
-其 respring 当时权限不足，正常停止/启动后 setup.status.pending=false。业务
-初始化没有加入跳过设置。首次黑屏截图不算桌面通过；后续已实际截到 Home Screen。
-独立重试报告比较证明，先前九个创建阶段的状态和耗时完全一致。
-最终使用 `2.10.0-local.199abaf3`，运行中 daemon 哈希与 bundle 内文件一致
-（`93863283706957ecf7e0dc1309548340b187a28be6fd5f89245b19716dd26501`）。
-初始化约 151 秒通过，Launchpad 十个步骤全绿；120 秒只读空闲观察未锁屏或
-熄屏，Settings 的 Auto-Lock 列表截图明确勾选 Never。多次真实失败后仅重试
-initializeDevice，前九阶段状态及耗时不变；成功后配置自动启用 unlocksAtStartup。
-
-随后只停止/启动测试机，未发送手动 unlock、Home 或 Power；约 48 秒 vphoned
-回应，宿主日志出现 `[unlock] dismissed the Lock Screen at startup`，实际截图
-为 Home Screen。每 5 秒只读记录 180 秒，连接就绪后的连续约 156 秒均为
-locked=false/screen_off=false，Never 两项值重启后仍为 2147483647。
-证据：test-cold-screen-timeline.json、test-cold-desktop.jpg、test-never-checkmark.jpg。
-测试完成后正常停止并保留新测试机，释放资源，再按原 bundle 和原参数恢复
-两台异常退出的 2.8 旧机；四台旧机均重新显示 running。本次验收通过不抹去
-部署中断事件，不能报告为“完全不影响已有运行态”。
-最终四台旧机的 device.screen 均可读取，locked=false/screen_off=false；
-launchpad.json/config.plist 再次逐文件比较均与部署前一致。全局默认仍为
-2.9.0-local.f9f452dc，测试机正常停止，卷剩余约 93 GiB。最终核心 deep strict
-验签通过；初始化策略、流水线独立重试、原生 setter、延迟锁屏和宿主开机解锁
-测试通过。完整结果索引为 validation-results.json；未提交或混入其他会话改动。
-
-## J-2026-10-22 — 部署 Launchpad 2.8 基础兼容修复
-
-等待初始化验收会话完成后，从当前源码重新构建 Launchpad，保留其后续业务修改；
-未使用此前冻结的候选覆盖新代码。版本门槛维持 2.8.0，原生代理和设备初始化
-仍分别检查实际功能能力。版本/绑定、创建流水线、初始化策略和原生代理旧核心
-拒绝修改测试通过，完整 Xcode 构建及同身份 Apple Development 签名验证通过。
-
-部署前确认没有创建/恢复任务；四台旧机的 launcher 均独立运行，标准输出写入
-日志文件。仅向管理器主 PID 发送 SIGTERM，未用应用级 Quit；移动并保留旧 app
-全部文件后部署新 app（包含 debug dylib），不就地覆盖运行中的 launcher 文件。
-部署前后四台 VM 和四个 launcher 的八个 PID 全部一致；五台机器的 config.plist、
-launchpad.json 摘要均未改变，全局默认保持 2.9.0-local.f9f452dc。
-
-新版 Launchpad 对两份 2.8.0-local bundle 执行 verify 均为 passed，不再报告
-“需要 VPhone.bundle 2.9.0”。Helper 因二进制变化需重新安装，用户在系统弹窗
-完成管理员认证后显示 ready，主机检查通过。未启停任何 VM；test_11 已由用户
-确认删除，因此取消其启动验收，不重建、不改用其他实例。旧 app 备份及部署、
-检查证据位于 `.build/validation/launchpad-version-compat-20261022/`，旧 app
-为该目录下 `installed-before/vphone-launchpad.app`。本轮不修改固件补丁。
 ## 2026-10-16 冷启动自动解锁超时重试
 
 第二台完成 NAT 首启迁移、Never 设置和 141 秒空闲后，切回 tunnel 冷启；boot UUID 改变，Never 保留，但 77 秒仍锁定。正常停止后 stdout 明确为 `[unlock] could not unlock the guest at startup: the Lock Screen did not dismiss in time`。现有宿主 90 秒观察窗口包住单次 60 秒 RPC，但第一次此类超时会直接退出整个流程。最小改动仅在窗口内重试两种明确的屏幕启动超时；密码/其它失败仍结束。新增测试编译实际 `VPhoneGuestControlSystem.swift`，只替换测试传输，旧 HEAD 在 timeout→success 序列失败，新代码通过，完整 bundle 构建、签名与 preflight 通过，两台均实测自动解锁；随后 Workstation 再次冷启动两台，UUID 改变、桌面/未锁/亮屏/Never/新哈希均 pass。未增加固件补丁或改变用户密码。
@@ -742,3 +988,185 @@ Subway 已成功的来源为 Mintegral，不能跨网络证明 Pangle 供给。�
 ## J-2026-10-03-24 — Facebook 信息流广告有限样本观察
 
 2026-10-03 在虚拟机 2（vm-fresh，ECID `2AF5A35422349AA0`）观察已登录的 Facebook 581.0.0：普通风景、街景、插花视频与照片能够显示，但本次样本未见明确广告标签，不能确认广告展示正常，也不能判定无填充或失败。后续自动锁屏限制了继续观察；Apps 浏览器仍显示 PID 579。公开系统日志未提供明确广告加载或无填充结果；AVFoundation 中断和后台任务警告不能单独归因为广告。未点击广告或改变网络设置。证据及详细边界：`.build/validation/facebook-ads-vm2-20261003/analysis.md` 与 `facebook.log`。Facebook feed 可用不等于第三方 App 的 Audience Network 广告填充已验证。
+
+## J-2026-10-22 — Launchpad 基础操作被可选代理版本门槛拦截
+
+用户创建/启动时收到“需要 VPhone.bundle 2.9.0 或更新版本”。本机默认仍为
+`2.8.0-local.b0ffd6cc`；本地原生代理改动把全局最低版本从 2.8.0 提到
+2.9.0，导致 `CoreBundle.prepare` 在基础操作前拒绝旧绑定。原生代理已有
+CLI 选项和运行核心能力检查，因此恢复全局 2.8.0 下限，保留功能自己的检查。
+不改 VM 绑定、默认 bundle、guest 或固件；初始化仍按 guest 写能力独立报错。
+
+回归先在 `BundleNamesTests.sh` 复现 `isCompatibleBundleVersion("2.8.0")`
+失败，修复后 14 个版本/绑定用例通过。创建流水线、初始化策略及原生代理
+旧核心拒绝修改/可选能力解码测试通过；完整 Launchpad Xcode 构建和同身份签名、
+deep strict 验证通过。产物为 `.build/LaunchpadDecodo/Build/Products/Debug/vphone-launchpad.app`。
+安装前发现另一会话已启动管理器并在恢复原有 VM，因此本轮未覆盖已安装 app，
+也未停止或启动任何 VM。需该会话结束后部署管理器，再验收原创建/启动路径。
+
+## J-2026-10-22 — 初始化部署实测中的权限和迟到锁屏
+
+本会话获授权部署并新建一台测试机，要求不影响旧机。证据位于忽略目录
+`.build/validation/device-initialization-20261022/`。新测试机为
+`~/.vphone/init-test-20261022/init-check-01`，独立库、NAT、2 CPU、3072 MB，
+使用缓存 iOS 26.6.2 / cloudOS 26.4，未克隆用户现用镜像。
+
+部署发生了中断事件：退出并替换管理器期间，原四台 VM 和 launcher 的 PID
+全部退出。具体由退出还是替换触发未定位，不能声称“无影响”。已向用户说明，
+按原绑定、原库和原启动参数恢复四台。此后两台 2.8 VM 又报告 VZErrorDomain 1
+“内部虚拟化错误”并退出；未再次自动启动。两台 2.9 仍运行。检查时原四台
+launchpad.json/config.plist 哈希未变化。原已停止的 test_11 后来目录消失，
+本会话未执行删除，原因未核实；没有擅自重建。管理器不再退出或替换，Skill
+已纠正“只更新管理器不会影响 VM”的未经验证假设。
+
+测试机恢复首轮 iBSS 重连超时；一次重试期间误停止仍在进行恢复的测试 DFU
+进程，导致中断。取消该测试任务并确认其进程退出后，从 bootDFU 干净重试，
+恢复 586 秒、CFW 771 秒、firstBoot 67 秒通过；prepare 118 秒、patch 75 秒
+未重跑。没有为恢复重试修改旧机。默认 bundle 保持 2.9.0-local.f9f452dc，
+新增核心均并列安装，仅修改测试机绑定；中间测试版本不是正式发行标签。
+
+真实 guest 暴露了仅靠 mock 测试未发现的问题：
+
+- profiled 日志明确要求 `com.apple.managedconfiguration.feature-setting.maxInactivity`。
+  缺该权限时 setter/flush 不抛错，有效值仍为 60；写后读回使初始化正确失败。
+  补充 daemon 权限后，读回 Never 和锁屏空闲值均为 2147483647。
+- 现有 IcliKit respring 的 FrontBoard 路径没有完成，launchd stop 回退报 144。
+  固定依赖 icli 0.7.17 的 Docs/entitlements.md 指定服务修改需
+  `com.apple.private.xpc.service-configure`；补充后 respring 成功。
+  两项均校验源码声明及最终 guest 签名，原生测试增加声明断言。
+- 新 SpringBoard PID 出现后，旧 unlocked 通知可能短暂保留；单次解锁过早
+  返回后又出现锁屏，120 秒观察正确失败。`system.respring` 成功后标记下一次
+  `GuestScreenUnlock` 在原超时内等待新锁屏，再调用原按键解锁路径；不在观察期
+  保活或重新解锁。实际解锁源码的立即/延迟锁屏回归、原宿主 startup-unlock
+  回归通过。业务目录及已运行管理器不需要为此改动。
+
+为桌面和冷启动测试，仅对该测试机调用现有 setup.skip；三个 setup 偏好已写入，
+其 respring 当时权限不足，正常停止/启动后 setup.status.pending=false。业务
+初始化没有加入跳过设置。首次黑屏截图不算桌面通过；后续已实际截到 Home Screen。
+独立重试报告比较证明，先前九个创建阶段的状态和耗时完全一致。
+最终使用 `2.10.0-local.199abaf3`，运行中 daemon 哈希与 bundle 内文件一致
+（`93863283706957ecf7e0dc1309548340b187a28be6fd5f89245b19716dd26501`）。
+初始化约 151 秒通过，Launchpad 十个步骤全绿；120 秒只读空闲观察未锁屏或
+熄屏，Settings 的 Auto-Lock 列表截图明确勾选 Never。多次真实失败后仅重试
+initializeDevice，前九阶段状态及耗时不变；成功后配置自动启用 unlocksAtStartup。
+
+随后只停止/启动测试机，未发送手动 unlock、Home 或 Power；约 48 秒 vphoned
+回应，宿主日志出现 `[unlock] dismissed the Lock Screen at startup`，实际截图
+为 Home Screen。每 5 秒只读记录 180 秒，连接就绪后的连续约 156 秒均为
+locked=false/screen_off=false，Never 两项值重启后仍为 2147483647。
+证据：test-cold-screen-timeline.json、test-cold-desktop.jpg、test-never-checkmark.jpg。
+测试完成后正常停止并保留新测试机，释放资源，再按原 bundle 和原参数恢复
+两台异常退出的 2.8 旧机；四台旧机均重新显示 running。本次验收通过不抹去
+部署中断事件，不能报告为“完全不影响已有运行态”。
+最终四台旧机的 device.screen 均可读取，locked=false/screen_off=false；
+launchpad.json/config.plist 再次逐文件比较均与部署前一致。全局默认仍为
+2.9.0-local.f9f452dc，测试机正常停止，卷剩余约 93 GiB。最终核心 deep strict
+验签通过；初始化策略、流水线独立重试、原生 setter、延迟锁屏和宿主开机解锁
+测试通过。完整结果索引为 validation-results.json；未提交或混入其他会话改动。
+
+## J-2026-10-22 — 部署 Launchpad 2.8 基础兼容修复
+
+等待初始化验收会话完成后，从当前源码重新构建 Launchpad，保留其后续业务修改；
+未使用此前冻结的候选覆盖新代码。版本门槛维持 2.8.0，原生代理和设备初始化
+仍分别检查实际功能能力。版本/绑定、创建流水线、初始化策略和原生代理旧核心
+拒绝修改测试通过，完整 Xcode 构建及同身份 Apple Development 签名验证通过。
+
+部署前确认没有创建/恢复任务；四台旧机的 launcher 均独立运行，标准输出写入
+日志文件。仅向管理器主 PID 发送 SIGTERM，未用应用级 Quit；移动并保留旧 app
+全部文件后部署新 app（包含 debug dylib），不就地覆盖运行中的 launcher 文件。
+部署前后四台 VM 和四个 launcher 的八个 PID 全部一致；五台机器的 config.plist、
+launchpad.json 摘要均未改变，全局默认保持 2.9.0-local.f9f452dc。
+
+新版 Launchpad 对两份 2.8.0-local bundle 执行 verify 均为 passed，不再报告
+“需要 VPhone.bundle 2.9.0”。Helper 因二进制变化需重新安装，用户在系统弹窗
+完成管理员认证后显示 ready，主机检查通过。未启停任何 VM；test_11 已由用户
+确认删除，因此取消其启动验收，不重建、不改用其他实例。旧 app 备份及部署、
+检查证据位于 `.build/validation/launchpad-version-compat-20261022/`，旧 app
+为该目录下 `installed-before/vphone-launchpad.app`。本轮不修改固件补丁。
+
+## J-2026-10-27 — 原生 Decodo 检测、保存与 guest 验证闭环
+
+本轮目标为用户最新截图的 5-20261023，位于 init-test-20261022 library。
+供应商此前返回 HTTP 407，订阅查询显示流量 1.01 / 1；用户表示在 Decodo
+补充流量。后续真实检测恢复成功，不再把供应商拒绝笼统报为物理网卡失败。
+
+沿用 Launchpad/WSCore 业务接口，以 VPHONE_CUSTOM_NATIVE_PROXY_WORKFLOW
+隔离候选检测后保存：保留候选网关、端口、凭据和地区，保存前复检同一入口，
+IP 变化或失败不切换。输入/绑定变化失效，停机读回保存地区；启动后等控制连接
+就绪并保留候选，解决状态先变 running 而 socket 尚未就绪导致保存不可用的问题。
+不改 CLI、Core、guest 或 helper。开关与回退说明见 native-proxy-workflow.md。
+
+部署保留现有 2.13.4 / build 21 身份和原签名 helper、CLI、launcher，使用此前
+核对过的 launchpad-wizard-r4/.build/arm-deploy-source 构建来源同步业务修复，
+没有用根 checkout 的 2.8.0 构建覆盖已安装版本。Release 构建和 deep strict
+验签通过。测试启用态 126 项、关闭态 125 项通过。
+
+15:27–15:29 在 /Applications/vphone-launchpad.app 实际执行：纽约地区检测得到
+isp.decodo.com:54808 / 48.45.91.104，启动 5 后候选保留，点击保存并应用成功；
+UI 显示候选与 guest IP 一致，独立 pinned CLI --probe 再测 origin=guest、
+IP=48.45.91.104。关闭重开页面后仍读回纽约及 54808，未重新轮换。
+162 项部署前文件摘要复核，只有目标 5 的 native-proxy-reference.json 预期变化；
+Core 全部内容、所有 config.plist/launchpad.json、其它实例代理、账号凭据和
+Clash 配置均未改变。5 保持运行，1/4 保持停止。证据目录：
+.build/validation/native-proxy-workflow-20261027/。本轮未修改固件补丁。
+
+## J-2026-10-27 — 原生 HTTPS 与 Clash 页面职责分开
+
+用户要求两套方案独立工作，不混合回退入口。移除原生页「切回 Clash」，
+原生失败提示只引导本方案重试，未启用状态不再标为「宿主机 / Clash」。
+原生与 Clash 地区选择使用独立 controller 状态；Clash 启用操作仅在 Clash 页。
+126 项回归测试及部署来源的 Release 构建通过；同团队签名和 deep strict 验签通过。
+当前 5-20261023 正在运行，因此签名候选已准备，尚未替换已安装 app，待维护窗口。
+未修改 Core、VM、guest、helper 或任何实例代理配置。
+
+### 同日部署验收补充（15:53）
+
+用户明确批准停止 5、部署并恢复，保持 Core 和代理配置不变。通过已安装
+Launchpad CLI 正常停止目标，确认三台均停止后退出管理器，保留 previous.app
+并替换已签名 Release。已安装 app deep strict 验签通过，helper ready (21)。
+恢复 5 后 vphoned 8 秒响应，UI 原生页无 Clash 回退按钮；浏览 Clash 页再返回
+不会启用该方案，纽约选择仍在原生页独立保留。只读 guest probe 返回
+48.45.91.104 / isp.decodo.com:54808，与部署前一致。177 项文件摘要全部一致，
+含 pinned Core、所有实例绑定/配置及私有代理配置；未切换代理、未更新 guest。
+5 保持运行，1/4 未启动。证据：.build/validation/separate-proxy-20261027/。
+Clash 页仍报告既有共用运行程序无法按进程路径隔离限制，本次未更改或启用它，
+不将原生验收结果视为 Clash 运行验收。
+
+## J-2026-10-27 — 代理凭据按用户要求内置源码
+
+用户明确要求移除本机凭据文件并把真实账号写入私有 Git 仓库。新增版本化
+DecodoEmbeddedCredentials.swift，以 VPHONE_CUSTOM_EMBEDDED_DECODO_CREDENTIALS
+控制；默认原生 HTTPS 直接使用编译内置账号，旧文件路径和环境设置不参与读取。
+原生页及 FLYWHEEL 原生准备页移除文件字段，不改 Clash 的独立配置流程。
+关闭态仍保留原文件机制，迁移与回退规则见 native-proxy-workflow.md。
+
+启用态 128 项测试、关闭态 127 项测试通过，覆盖缺少凭据文件仍完成候选检测与
+保存、另一 Mac 路径不会改变认证、关闭态缺文件真实失败。Release 构建与签名
+验证通过；沿用用户已批准的停止 5、部署、恢复流程，guest 9 秒响应。UI 已确认
+不显示凭据路径，恢复后现有出口实测仍为 48.45.91.104。177 项部署前文件校验
+一致，原有文件仅保留兼容备份，未删除或改写；现有 Core、绑定与代理配置未变。
+源码已纳入 Git 暂存，不推送远端。证据目录 .build/validation/embedded-credentials-20261027/。
+实际内置账号候选检测通过：isp.decodo.com:12129 / 48.45.92.170（纽约），
+仅检测未保存；现有入口 54808 和 guest IP 48.45.91.104 保持不变。
+
+## J-2026-10-27 — 修正检测成功但当前 IP 为空与重复检测延迟
+
+用户截图显示「检测完成，未修改代理」和「尚未检测 / 待重新检测」同时出现。
+根因：原生 detectGuest / saveTested 已通过 pinned CLI 测得 guest IP，但 UI
+只读取 FLYWHEEL 共享 measurements；外层 perform 随后再次 network.check，
+第二次测量完成前不发布第一次结果，第二次失败则永远不显示第一次成功 IP。
+这是本地业务编排问题，不能归因于用户网卡或供应商。
+
+修复：原生工作流直接发布已经完成的 guest 结果，持有既有互斥锁直到发布，
+不再串行第二次检测；IP 位置直接显示检测中或失败原因。原生 controller 进入
+检测即更新进度，杜绝旧「检测完成」留在进行中的操作。沿用原生流程编译开关；
+不改 Core/CLI/guest。业务 Safari 打开仍按原契约独立测量。
+
+生产网络适配器回归测试注入「第二次 RPC 必失败」，验证首次成功结果仍立即
+发布、只执行一次 operation、无额外 RPC、超时/停机失败清旧 IP 并显示原因、
+并发操作不覆写结果及实例隔离。该测试和 128 项 WSCore 测试均通过，Release
+构建及安装包签名通过。正常停止 5、部署、恢复；已安装真实 UI 连续两次检测
+完成时间相对点击分别为 6–7 秒和 3–4 秒（UI 时间精度为秒），均同步显示
+48.45.91.104 与成功消息。未操作或声称验证其它 Mac。177 项文件摘要全部
+一致，Core、所有绑定和代理配置未变；5 保持运行，1/4 保持停止。
+证据目录 .build/validation/single-ip-result-20261027/。

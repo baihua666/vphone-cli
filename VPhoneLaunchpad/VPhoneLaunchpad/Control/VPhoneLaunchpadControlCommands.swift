@@ -79,6 +79,7 @@ struct VPhoneLaunchpadControlCommands {
         case .notInstalled: "not installed"
         case let .outdated(installed, bundled): "outdated (\(installed), app has \(bundled))"
         case let .ready(version): "ready (\(version))"
+        case let .unavailable(detail): "unavailable (\(detail))"
         case .unconfigured: "unconfigured (built without a team)"
         }
         return [
@@ -137,6 +138,9 @@ struct VPhoneLaunchpadControlCommands {
         }
         if bundles.isInstalling {
             throw VPhoneLaunchpadError("Another bundle install is running.")
+        }
+        if case let .unavailable(detail) = model.helper.state {
+            throw VPhoneLaunchpadError(detail)
         }
         guard case .ready = model.helper.state else {
             throw VPhoneLaunchpadError("The helper is not installed or is outdated. Install it in Host Setup.")

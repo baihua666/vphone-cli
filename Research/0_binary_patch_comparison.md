@@ -1,5 +1,13 @@
 # Patch Comparison: Regular / Development / Jailbreak / Experimental
 
+## 2026-10-23 M0无RF宿主实验（无二进制补丁）
+
+新增独立`Integrations/NFCNoRF`研究工具，宏`VPHONE_EXPERIMENTAL_NFC_NO_RF`默认关闭；
+仅宿主自有NCI/HCP子集与外置真实jCardSim测试applet，不接入产品／guest／内核／DSC。
+没有新增、启用或改写固件补丁／patch-set／preset，已有补丁数量与系统行为不因此改变。
+实际SELECT／echo及故障恢复范围见[验收报告](Guest/nfc_no_rf_m0_implementation_20261023.md)；
+模型通过不代表原Comet、LoadStack或Wallet可用。
+
 ## 2026-10-22 现有五台的客体环境迁移
 
 五台 Launchpad 实例迁移到正确官方基线命名的 `2.8.0-local.199abaf3` 测试核心，

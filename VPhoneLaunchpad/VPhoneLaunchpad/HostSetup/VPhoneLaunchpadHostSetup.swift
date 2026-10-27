@@ -268,6 +268,8 @@ final class VPhoneLaunchpadHostSetup {
             (.pending, String(localized: "Version \(installed) installed, \(bundled) available"))
         case let .ready(version):
             (.passed, String(localized: "Version \(version)"))
+        case let .unavailable(detail):
+            (.failed, detail)
         case .unconfigured:
             (.failed, String(localized: "Not available in this build"))
         }
