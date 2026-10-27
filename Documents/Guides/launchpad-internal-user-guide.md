@@ -1,8 +1,8 @@
 # VPhone Launchpad 内部用户安装与使用说明
 
-> **r4 发布状态：草稿，尚未公开发布。** 本机创建验收遇到原 Core 的克隆崩溃，详情见 [验收记录](launchpad-wizard-r4-validation.md)。下文为 r4 新向导说明，r4 下载链接在发布前不可供普通用户使用。当前正式版仍为 [r3 Release](https://github.com/baihua666/vphone-cli/releases/tag/launchpad-2.8.0-r3)，请配合 [r3 安装说明](https://github.com/baihua666/vphone-cli/blob/5216726/Documents/Guides/launchpad-internal-user-guide.md)。
+> **当前内部版：2.13.4 / 修订 5。** 已完成本机导入、克隆、启动和失败重试后发布。[最新 Release](https://github.com/baihua666/vphone-cli/releases/latest) · [本机验收记录与限制](launchpad-upstream-2.13.4-validation.md)。
 
-适用版本：**Launchpad 2.8.0 / 发布修订 4**。更新日期：2026-10-26。
+适用版本：**Launchpad 2.13.4 / 发布修订 5**。更新日期：2026-10-26。
 
 按顺序完成：**下载 APP → 首次权限设置 → APP 内安装 Core → APP 内自动下载镜像 → 创建并启动虚拟机**。
 普通用户不需要安装 Git、Xcode、Homebrew 或 Python，也不需要苹果开发者账号、证书或私钥。
@@ -14,8 +14,8 @@
 1. **下载并安装主 APP**：下载下方 DMG，打开后将 `vphone-launchpad.app` 拖入「应用程序」，再从「应用程序」启动。
 2. **允许首次打开**：当前内部版未公证；若 macOS 阻止打开，按第 2 节在「系统设置 → 隐私与安全性」确认「仍要打开」。
 3. **在 APP 发起主机设置**：首次出现「开始使用与版本更新」；以后从主窗口工具栏「版本与镜像」进入。点击「打开主机设置」，完成开发者工具权限及 Helper 管理员认证，返回向导点击「重新检查权限」，确认第 1 步显示「已完成」。若 Core 预检明确要求研究虚拟机设置，按第 3 节完成后返回。
-4. **在 APP 安装 Core**：点击「检查更新／重试」，选择 `launchpad-2.8.0-r4`，核对匹配 Core 为 `2.8.0-local.199abaf3`，点击「安装匹配 Core／重试」，等待下载、校验和安装完成。第 2 步显示「已完成」及「Core 已就绪」时不用重复安装。
-5. **在同一窗口选择镜像**：在「3 · 镜像下载」选择 **干净 iOS 26.6.2 模板 · `26.6.2-r1`**。查看「所需 Core」「下载大小」及「导入所需可用空间」，点击「下载镜像／继续／重试」，等待第 3 步显示「已完成」。镜像约 **11.61 GB**，建议开始前至少预留 **90 GiB** 空闲空间。
+4. **在 APP 安装 Core**：点击「检查更新／重试」，选择 `launchpad-2.13.4-r5`，核对匹配 Core 为 `2.13.4-local.666ac4da`，点击「安装匹配 Core／重试」，等待下载、校验和安装完成。第 2 步显示「已完成」及「Core 已就绪」时不用重复安装。
+5. **在同一窗口选择镜像**：在「3 · 镜像下载」选择 **干净 iOS 26.6.2 模板 · `26.6.2-r2`**。查看「所需 Core」「下载大小」及「导入所需可用空间」，点击「下载镜像／继续／重试」，等待第 3 步显示「已完成」。镜像约 **11.61 GB**，建议开始前至少预留 **90 GiB** 空闲空间。
 6. **创建并启动**：在「4 · 创建启动」核对目标资料库，填写唯一的新实例名称，例如 `my-iphone`（只使用英文字母、数字、点、横线或下划线），点击 **「创建并启动新虚拟机」**。APP 自动下载镜像分片、校验、合并、导入、创建新设备身份、绑定匹配 Core 并启动。请先完成权限和 Core 两步；未预先下载镜像时，此按钮也会先完成镜像下载校验。
 7. **确认完成**：等待顶部显示「4 / 4 步已完成」及实例「已启动且客体就绪」，确认虚拟 iPhone 桌面和网络正常。之后在 Launchpad 主列表选择实例即可启动或停止，无需再次下载镜像。
 
@@ -46,8 +46,8 @@
 
 | 下载项 | 链接 | 用途 |
 | --- | --- | --- |
-| APP 安装包，约 10.4 MiB | [下载 Launchpad 2.8.0-r4 DMG](https://github.com/baihua666/vphone-cli/releases/download/launchpad-2.8.0-r4/vphone-launchpad-launchpad-2.8.0-r4.dmg) | 必须下载 |
-| Core，约 17.6 MiB | [下载 Core 2.8.0-local.199abaf3 ZIP](https://github.com/baihua666/vphone-cli/releases/download/launchpad-2.8.0-r4/VPhone-2.8.0-local.199abaf3.zip) | 通常由 APP 内下载；手动安装备用 |
+| APP 安装包，约 11.0 MiB | [下载 Launchpad 2.13.4-r5 DMG](https://github.com/baihua666/vphone-cli/releases/download/launchpad-2.13.4-r5/vphone-launchpad-launchpad-2.13.4-r5.dmg) | 必须下载 |
+| Core，约 35.2 MiB | [下载 Core 2.13.4-local.666ac4da ZIP](https://github.com/baihua666/vphone-cli/releases/download/launchpad-2.13.4-r5/VPhone-2.13.4-local.666ac4da.zip) | 通常由 APP 内下载；手动安装备用 |
 | 完整发布说明 | [打开 GitHub Release](https://github.com/baihua666/vphone-cli/releases/latest) | 查看附件与已知限制 |
 
 GitHub 页面里的 **Source code (zip/tar.gz)** 是源码，不是 APP 或镜像。
@@ -69,7 +69,7 @@ GitHub 页面里的 **Source code (zip/tar.gz)** 是源码，不是 APP 或镜�
 | 项目 | 操作与通过标志 |
 | --- | --- |
 | 开发者工具权限 | 在「系统设置 → 隐私与安全性 → 开发者工具」允许 **VPhone Launchpad / vphone-launchpad**；返回 APP 重新检查。这是系统权限，不要求安装 Xcode。 |
-| 特权 Helper | 按 APP 提示安装或更新，在 macOS 原生弹窗中输入本机管理员凭据。完成后显示 Helper 版本；此发行版为 15。 |
+| 特权 Helper | 按 APP 提示安装或更新，在 macOS 原生弹窗中输入本机管理员凭据。完成后显示 Helper 版本；此发行版为 21。 |
 | 资料库 | 保持默认资料库即可。若使用外置盘，必须是可写的 APFS 卷；按主机设置提示处理属主/“忽略此卷的所有权”问题。 |
 | 其它必需检查 | Apple 芯片、系统版本、实体 Mac 等项目均应通过。 |
 
@@ -98,12 +98,12 @@ GitHub 页面里的 **Source code (zip/tar.gz)** 是源码，不是 APP 或镜�
 
 ## 4. 安装 Core
 
-Core 是虚拟机运行组件，**不是 iPhone 镜像**。此内部版对应 `2.8.0-local.199abaf3`。
+Core 是虚拟机运行组件，**不是 iPhone 镜像**。此内部版对应 `2.13.4-local.666ac4da`。
 
 ### 推荐：APP 内安装
 
 1. 主窗口点击「版本与镜像 → 检查更新／重试」。
-2. 选择 `launchpad-2.8.0-r4`，核对“匹配 Core”为 `2.8.0-local.199abaf3`。
+2. 选择 `launchpad-2.13.4-r5`，核对“匹配 Core”为 `2.13.4-local.666ac4da`。
 3. 点击「安装匹配 Core／重试」。APP 下载、核对大小和 SHA-256，并通过 Helper 安装；按系统提示认证。
 4. 等待安装、运行策略检查与预检完成。若要求恢复模式设置，完成上一节后返回重试检查，不要反复下载。
 5. 在「核心 Bundle」中确认目标 Core 可用；新设备如尚无默认 Core，将这份 Core 设为默认。
@@ -113,7 +113,7 @@ Core 是虚拟机运行组件，**不是 iPhone 镜像**。此内部版对应 `2
 1. 下载第 1 节提供的 **Core ZIP**，保留 ZIP 原文件即可。
 2. 在 Launchpad 主窗口打开「核心 Bundle」，选择 **「安装本地构建… / Install Local Build…」**。
 3. 选择该 ZIP，按提示完成安装及检查。
-4. 核对版本为 `2.8.0-local.199abaf3`，必要时选择「设为默认 / Set as Default」。
+4. 核对版本为 `2.13.4-local.666ac4da`，必要时选择「设为默认 / Set as Default」。
 
 不要自行把 Core ZIP 解压到系统目录；不要使用上游仓库的其它版本代替这份内部 Core。安装新 Core 不会自动更改已有实例的绑定。
 
@@ -121,7 +121,7 @@ Core 是虚拟机运行组件，**不是 iPhone 镜像**。此内部版对应 `2
 
 ### 在线镜像（推荐）
 
-选择 **干净 iOS 26.6.2 模板 · 26.6.2-r1（修订 1）**。模板使用原 Core `2.8.0-local.199abaf3`，2 CPU / 4 GB 内存 / 32 GB 虚拟磁盘 / NAT；简体中文，无 Apple 账户、锁屏密码、业务应用或代理凭据，自动锁定为“永不”。
+选择 **干净 iOS 26.6.2 模板 · 26.6.2-r2（修订 2）**。模板匹配宿主 Core `2.13.4-local.666ac4da`；镜像字节与 r1 相同，归档内客体环境和引导链来自原 2.8.0。新 Core 首次启动会按上游流程同步客体服务及组件，无需用户手工操作。若同步超过向导的 120 秒等待时间，实例仍会保留，可稍候点击「重试启动已导入实例」，不要重复导入；日志提示重启加载组件时按提示处理。配置为 2 CPU / 4 GB 内存 / 32 GB 虚拟磁盘 / NAT；简体中文，无 Apple 账户、锁屏密码、业务应用或代理凭据，自动锁定为“永不”。
 
 1. 打开「版本与镜像 → 检查更新／重试」。
 2. 在「3 · 镜像下载」的「镜像版本（全部发行版）」中选择模板，查看版本、所需 Core、下载大小和空间要求。
@@ -148,10 +148,10 @@ APP 分别管理 App 发布修订、Core 内容身份和镜像 id/修订；显�
 
 1. 将镜像归档复制到目标 Mac，核对提供者给出的文件大小或 SHA-256。
 2. 确认 Core 已安装且设有默认 Core。
-3. 回到主窗口，点击顶部 **「＋ → 导入… / Import…」**；首次空列表也可能直接显示「导入…」。
+3. 回到主窗口，点击菜单栏 **「文件 → 导入… / Import…」**；首次空列表也可能直接显示「导入…」。
 4. 选择 `.tzst` / `.txz` 文件并等待完成。导入期间不要退出 APP、拔盘或让 Mac 休眠。
 5. 导入完成后，实例会出现在主列表。此入口采用归档内的实例名称；若同名已存在，不要删除现有实例腾位置，联系管理员确认命名处理后再导入。
-6. 选中导入实例，查看检查器里的「核心 Bundle → 主机程序」。若提示绑定缺失，通过「更改… / Change Core Bundle…」选择镜像提供者确认的匹配 Core。本次交付的镜像应由提供者确认兼容 `2.8.0-local.199abaf3`；未知或较旧镜像不要直接强行改绑。
+6. 选中导入实例，查看检查器里的「核心 Bundle → 主机程序」。若提示绑定缺失，通过「更改… / Change Core Bundle…」选择镜像提供者确认的匹配 Core。本次交付的镜像应由提供者确认兼容 `2.13.4-local.666ac4da`；未知或较旧镜像不要直接强行改绑。
 
 默认资料库是 `~/.vphone/machines`。如需在 Finder 查看，可用「前往 → 前往文件夹」输入该路径；不要在运行时移动里面的文件。
 

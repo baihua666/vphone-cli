@@ -165,6 +165,30 @@ struct IPSWCacheTests {
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("cache").path))
     }
 
+    @Test func `a local archive that no longer exists is not here, and an unreadable one still fails`() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = root.appendingPathComponent("cache")
+        let source = try fixture(in: root)
+        #expect(try VPhoneIPSWCache.localArchive(source.path, in: cache)?.build == "23G90")
+        #expect(try VPhoneIPSWCache.localArchive(source.absoluteString, in: cache)?.build == "23G90")
+
+        // Deleted since: nil, so vm template find falls back to the sources
+        // a template recorded instead of failing (B4).
+        let missing = root.appendingPathComponent("gone/iPhone.ipsw")
+        #expect(try VPhoneIPSWCache.localArchive(missing.path, in: cache) == nil)
+        #expect(try VPhoneIPSWCache.localArchive(missing.absoluteString, in: cache) == nil)
+        // A remote source that is not cached: nil, nothing downloaded.
+        #expect(try VPhoneIPSWCache.localArchive("https://example.invalid/iPhone.ipsw", in: cache) == nil)
+        #expect(!FileManager.default.fileExists(atPath: cache.path))
+
+        // Something at the path that is not an IPSW is still an error.
+        let junk = root.appendingPathComponent("junk.ipsw")
+        try Data("not a zip".utf8).write(to: junk)
+        #expect(throws: (any Error).self) { try VPhoneIPSWCache.localArchive(junk.path, in: cache) }
+    }
+
     @Test func `download replaces invalid cache only after validation`() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -492,7 +516,9 @@ struct IPSWCacheTests {
         }
     }
 
-    @Test func `a cloudOS without the virtual iPhone is refused before extraction`() throws {
+    // `fw prepare` then takes the research board's components and checks that a
+    // kernelcache recipe exists for them.
+    @Test func `a cloudOS without the virtual iPhone pairs, the research board standing in`() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -501,11 +527,54 @@ struct IPSWCacheTests {
         let cloud = try ipsw(in: root, "cloud", productTypes: ["ComputeModule14,1", "Mac14,14"],
                              deviceClasses: ["j226cap", "j236cap", "vresearch101ap"])
 
+        try VPhoneIPSWCache.checkPair(iPhone: phone, cloudOS: cloud)
+    }
+
+    @Test func `a known TV donor pairs with cloudOS without admitting unknown TVs`() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tv = try ipsw(in: root, "tv", productTypes: ["AppleTV5,3"], deviceClasses: ["J42DAP"])
+        let cloud = try ipsw(in: root, "cloud", productTypes: ["iProd99,1"], deviceClasses: ["vresearch101ap", "vphone600ap"])
+        let otherTV = try ipsw(in: root, "other-tv", productTypes: ["AppleTV14,1"], deviceClasses: ["j255ap"])
+
+        try VPhoneIPSWCache.checkPair(iPhone: tv, cloudOS: cloud)
+        #expect(VPhoneIPSWCache.guestDevice(for: tv) == .appleTV5_3)
+        #expect(tv.deviceClasses == ["j42dap"])
+        #expect(VPhoneIPSWCache.guestProductTypes.contains("AppleTV5,3"))
         #expect {
-            try VPhoneIPSWCache.checkPair(iPhone: phone, cloudOS: cloud)
+            try VPhoneIPSWCache.checkPair(iPhone: otherTV, cloudOS: cloud)
         } throws: { error in
-            guard case .noVirtualPhoneInCloudOS? = error as? VPhoneIPSWCache.Error else { return false }
-            return error.localizedDescription.contains("vphone600ap")
+            if case .notIPhoneSource? = error as? VPhoneIPSWCache.Error { true } else { false }
+        }
+        #expect {
+            try VPhoneIPSWCache.checkPair(iPhone: cloud, cloudOS: tv)
+        } throws: { error in
+            if case .swappedSources? = error as? VPhoneIPSWCache.Error { true } else { false }
+        }
+    }
+
+    @Test func `HomePod mini pairs with cloudOS without admitting other audio accessories`() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let homePod = try ipsw(in: root, "homepod-mini", productTypes: ["AudioAccessory5,1"], deviceClasses: ["B520AP"])
+        let cloud = try ipsw(in: root, "cloud", productTypes: ["iProd99,1"], deviceClasses: ["vresearch101ap", "vphone600ap"])
+        let other = try ipsw(in: root, "homepod", productTypes: ["AudioAccessory1,1"], deviceClasses: ["b238ap"])
+
+        try VPhoneIPSWCache.checkPair(iPhone: homePod, cloudOS: cloud)
+        #expect(VPhoneIPSWCache.guestDevice(for: homePod) == .audioAccessory5_1)
+        #expect(homePod.deviceClasses == ["b520ap"])
+        #expect(VPhoneIPSWCache.guestProductTypes.contains("AudioAccessory5,1"))
+        #expect {
+            try VPhoneIPSWCache.checkPair(iPhone: other, cloudOS: cloud)
+        } throws: { error in
+            if case .notIPhoneSource? = error as? VPhoneIPSWCache.Error { true } else { false }
+        }
+        #expect {
+            try VPhoneIPSWCache.checkPair(iPhone: cloud, cloudOS: homePod)
+        } throws: { error in
+            if case .swappedSources? = error as? VPhoneIPSWCache.Error { true } else { false }
         }
     }
 

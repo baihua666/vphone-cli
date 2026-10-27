@@ -45,6 +45,39 @@ struct BundleOperationsTests {
         )
     }
 
+    @Test func `creates bundle with the requested network`() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rom = try fakeROM(); let seprom = try fakeROM()
+        defer { try? FileManager.default.removeItem(at: rom); try? FileManager.default.removeItem(at: seprom) }
+        let lib = VPhoneLibrary(root: root)
+
+        let offline = try VPhoneBundleOperations.create(
+            .init(
+                name: "offline",
+                cpuCount: 2,
+                memoryMB: 2048,
+                diskSizeGB: 1,
+                romSource: rom,
+                sepromSource: seprom,
+                networkConfig: .init(mode: .off, macAddress: ""),
+            ),
+            in: lib,
+        )
+        #expect(offline.manifest.networkConfig.mode == .off)
+        // Persisted, and realized as no NIC at all.
+        let saved = try lib.bundle(named: "offline").manifest.networkConfig
+        #expect(saved.mode == .off)
+        #expect(try VPhoneNetworking.makeNetworkDevice(saved).device == nil)
+
+        // Left out, it is the default.
+        let plain = try VPhoneBundleOperations.create(
+            .init(name: "plain", cpuCount: 2, memoryMB: 2048, diskSizeGB: 1, romSource: rom, sepromSource: seprom),
+            in: lib,
+        )
+        #expect(plain.manifest.networkConfig.mode == .nat)
+    }
+
     @Test func `rejects duplicate name`() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -149,12 +182,12 @@ struct BundleOperationsTests {
             .init(name: "unlock", cpuCount: 8, memoryMB: 8192, diskSizeGB: 1, romSource: rom, sepromSource: seprom),
             in: lib,
         )
-        #expect(VPhoneBundleReport(bundle: try lib.bundle(named: "unlock")).unlocksAtStartup == false)
+        #expect(try VPhoneBundleReport(bundle: lib.bundle(named: "unlock")).unlocksAtStartup == false)
 
         _ = try VPhoneBundleOperations.updateConfig(
             bundleNamed: "unlock", in: lib, cpuCount: nil, memoryMB: nil, unlocksAtStartup: true,
         )
-        #expect(VPhoneBundleReport(bundle: try lib.bundle(named: "unlock")).unlocksAtStartup)
+        #expect(try VPhoneBundleReport(bundle: lib.bundle(named: "unlock")).unlocksAtStartup)
 
         // Another edit leaves it alone; off turns it off.
         _ = try VPhoneBundleOperations.updateConfig(bundleNamed: "unlock", in: lib, cpuCount: 4, memoryMB: nil)
@@ -175,12 +208,12 @@ struct BundleOperationsTests {
             .init(name: "location", cpuCount: 8, memoryMB: 8192, diskSizeGB: 1, romSource: rom, sepromSource: seprom),
             in: lib,
         )
-        #expect(VPhoneBundleReport(bundle: try lib.bundle(named: "location")).syncsHostLocation == false)
+        #expect(try VPhoneBundleReport(bundle: lib.bundle(named: "location")).syncsHostLocation == false)
 
         _ = try VPhoneBundleOperations.updateConfig(
             bundleNamed: "location", in: lib, cpuCount: nil, memoryMB: nil, syncsHostLocation: true,
         )
-        #expect(VPhoneBundleReport(bundle: try lib.bundle(named: "location")).syncsHostLocation)
+        #expect(try VPhoneBundleReport(bundle: lib.bundle(named: "location")).syncsHostLocation)
 
         // Another edit leaves it alone; off turns it off.
         _ = try VPhoneBundleOperations.updateConfig(
@@ -541,10 +574,33 @@ struct BundleOperationsTests {
         defer { close(fd) }
         for newIdentity in [false, true] {
             #expect(throws: VPhoneBundleActivityError.running(name: "src", pids: [getpid()])) {
-                try VPhoneBundleOperations.clone(bundleNamed: "src", to: "dst", in: lib, newIdentity: newIdentity)
+                // This process runs no machine: the clone waits it out first.
+                try VPhoneBundleOperations.clone(bundleNamed: "src", to: "dst", in: lib, newIdentity: newIdentity, readerWait: 0.3) {}
             }
             #expect(!FileManager.default.fileExists(atPath: lib.url(forName: "dst").path))
         }
+    }
+
+    @Test func `clone waits out a reader that closes the source soon`() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lib = VPhoneLibrary(root: root)
+        let src = try makeBootedSource(named: "src", in: lib)
+        let disk = src.url.appendingPathComponent("Disk.img")
+
+        // Like Launchpad's disk meter mapping a template it has just seen
+        // appear: New Machine of Launchpad 2.9.0 failed its clone step on it.
+        let fd = open(disk.path, O_RDONLY | O_EVTONLY)
+        try #require(fd >= 0)
+        #expect(VPhoneBundleActivity.processesHolding([disk]).contains(getpid()))
+        let closer = Thread {
+            Thread.sleep(forTimeInterval: 0.3)
+            close(fd)
+        }
+        closer.start()
+        let clone = try VPhoneBundleOperations.clone(bundleNamed: "src", to: "dst", in: lib)
+        #expect(FileManager.default.fileExists(atPath: clone.url.appendingPathComponent("Disk.img").path))
+        #expect(!VPhoneBundleActivity.processesHolding([disk]).contains(getpid()))
     }
 
     @Test func `clone refuses a source that starts while it is copied and leaves no copy`() throws {
@@ -555,9 +611,13 @@ struct BundleOperationsTests {
 
         for name in ["Disk.img", "SEPStorage", "nvram.bin"] {
             var fd: Int32 = -1
-            defer { if fd >= 0 { close(fd) } }
+            defer {
+                if fd >= 0 {
+                    close(fd)
+                }
+            }
             #expect(throws: VPhoneBundleActivityError.running(name: "src", pids: [getpid()])) {
-                try VPhoneBundleOperations.clone(bundleNamed: "src", to: "dst", in: lib, newIdentity: false) {
+                try VPhoneBundleOperations.clone(bundleNamed: "src", to: "dst", in: lib, newIdentity: false, readerWait: 0.2) {
                     // The source starts after the first check passed.
                     fd = open(src.url.appendingPathComponent(name).path, O_RDONLY)
                 }

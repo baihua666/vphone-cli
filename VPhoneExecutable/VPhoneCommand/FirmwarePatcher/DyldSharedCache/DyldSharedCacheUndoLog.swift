@@ -207,10 +207,17 @@ public struct DyldSharedCacheUndoLog: Codable, Sendable, Hashable {
     ) throws -> [DyldSharedCacheWriteSpan] {
         try validate(in: directory, patchIDs: patchIDs)
         var spans: [DyldSharedCacheWriteSpan] = []
+        var openChunk: String?, openHandle: FileHandle?
+        defer { try? openHandle?.close() }
         for record in records(forPatchIDs: patchIDs).reversed() {
-            let url = directory.appendingPathComponent(record.chunk)
-            let handle = try FileHandle(forUpdating: url)
-            defer { try? handle.close() }
+            let handle: FileHandle
+            if openChunk == record.chunk, let existing = openHandle {
+                handle = existing
+            } else {
+                try? openHandle?.close()
+                handle = try FileHandle(forUpdating: directory.appendingPathComponent(record.chunk))
+                openChunk = record.chunk; openHandle = handle
+            }
             try handle.seek(toOffset: UInt64(record.fileOffset))
             try handle.write(contentsOf: record.original)
             spans.append(DyldSharedCacheWriteSpan(vma: record.vma, length: record.original.count))
@@ -223,7 +230,7 @@ public struct DyldSharedCacheUndoLog: Codable, Sendable, Hashable {
 
 // MARK: - Earlier implementations
 
-extension DyldSharedCacheUndoLog {
+public extension DyldSharedCacheUndoLog {
     /// Patches whose implementation changed under the same identifier, and how
     /// a record written by an earlier one looks. A guest receipt only names the
     /// identifier, so without this an installed guest would keep the old bytes
@@ -234,14 +241,14 @@ extension DyldSharedCacheUndoLog {
     /// instruction, one 4-byte record per entry point. It now writes a 16-byte
     /// conditional dispatcher per entry point, so a 4-byte record is the
     /// unconditional version, which leaves DeviceHub's capture display black.
-    public static let outdatedImplementations: [String: @Sendable (Record) -> Bool] = [
+    static let outdatedImplementations: [String: @Sendable (Record) -> Bool] = [
         "dyld-boot-iomfb_force_kern": { $0.original.count == 4 },
     ]
 
     /// Whether any record of `patchID` was written by an earlier
     /// implementation. False for a patch with no records, which cannot be
     /// reverted from this log anyway.
-    public func hasOutdatedImplementation(of patchID: String) -> Bool {
+    func hasOutdatedImplementation(of patchID: String) -> Bool {
         guard let outdated = Self.outdatedImplementations[patchID] else { return false }
         return records(forPatchIDs: [patchID]).contains(where: outdated)
     }

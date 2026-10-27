@@ -41,7 +41,7 @@ struct VPhoneDistributionView: View {
                         Button("重新检查权限") { distribution.recheckPermissions(using: platform) }
                             .disabled(distribution.busy || platform.host.isChecking)
                     }
-                    Text("主机检查：\(platform.host.passedRequiredCount) / \(platform.host.required.count) 项通过")
+                    Text("主机检查：\(platform.host.passedCount) / \(platform.host.checks.count) 项已满足")
                         .font(.caption)
                 } header: { Text("1 · 权限设置") }
                 Section {

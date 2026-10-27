@@ -1,5 +1,5 @@
-MARKETING_VERSION = 2.8.0
+MARKETING_VERSION = 2.13.4
 // Bump whenever the helper implementation changes; later builds must preserve
 // the existing XPC interface. App-only updates reuse a compatible installed
 // helper. Raise HelperCompatibility.minimumVersion for required helper fixes.
-CURRENT_PROJECT_VERSION = 15
+CURRENT_PROJECT_VERSION = 21

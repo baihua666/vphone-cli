@@ -39,6 +39,18 @@ struct IPSWCacheTests {
         expect(pad?.productTypes == ["iPad16,1", "iPad16,2"], "\(String(describing: pad?.productTypes))")
         expect(pad?.kind == .iPad && pad?.title == "iPadOS 26.6.2 (23G90)", "iPad title")
 
+        let tv = VPhoneLaunchpadIPSW(fileName: "AppleTV5,3_26.4_23L243_Restore.ipsw")
+        expect(tv?.productTypes == ["AppleTV5,3"], "TV product type")
+        expect(tv?.kind == .appleTV && tv?.title == "tvOS 26.4 (23L243)", "TV title")
+        expect(VPhoneLaunchpadIPSWRows.kindLabel(.appleTV) == "Apple TV", "TV family label")
+
+        let homePod = VPhoneLaunchpadIPSW(fileName: "AudioAccessory5,1_27.0_24J361_Restore.ipsw")
+        expect(homePod?.productTypes == ["AudioAccessory5,1"], "HomePod mini product type")
+        expect(homePod?.kind == .homePod && homePod?.title == "HomePod Software 27.0 (24J361)", "HomePod title")
+        expect(VPhoneLaunchpadIPSWRows.kindLabel(.homePod) == "HomePod", "HomePod family label")
+        expect(VPhoneLaunchpadIPSW.productType(forSource: "/tmp/AudioAccessory5,1_27.0_24J361_Restore.ipsw") == "AudioAccessory5,1", "custom HomePod source name")
+        expect(VPhoneLaunchpadIPSW.productType(forSource: "https://example.com/AudioAccessory5,1_27.0_24J361_Restore.ipsw") == "AudioAccessory5,1", "remote HomePod source name")
+
         let cachedPad = VPhoneLaunchpadIPSW(fileName: "iPad16_1_iPad16_2_26.6.2_23G90_Restore-0123456789ab.ipsw")
         expect(cachedPad?.productTypes == ["iPad16,1", "iPad16,2"], "\(String(describing: cachedPad?.productTypes))")
 
@@ -47,7 +59,7 @@ struct IPSWCacheTests {
         expect(VPhoneLaunchpadIPSW.productTypes(in: "iPhoneOS_iPad16,1") == ["iPad16,1"], "tree name products")
 
         let beta = VPhoneLaunchpadIPSW(version: "26.4", build: "23E5207q", productTypes: [], deviceClasses: ["vresearch101ap"], fromManifest: true)
-        expect(beta.isBeta && beta.kind == .cloudOS, "cloudOS beta")
+        expect(beta.kind == .cloudOS, "cloudOS beta")
 
         // The names `fw prepare` gave two real downloads (`VPhoneIPSWCache.cacheName`).
         let rc = URL(string: "https://updates.cdn-apple.com/2026FallFCS/2d0cd01d-b4f9-4a20-a1e8-f3be54570da7/iPhone17,3_27.0_24A435_Restore.ipsw")!
@@ -64,15 +76,17 @@ struct IPSWCacheTests {
 
     // MARK: - Zip
 
-    static var cloudManifest: [String: Any] { [
-        "ProductVersion": "26.4",
-        "ProductBuildVersion": "23E5207q",
-        "SupportedProductTypes": ["ComputeModule14,1"],
-        "BuildIdentities": [
-            ["Info": ["DeviceClass": "VRESEARCH101AP"]],
-            ["Info": ["DeviceClass": "vphone600ap"]],
-        ],
-    ] }
+    static var cloudManifest: [String: Any] {
+        [
+            "ProductVersion": "26.4",
+            "ProductBuildVersion": "23E5207q",
+            "SupportedProductTypes": ["ComputeModule14,1"],
+            "BuildIdentities": [
+                ["Info": ["DeviceClass": "VRESEARCH101AP"]],
+                ["Info": ["DeviceClass": "vphone600ap"]],
+            ],
+        ]
+    }
 
     static func manifestData(_ plist: [String: Any]) throws -> Data {
         // Padding that deflates well, so the member is really compressed.
@@ -116,6 +130,18 @@ struct IPSWCacheTests {
         let facts = try VPhoneLaunchpadIPSW.read(zip64)
         expect(facts.kind == .iPhone && facts.productTypes == ["iPhone17,3"] && facts.build == "23G90", "ZIP64 manifest")
 
+        // A local source can be renamed; its manifest determines its family.
+        let homePod = root.appendingPathComponent("renamed-homepod.ipsw")
+        try zip64Archive(member: "BuildManifest.plist", contents: manifestData([
+            "ProductVersion": "27.0", "ProductBuildVersion": "24J361",
+            "SupportedProductTypes": ["AudioAccessory5,1"],
+            "BuildIdentities": [["Info": ["DeviceClass": "b520ap"]]],
+        ])).write(to: homePod)
+        let homePodFacts = try VPhoneLaunchpadIPSW.read(homePod)
+        expect(homePodFacts.kind == .homePod, "HomePod manifest kind")
+        expect(VPhoneLaunchpadIPSW.productType(forSource: homePod.path) == "AudioAccessory5,1", "renamed local HomePod source")
+        expect(VPhoneLaunchpadIPSW.productType(forSource: homePod.absoluteString) == "AudioAccessory5,1", "HomePod file URL source")
+
         let notZip = root.appendingPathComponent("broken.ipsw")
         try Data(repeating: 0, count: 4096).write(to: notZip)
         expect((try? VPhoneLaunchpadIPSW.read(notZip)) == nil, "not a zip")
@@ -125,9 +151,15 @@ struct IPSWCacheTests {
     /// ZIP64, as an IPSW over 4 GB has them.
     static func zip64Archive(member: String, contents: Data) -> Data {
         var data = Data()
-        func le16(_ value: Int) { withUnsafeBytes(of: UInt16(value).littleEndian) { data.append(contentsOf: $0) } }
-        func le32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
-        func le64(_ value: Int) { withUnsafeBytes(of: UInt64(value).littleEndian) { data.append(contentsOf: $0) } }
+        func le16(_ value: Int) {
+            withUnsafeBytes(of: UInt16(value).littleEndian) { data.append(contentsOf: $0) }
+        }
+        func le32(_ value: UInt32) {
+            withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
+        }
+        func le64(_ value: Int) {
+            withUnsafeBytes(of: UInt64(value).littleEndian) { data.append(contentsOf: $0) }
+        }
         let name = Data(member.utf8)
 
         le32(0x0403_4B50); le16(45); le16(0); le16(0); le16(0); le16(0); le32(0)
@@ -193,6 +225,10 @@ struct IPSWCacheTests {
         expect((["diskImage": "Disk.img"] as NSDictionary).write(to: phone.appendingPathComponent("config.plist"), atomically: true), "config.plist")
         expect(VPhoneLaunchpadIPSWCache.guestProductType(in: pad) == "iPad16,1", "config product type")
         expect(VPhoneLaunchpadIPSWCache.guestProductType(in: phone) == "iPhone17,3", "FirmwareOriginals product type")
+        let homePod = root.appendingPathComponent("machines/homepod-mini", isDirectory: true)
+        try manager.createDirectory(at: homePod.appendingPathComponent("FirmwareOriginals/AudioAccessory5,1_27.0_24J361_Restore", isDirectory: true), withIntermediateDirectories: true)
+        expect(VPhoneLaunchpadIPSWCache.guestProductType(in: homePod) == "AudioAccessory5,1", "HomePod restore tree product type")
+
 
         let scan = try await VPhoneLaunchpadIPSWCache.scan(libraryRoots: [library], machineFolders: [pad, phone])
         expect(scan.ipsws.count == 2 && scan.cacheDirectories.count == 2, "\(scan.ipsws.map(\.name))")
@@ -293,8 +329,9 @@ struct IPSWCacheTests {
 
     // MARK: - Deletion rules
 
-    /// A restored machine does not hold its IPSW; a creation that has not
-    /// finished does, and a partial file waits while any creation runs.
+    /// A restored machine does not need its IPSW; a creation that has not
+    /// finished does, and a partial file is in use while any creation runs.
+    /// Neither refuses the deletion: the confirmation says what it breaks.
     static func deletion() {
         let url = "https://updates.cdn-apple.com/x/iPhone17,3_27.0_24A435_Restore.ipsw"
         let cached = VPhoneLaunchpadIPSW.cacheName(for: URL(string: url)!)
@@ -306,16 +343,16 @@ struct IPSWCacheTests {
         let finished = VPhoneLaunchpadIPSWUse(machine: "made", sources: [url])
         let otherSource = VPhoneLaunchpadIPSWUse(machine: "other", sources: [rcSource], isCreating: true, needsSources: true)
         typealias Rows = VPhoneLaunchpadIPSWRows
-        expect(restored.uses(phone) && Rows.deletionBlock(phone, uses: [restored, finished], isCreating: false) == nil, "restored and finished do not hold it")
-        expect(Rows.deletionBlock(phone, uses: [otherSource], isCreating: true) == nil, "a creation from another IPSW does not hold it")
-        let held = Rows.deletionBlock(phone, uses: [running], isCreating: true)
+        expect(restored.uses(phone) && Rows.deletionWarning(phone, uses: [restored, finished], isCreating: false) == nil, "restored and finished need nothing")
+        expect(Rows.deletionWarning(phone, uses: [otherSource], isCreating: true) == nil, "a creation from another IPSW needs nothing")
+        let held = Rows.deletionWarning(phone, uses: [running], isCreating: true)
         expect(held == "Creating new reads this IPSW until the creation finishes.", String(describing: held))
-        expect(Rows.deletionBlock(phone, uses: [failed], isCreating: false)?.contains("retry") == true, "an unfinished creation holds it")
-        expect(Rows.deletionBlock(phone, uses: [running, failed], isCreating: true)?.contains("new, retry") == true, "both creations named")
-        expect(Rows.deletionBlock(partial, uses: [], isCreating: true) == "This IPSW is still downloading.", "a partial file waits while a creation runs")
-        expect(Rows.deletionBlock(partial, uses: [], isCreating: false) == nil, "a stale partial file can go")
+        expect(Rows.deletionWarning(phone, uses: [failed], isCreating: false)?.contains("retry") == true, "an unfinished creation is warned about")
+        expect(Rows.deletionWarning(phone, uses: [running, failed], isCreating: true)?.contains("new, retry") == true, "both creations named")
+        expect(Rows.deletionWarning(partial, uses: [], isCreating: true) == "This IPSW is still downloading.", "a partial file warns while a creation runs")
+        expect(Rows.deletionWarning(partial, uses: [], isCreating: false) == nil, "a stale partial file can go")
         let rows = Rows.rows([phone], catalog: nil, uses: [restored, failed])
-        expect(rows[0].blockedReason != nil && rows[0].usedBy == ["done", "retry"], "\(rows[0])")
+        expect(rows[0].deletionWarning != nil && rows[0].usedBy == ["done", "retry"], "\(rows[0])")
 
         // The confirmation names the file, the machines that keep working and
         // what brings it back.
@@ -325,6 +362,8 @@ struct IPSWCacheTests {
         expect(Rows.deletionMessage(row) == "\(cached) is deleted from the IPSW cache. Creating a machine from this release downloads it again.", Rows.deletionMessage(row))
         let partialRow = Rows.rows([partial], catalog: nil, uses: [])[0]
         expect(Rows.deletionMessage(partialRow) == "The partial download of \(cached) is deleted.", Rows.deletionMessage(partialRow))
+        let heldRow = Rows.rows([phone], catalog: nil, uses: [running], isCreating: true)[0]
+        expect(Rows.deletionMessage(heldRow).hasSuffix(" Creating new reads this IPSW until the creation finishes."), Rows.deletionMessage(heldRow))
     }
 
     // MARK: - Rows
@@ -344,9 +383,10 @@ struct IPSWCacheTests {
         let rows = VPhoneLaunchpadIPSWRows.rows([unknownFile, cloudFile, padFile, phoneFile], catalog: catalog, uses: [pad, otherPad, creating])
         expect(rows.map(\.kind) == [.iPhone, .iPad, .cloudOS, .unknown], "\(rows.map(\.kind))")
         expect(rows[0].title == "iOS 27.0 RC (24A435)" && rows[0].usedBy == ["phone (creating)"], "\(rows[0])")
-        expect(rows[0].kindLabel == "iPhone" && rows[0].blockedReason != nil, "\(rows[0])")
-        expect(rows[1].title == "iPadOS 26.6.2 (23G90)" && rows[1].usedBy == ["ipad-mini-01"] && rows[1].blockedReason == nil, "\(rows[1])")
-        expect(rows[2].kindLabel == "cloudOS · beta" && rows[2].title == "cloudOS 26.4 (23E5207q)", "\(rows[2])")
+        expect(rows[0].kindLabel == "iPhone" && rows[0].deletionWarning != nil, "\(rows[0])")
+        expect(rows[1].title == "iPadOS 26.6.2 (23G90)" && rows[1].usedBy == ["ipad-mini-01"] && rows[1].deletionWarning == nil, "\(rows[1])")
+        expect(rows[0].devices == "iPhone17,3" && rows[1].devices == "iPad16,1, iPad16,2" && rows[2].devices.isEmpty, "\(rows.map(\.devices))")
+        expect(rows[2].kindLabel == "cloudOS" && rows[2].title == "cloudOS 26.4 (23E5207q)", "\(rows[2])")
         expect(rows[2].usedBy == ["ipad-mini-01", "ipad-pro-13"], "\(rows[2].usedBy)")
         expect(rows[3].title == "mystery.ipsw" && rows[3].kindLabel == "Unknown", "\(rows[3])")
 

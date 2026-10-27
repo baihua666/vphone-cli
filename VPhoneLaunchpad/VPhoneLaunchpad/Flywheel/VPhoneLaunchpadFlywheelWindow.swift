@@ -8,7 +8,6 @@ struct VPhoneLaunchpadFlywheelWindow: View {
     var body: some View {
         VPhoneLaunchpadFlywheelView { path in
             model.machines.selection = [path]
-            model.showsInspector = true
             openWindow(id: "main")
         }
         .frame(minWidth: 900, minHeight: 480)

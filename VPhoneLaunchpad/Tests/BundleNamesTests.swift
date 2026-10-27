@@ -17,6 +17,7 @@ struct BundleNamesTests {
         // `-local` (legacy), `-local.<8+ lowercase hex>` or `-ci.<7+ hex>`.
         // Anything else is kept whole, so it never parses as a version.
         let expectations: [Expectation] = [
+            Expectation(name: "2.13.4-local.ab12cd34", bundleVersion: "2.13.4", isLocalBuild: true, isCompatible: true, isValid: true),
             Expectation(name: "2.9.9", bundleVersion: "2.9.9", isLocalBuild: false, isCompatible: true, isValid: true),
             Expectation(name: "2.8.0", bundleVersion: "2.8.0", isLocalBuild: false, isCompatible: true, isValid: true),
             Expectation(name: "2.8.0-local.b0ffd6cc", bundleVersion: "2.8.0", isLocalBuild: true, isCompatible: true, isValid: true),

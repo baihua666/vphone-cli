@@ -9,13 +9,16 @@ import Foundation
 /// manifest cannot be read.
 nonisolated struct VPhoneLaunchpadIPSW: Hashable, Sendable {
     enum Kind: Hashable, Sendable {
-        case iPhone, iPad, cloudOS, unknown
+        case iPhone, iPad, appleTV, homePod, watch, cloudOS, unknown
 
         /// The system the IPSW installs: the first word of its title.
         var systemName: String? {
             switch self {
             case .iPhone: "iOS"
             case .iPad: "iPadOS"
+            case .appleTV: "tvOS"
+            case .homePod: "HomePod Software"
+            case .watch: "watchOS"
             case .cloudOS: "cloudOS"
             case .unknown: nil
             }
@@ -46,12 +49,16 @@ nonisolated struct VPhoneLaunchpadIPSW: Hashable, Sendable {
         if productTypes.contains(where: { $0.hasPrefix("iPhone") }) {
             return .iPhone
         }
+        if productTypes.contains(where: { $0.hasPrefix("AppleTV") }) {
+            return .appleTV
+        }
+        if productTypes.contains(where: { $0.hasPrefix("AudioAccessory") }) {
+            return .homePod
+        }
+        if productTypes.contains(where: { $0.hasPrefix("Watch") }) {
+            return .watch
+        }
         return .unknown
-    }
-
-    /// Apple's beta and seed builds end in a lowercase letter (`23E5207q`).
-    var isBeta: Bool {
-        build.last.map(\.isLowercase) ?? false
     }
 
     /// `iOS 26.6.2 (23G90)`; nil for a kind it cannot name.
@@ -102,7 +109,20 @@ nonisolated struct VPhoneLaunchpadIPSW: Hashable, Sendable {
         return facts
     }
 
+    /// A custom local source is inspected by manifest first; a remote source
+    /// can only be identified by its name until the CLI downloads it.
+    static func productType(forSource source: String) -> String? {
+        let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = source.hasPrefix("/") ? URL(fileURLWithPath: source) : URL(string: source)
+        guard let url else { return nil }
+        if url.isFileURL, let facts = try? read(url), let type = facts.productTypes.first {
+            return type
+        }
+        return VPhoneLaunchpadIPSW(fileName: url.lastPathComponent)?.productTypes.first
+    }
+
     // MARK: File name
+
 
     /// The facts an IPSW's name carries: `iPhone17,3_27.0_24A435_Restore.ipsw`,
     /// `iPad16,1,iPad16,2_26.6.2_23G90_Restore.ipsw`, and the cache's spelling
@@ -258,7 +278,7 @@ nonisolated enum VPhoneLaunchpadZipReader {
     /// The central directory's bytes, found through the end record and, for
     /// archives over 4 GB, its ZIP64 counterpart.
     static func centralDirectory(_ handle: FileHandle, size: UInt64) throws -> Data {
-        let tailLength = min(size, 65_535 + 22 + 20)
+        let tailLength = min(size, 65535 + 22 + 20)
         let tail = try read(handle, at: size - tailLength, count: Int(tailLength))
         guard tail.count >= 22 else {
             throw Failure.notZip

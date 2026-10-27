@@ -69,14 +69,17 @@ The boot chain already ignores the ECID in its tickets
 ([iBoot patches](../Firmware/iboot_patches.md),
 [firmware manifest and origins](../Firmware/firmware_manifest_and_origins.md)):
 
-- AVPBooter's DGST bypass loads LLB from `nvram.bin`.
+- AVPBooter's DGST bypass loads LLB from `nvram.bin`; OpenAVB, which new
+  machines boot, checks no digest at all ([OpenAVB boot ROM](../Firmware/openavb_boot_rom.md)).
 - iBSS, iBEC and LLB force `image4_validate_property_callback` to return 0.
   That callback checks `ECID`, `BNCH`, `BORD`, `CHIP` and the rest, so a
   mismatched ECID passes with them. LLB and iBoot load the kernel, device tree,
   TXM and SPTM from Preboot through the same callback.
 - The SEP firmware is checked by the unpatched AVPSEPBooter, which still logs
   `AppleSEPBooter: SEP accepted IMG4` under a new ECID: the virtual SEP ROM
-  does not enforce it.
+  does not enforce it. OpenSEP, which new machines start the SEP from, logs its
+  chain evaluation and does not enforce it either
+  ([OpenSEP SEP ROM](../Firmware/opensep_sep_rom.md)).
 
 A new-identity clone's serial log shows the new ECID in `USB_SERIAL_NUMBER`.
 Its error and failure lines, normalized, are identical to those of a clone that
@@ -104,7 +107,9 @@ moment. The gigalocker and the anti-replay records advance together, so a copy
 of a running machine can pair a disk with SEP state from another moment.
 `vm clone` refuses while the source runs (`VPhoneBundleActivity.requireStopped`
 looks for a process holding the disk image, `SEPStorage` or `nvram.bin` open, or
-a control socket that answers). Host-side writes to the disk image by `cfw
+a control socket that answers). A holder that runs no machine, such as
+Launchpad's disk meter, is waited out for up to 2 s first; a VM holder refuses
+at once (`Research/Host/machine_templates.md`, Disk use). Host-side writes to the disk image by `cfw
 install` or `--update-environment` do not break the pairing: a source whose
 disk image was modified hours after its `SEPStorage` cloned and booted fine.
 
@@ -125,8 +130,10 @@ and a clone's disk image:
 `nvram.bin` and `SEPStorage` are cloned too and diverge by a few blocks.
 A clone therefore costs about 0.35 GB after its first boots and grows with
 use, where a restore writes about 20 GB plus an 11 GB temporary restore tree.
-`du` and Launchpad's size column report the full 20 GB for every clone, and
-deleting the source frees no shared blocks while a clone remains.
+`du` reports the full 20 GB for every clone (Launchpad's Exclusive column
+compares extents instead), and deleting the source frees no shared blocks
+while a clone remains. How this compares with the other ways of saving disk
+space is in [disk space](disk_space.md).
 
 ## Shared state and caveats
 
@@ -139,10 +146,18 @@ deleting the source frees no shared blocks while a clone remains.
   keys, was not tested.
 - The host trusts each guest by UDID, so lockdown tools need the guest's
   "Trust This Computer" prompt again after a new identity. Tapping Trust and
-  then `idevicepair pair` worked.
+  then `idevicepair pair` worked. Copying the host's pair record
+  (`/var/db/lockdown/<old UDID>.plist`) to the new UDID might skip the
+  prompt; it needs root, so a Launchpad helper verb, and was not tried.
+- A plain clone keeps the source's ECID and MAC, so it has the same UDID and
+  competes for the same DHCP lease if both run: it is a backup, not a second
+  machine.
 - A clone that later runs `restore` is personalized for its new ECID, as
   usual. `cfw update-kernel` and `--update-environment` write through a host
   mount and do not involve the ECID.
 - Deleting clones leaves their DHCP bindings to unused MACs;
   `vm leases --release-orphans` returns them (see
   [network notes](network_fixed_address.md)).
+- Two machines restored separately share no disk blocks, although about 8.6 GB
+  of their images is identical; `vm rebase` re-shares it without touching
+  `SEPStorage`, `nvram.bin` or the identity (see [disk rebase](disk_rebase.md)).

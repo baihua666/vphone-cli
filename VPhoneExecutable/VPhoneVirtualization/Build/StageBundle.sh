@@ -32,10 +32,13 @@ build_project -project "$root/VPhoneExecutable/VPhoneCommand/VPhoneCommand.xcode
     -destination 'platform=macOS,arch=arm64' \
     -derivedDataPath "$root/.build/XcodeCommand" CODE_SIGNING_ALLOWED=NO build
 
+# Select the device SDK and product suffix explicitly so SwiftPM paths stay iOS
+# even when Xcode only offers host destinations without a simulator runtime.
 build_project -project "$root/VPhoneDaemon/VPhoneDaemon.xcodeproj" \
     -scheme vphoned -configuration "$configuration" \
-    -destination 'generic/platform=iOS' \
-    -derivedDataPath "$root/.build/XcodeDaemon" CODE_SIGNING_ALLOWED=NO build
+    -sdk iphoneos \
+    -derivedDataPath "$root/.build/XcodeDaemon" CODE_SIGNING_ALLOWED=NO \
+    SUPPORTS_MACCATALYST=NO EFFECTIVE_PLATFORM_NAME=-iphoneos build
 
 build_project -project "$root/VPhoneExecutable/VPhoneEscalator/VPhoneEscalator.xcodeproj" \
     -scheme VPhoneEscalator -configuration "$configuration" \
@@ -61,9 +64,32 @@ fi
 /bin/rm -rf "$frameworks/VPhonePatchKit.framework"
 /bin/cp -R "$command_products/VPhonePatchKit.framework" "$frameworks/VPhonePatchKit.framework"
 /bin/cp "$TARGET_BUILD_DIR/vphone-vm" "$macos/vphone-vm"
+# The terminal window's resources. libghostty is a static library, so nothing
+# is embedded for it, but GhosttyTerminal reads its Ghostty directory and its
+# compiled terminfo through Bundle.module. That searches Bundle.main's
+# resources and then its root, and for vphone-vm Bundle.main is VPhone.bundle,
+# not Contents/MacOS, so a copy beside the executable is never found. Without
+# this the window traps the moment a session is opened.
+/bin/cp -R "$TARGET_BUILD_DIR/GhosttyKit_GhosttyTerminal.bundle" \
+    "$resources/GhosttyKit_GhosttyTerminal.bundle"
 /bin/cp "$command_products/vphone-cli" "$macos/vphone-cli"
 /bin/cp "$amfi_products/vphone-escalator" "$macos/vphone-escalator"
 /bin/cp "$daemon_products/vphoned" "$guest/vphoned"
+# Apple TV guests run the same arm64 daemon. tvOS dyld loads its system
+# libraries only into a tvOS-platform process, so this copy says tvOS.
+daemon_sdk="$(/usr/bin/otool -l "$guest/vphoned" | /usr/bin/awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "sdk" { print $2; exit }')"
+/usr/bin/xcrun vtool -set-build-version tvos 15.0 "$daemon_sdk" -replace -output "$guest/vphoned-tvos" "$guest/vphoned"
+# The same for watch guests: watchOS 8 is iOS 15's release.
+/usr/bin/xcrun vtool -set-build-version watchos 8.0 "$daemon_sdk" -replace -output "$guest/vphoned-watchos" "$guest/vphoned"
+# iOS before 26 needs Span's back-deployment library. Keep /usr/lib/swift
+# first so newer guests use their system implementation; only the iOS daemon
+# gets this private fallback. TV/watch payloads above remain unchanged.
+guest_compatibility_library="$(/usr/bin/xcrun swift-stdlib-tool --print \
+    --scan-executable "$guest/vphoned" --platform iphoneos | \
+    /usr/bin/grep '/libswiftCompatibilitySpan.dylib$')"
+/bin/cp "$guest_compatibility_library" "$guest/libswiftCompatibilitySpan.dylib"
+/usr/bin/install_name_tool -add_rpath /usr/lib/vphone "$guest/vphoned"
+/usr/bin/codesign --force --sign - "$guest/libswiftCompatibilitySpan.dylib"
 /bin/cp "$root/VPhoneDaemon/Configuration/vphoned.plist" "$guest/vphoned.plist"
 /bin/cp "$guest_products/launchhook/launchdhook-vphone.dylib" "$guest/launchdhook-vphone.dylib"
 /bin/cp "$guest_products/systemhook/SystemHook-vphone.dylib" "$guest/SystemHook-vphone.dylib"
@@ -79,6 +105,15 @@ fi
 /bin/cp "$guest_products/devicename/libdevicename.dylib" "$guest/libdevicename.dylib"
 /bin/cp "$guest_products/prefsfix/libprefsfix.dylib" "$guest/libprefsfix.dylib"
 /bin/cp "$guest_products/signinfix/libsigninfix.dylib" "$guest/libsigninfix.dylib"
+/bin/cp "$guest_products/gyroscope/libvphonegyro.dylib" "$guest/libvphonegyro.dylib"
+/bin/cp "$guest_products/accelerometer/libvphoneaccelerometer.dylib" "$guest/libvphoneaccelerometer.dylib"
+/bin/cp "$guest_products/attitude/libvphoneattitude.dylib" "$guest/libvphoneattitude.dylib"
+/bin/cp "$guest_products/cryptexstaging/libvphonecryptexstaging.dylib" "$guest/libvphonecryptexstaging.dylib"
+/bin/cp "$guest_products/homepodpersona/libvphoneinstallpersona.dylib" "$guest/libvphoneinstallpersona.dylib"
+/bin/cp "$guest_products/homepodmisfix/libvphonehomepodmisfix.dylib" "$guest/libvphonehomepodmisfix.dylib"
+/bin/cp "$guest_products/homepoddisplay/libvphonehomepoddisplay.dylib" "$guest/libvphonehomepoddisplay.dylib"
+/bin/cp "$guest_products/homepodsetup/vphone-homepod-setup" "$guest/vphone-homepod-setup"
+/bin/cp "$guest_products/homepodsetup/com.vphone.homepod-setup.plist" "$guest/com.vphone.homepod-setup.plist"
 /bin/cp "$guest_products/gpu/libAppleParavirtCompilerPluginIOGPUFamily.dylib" \
     "$guest/libAppleParavirtCompilerPluginIOGPUFamily.dylib"
 # The HAL plugin is a bundle, signed whole by the Makefile; copied as a tree so
@@ -99,11 +134,34 @@ else
     /usr/bin/plutil -remove VPhoneBuildHash "$info_plist" 2>/dev/null || true
 fi
 
+# The boot ROM new machines copy (vm new), with the licences it is
+# distributed under. Checked in prebuilt; see Resources/OpenAVB/README.md.
+/bin/mkdir -p "$resources/OpenAVB"
+/bin/cp "$root/VPhoneExecutable/VPhoneVirtualization/Resources/OpenAVB/OpenAVB.bin" \
+    "$root/VPhoneExecutable/VPhoneVirtualization/Resources/OpenAVB/LICENSE" \
+    "$root/VPhoneExecutable/VPhoneVirtualization/Resources/OpenAVB/APSL-2.0.txt" \
+    "$resources/OpenAVB/"
+
+# The SEP ROM new machines copy, with its licence. Checked in prebuilt; see
+# Resources/OpenSEP/README.md.
+/bin/mkdir -p "$resources/OpenSEP"
+/bin/cp "$root/VPhoneExecutable/VPhoneVirtualization/Resources/OpenSEP/OpenSEP.bin" \
+    "$root/VPhoneExecutable/VPhoneVirtualization/Resources/OpenSEP/LICENSE" \
+    "$resources/OpenSEP/"
+
 # Patch presets. Prewritten plists, read by vphone-cli at patch time to decide
 # which declared patches apply. Nothing generates or edits these.
 /bin/mkdir -p "$resources/patches_presets"
 /bin/cp "$root/VPhoneExecutable/VPhoneVirtualization/Resources/patches_presets/"*.plist \
     "$resources/patches_presets/"
+# What `fw patch` rebuilds a research board kernelcache from; see its README.
+/bin/rm -rf "$resources/kernelcache_recipes"
+/bin/cp -R "$root/VPhoneExecutable/VPhoneVirtualization/Resources/kernelcache_recipes" "$resources/"
+
+# Native KDK extraction ports MIT-licensed reference algorithms.
+/bin/mkdir -p "$resources/Licenses"
+/bin/cp "$root/VPhoneExecutable/VPhoneCommand/FirmwarePatcher/KernelCache/KDK/LICENSE" \
+    "$resources/Licenses/native-kdk-MIT.txt"
 
 "${0:a:h}/SyncStrings.sh"
 /usr/bin/xcrun xcstringstool compile \
@@ -139,6 +197,8 @@ compatibility_library="$(/usr/bin/xcrun swift-stdlib-tool --print \
 /usr/bin/codesign --force --sign - "$frameworks/VPhonePatchKit.framework"
 /usr/bin/codesign --force --sign - "$macos/vphone-cli"
 /usr/bin/codesign --force --sign - --entitlements "$root/VPhoneDaemon/Configuration/VPhoneDaemon.entitlements" "$guest/vphoned"
+/usr/bin/codesign --force --sign - --entitlements "$root/VPhoneDaemon/Configuration/VPhoneDaemon.entitlements" "$guest/vphoned-tvos"
+/usr/bin/codesign --force --sign - --entitlements "$root/VPhoneDaemon/Configuration/VPhoneDaemon.entitlements" "$guest/vphoned-watchos"
 /usr/bin/codesign --force --sign - "$macos/vphone-escalator"
 /usr/bin/codesign --force --sign - "$macos/libswiftCompatibilitySpan.vphone.dylib"
 /usr/bin/codesign --force --sign - --entitlements "$root/VPhoneExecutable/VPhoneVirtualization/Resources/VPhoneVirtualization.entitlements" "$macos/vphone-vm"

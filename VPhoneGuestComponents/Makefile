@@ -5,6 +5,9 @@ OUT := $(abspath ../.build/siblings)
 STAGE := $(OUT)/stage
 ARCHIVE := $(OUT)/siblings.tar
 CLANG := xcrun --sdk iphoneos clang
+MACOS_SDK := $(shell xcrun --sdk macosx --show-sdk-path)
+MACH_EXC_DEFS := $(MACOS_SDK)/usr/include/mach/mach_exc.defs
+LAUNCHHOOK_GENERATED := $(OUT)/generated/launchhook
 GUEST_C_FLAGS := -arch arm64e -miphoneos-version-min=26.0 -Os
 COMMON_FLAGS := $(GUEST_C_FLAGS) -fobjc-arc
 
@@ -35,11 +38,11 @@ VCAMCAPTURED_INPUTS := $(call find_headers,$(VCAM_HEADER_DIRS)) \
 	$(call find_folders,$(VCAM_HEADER_DIRS))
 VCAMCAPTURED_INCLUDE_FLAGS := $(addprefix -I,$(call find_folders,VCamCaptured) $(VCAM_SHARED_DIRS))
 LAUNCHHOOK := $(STAGE)/launchhook/launchdhook-vphone.dylib
-LAUNCHHOOK_SOURCES := $(wildcard LaunchHook/*.c) Shared/RootHideLoaderLinks.c
+LAUNCHHOOK_SOURCES := $(wildcard LaunchHook/*.c) Shared/RootHideLoaderLinks.c Shared/VPhoneX1Spawn.c
 LAUNCHHOOK_INCLUDES := $(wildcard LaunchHook/*.h LaunchHook/*.inc Shared/*.h)
 SYSTEMHOOK := $(STAGE)/systemhook/SystemHook-vphone.dylib
-SYSTEMHOOK_SOURCES := $(wildcard SystemHook/*.c) Shared/RootHideLoaderLinks.c
-SYSTEMHOOK_INCLUDES := $(wildcard SystemHook/*.h SystemHook/*.inc Shared/*.h)
+SYSTEMHOOK_SOURCES := $(wildcard SystemHook/*.c) $(wildcard FlutterRemapFix/*.c) Shared/RootHideLoaderLinks.c Shared/VPhoneX1Spawn.c
+SYSTEMHOOK_INCLUDES := $(wildcard SystemHook/*.h SystemHook/*.inc FlutterRemapFix/*.h Shared/*.h)
 # libmis is not a framework and has no header; the iPhoneOS SDK does ship
 # libmis.tbd, so the interposed symbols bind two-level like any other import
 # rather than through flat dynamic lookup.
@@ -83,6 +86,28 @@ PREFSFIX_INCLUDES := $(wildcard PrefsFix/*.h)
 SIGNINFIX := $(STAGE)/signinfix/libsigninfix.dylib
 SIGNINFIX_SOURCES := $(wildcard SignInFix/*.m SignInFix/*.c)
 SIGNINFIX_INCLUDES := $(wildcard SignInFix/*.h)
+GYROSCOPE := $(STAGE)/gyroscope/libvphonegyro.dylib
+GYROSCOPE_SOURCES := $(call find_sources,Gyroscope)
+GYROSCOPE_INPUTS := $(call find_headers,Gyroscope) $(call find_folders,Gyroscope)
+ACCELEROMETER := $(STAGE)/accelerometer/libvphoneaccelerometer.dylib
+ACCELEROMETER_SOURCES := $(call find_sources,Accelerometer)
+ACCELEROMETER_INPUTS := $(call find_headers,Accelerometer) $(call find_folders,Accelerometer)
+ATTITUDE := $(STAGE)/attitude/libvphoneattitude.dylib
+ATTITUDE_SOURCES := $(call find_sources,Attitude)
+ATTITUDE_INPUTS := $(call find_headers,Attitude) $(call find_folders,Attitude) Shared/AttitudeProcess.h
+HOMEPODDISPLAY := $(STAGE)/homepoddisplay/libvphonehomepoddisplay.dylib
+HOMEPODDISPLAY_SOURCES := $(call find_sources,HomePodDisplay)
+HOMEPODDISPLAY_INPUTS := $(call find_headers,HomePodDisplay) $(call find_folders,HomePodDisplay)
+CRYPTEXSTAGING := $(STAGE)/cryptexstaging/libvphonecryptexstaging.dylib
+CRYPTEXSTAGING_SOURCE := CryptexStagingFix/libvphonecryptexstaging.c
+HOMEPODPERSONA := $(STAGE)/homepodpersona/libvphoneinstallpersona.dylib
+HOMEPODPERSONA_INPUTS := HomePodInstallPersona/libvphoneinstallpersona.c LaunchHook/InstallCoordinationPersona.h
+HOMEPODMISFIX := $(STAGE)/homepodmisfix/libvphonehomepodmisfix.dylib
+HOMEPODMISFIX_SOURCES := MISFix/MISFixSignature.c MISFix/MISFixDetour.c MISFix/MISFixConfig.c MISFix/MISFixInstallPolicy.c
+HOMEPODMISFIX_INPUTS := $(HOMEPODMISFIX_SOURCES) MISFix/MISFixDetour.h MISFix/MISFixConfig.h
+HOMEPODSETUP := $(STAGE)/homepodsetup/vphone-homepod-setup
+HOMEPODSETUP_SOURCES := $(call find_sources,HomePodSetup)
+HOMEPODSETUP_INPUTS := $(call find_headers,HomePodSetup) HomePodSetup/com.vphone.homepod-setup.plist
 GPU_PLUGIN := $(STAGE)/gpu/libAppleParavirtCompilerPluginIOGPUFamily.dylib
 GPU_PLUGIN_SOURCES := $(wildcard GraphicLoader/*.mm)
 GPU_PLUGIN_INCLUDES := $(wildcard GraphicLoader/*.h GraphicLoader/*.hpp GraphicLoader/*.inc)
@@ -116,22 +141,53 @@ GPU_DYNAMIC_LOOKUP_SYMS := \
 VIRTIOSOUND := $(STAGE)/virtiosound/VPhoneVirtIOSound.driver
 VIRTIOSOUND_SOURCES := $(wildcard VirtIOSound/*.m VirtIOSound/*.c)
 VIRTIOSOUND_INCLUDES := $(wildcard VirtIOSound/*.h) VirtIOSound/Info.plist VirtIOSound/AudioServerDriver.tbd
-ARTIFACTS := $(CAMFIX) $(VCAMCAPTURED) $(LAUNCHHOOK) $(SYSTEMHOOK) $(MISFIX) $(HAPTICSFIX) $(BATTERYHEALTHFIX) $(DEVICEHUBFIX) $(DEVICENAME) $(PREFSFIX) $(SIGNINFIX) $(GPU_PLUGIN) $(VIRTIOSOUND)
+ARTIFACTS := $(CAMFIX) $(VCAMCAPTURED) $(LAUNCHHOOK) $(SYSTEMHOOK) $(MISFIX) $(HAPTICSFIX) $(BATTERYHEALTHFIX) $(DEVICEHUBFIX) $(DEVICENAME) $(PREFSFIX) $(SIGNINFIX) $(GYROSCOPE) $(ACCELEROMETER) $(ATTITUDE) $(HOMEPODDISPLAY) $(CRYPTEXSTAGING) $(HOMEPODPERSONA) $(HOMEPODMISFIX) $(HOMEPODSETUP) $(GPU_PLUGIN) $(VIRTIOSOUND)
 PLISTS := $(STAGE)/camfix/libcamfix.plist $(STAGE)/vcamcaptured/libvcamcaptured.plist \
 	$(STAGE)/misfix/libmisfix.plist
 GPU_PROVENANCE := $(STAGE)/gpu/README.md
 
 # Directory timestamps also catch files removed from the wildcard inputs.
 
-.PHONY: all gpu package test-loader-links test-injection-environment test-devicename test-vcam-dataplane test-virtiosound clean
+.PHONY: all gpu package test-loader-links test-injection-environment test-devicename test-vcam-dataplane test-virtiosound test-x1-lowering clean
 
 all: $(ARTIFACTS) $(PLISTS) $(GPU_PROVENANCE)
+
+.PHONY: test-homepod-display
+test-homepod-display:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -DVP_HOMEPOD_DISPLAY_TESTING \
+		-o $(OUT)/HomePodDisplayIdentityTests Tests/HomePodDisplayIdentityTests.m $(HOMEPODDISPLAY_SOURCES) -framework Foundation
+	@$(OUT)/HomePodDisplayIdentityTests
+
+.PHONY: test-homepod-welcome
+test-homepod-welcome:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IHomePodDisplay \
+		-o $(OUT)/HomePodWelcomeStateTests Tests/HomePodWelcomeStateTests.m HomePodDisplay/VPHomePodWelcomeState.m -framework Foundation
+	@$(OUT)/HomePodWelcomeStateTests
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IHomePodDisplay \
+		-o $(OUT)/HomePodWelcomeTests Tests/HomePodWelcomeTests.m HomePodDisplay/VPHomePodWelcomeState.m -framework Foundation
+	@$(OUT)/HomePodWelcomeTests
+
+.PHONY: test-homepod-siri-speech
+test-homepod-siri-speech:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror \
+		-o $(OUT)/HomePodSiriSpeechTests Tests/HomePodSiriSpeechTests.m -framework Foundation
+	@$(OUT)/HomePodSiriSpeechTests
+
+.PHONY: test-homepod-sound-glow
+test-homepod-sound-glow:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror \
+		-o $(OUT)/HomePodSoundGlowTests Tests/HomePodSoundGlowTests.m -framework Foundation
+	@$(OUT)/HomePodSoundGlowTests
 
 gpu: $(GPU_PLUGIN)
 
 package: all
 	@rm -f $(ARCHIVE)
-	@/usr/bin/tar -cf $(ARCHIVE) -C $(STAGE) camfix vcamcaptured launchhook systemhook misfix hapticsfix batteryhealthfix devicehubfix devicename prefsfix signinfix gpu virtiosound
+	@/usr/bin/tar -cf $(ARCHIVE) -C $(STAGE) camfix vcamcaptured launchhook systemhook misfix hapticsfix batteryhealthfix devicehubfix devicename prefsfix signinfix gyroscope accelerometer attitude homepoddisplay cryptexstaging homepodpersona homepodmisfix homepodsetup gpu virtiosound
 	@echo "Packaged $(ARCHIVE)"
 
 test-loader-links:
@@ -146,6 +202,12 @@ test-injection-environment:
 		-DVP_TEST_LIBRARY_DIR='"$(OUT)/injection-libraries"' \
 		-o $(OUT)/InjectionEnvironmentTests Tests/InjectionEnvironmentTests.c
 	@$(OUT)/InjectionEnvironmentTests
+
+test-x1-lowering:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -ILaunchHook \
+		-o $(OUT)/X1LoweringTests Tests/X1LoweringTests.c LaunchHook/VPhoneX1Lowering.c
+	@$(OUT)/X1LoweringTests
 
 # Host proof harness for libdevicename's name decoding, configd publication
 # rewrite and lockdownd rename decision.
@@ -191,7 +253,7 @@ test-vcam-dataplane:
 		-framework CoreGraphics
 	@$(OUT)/VCamDataPlaneTests
 
-$(STAGE)/camfix $(STAGE)/vcamcaptured $(STAGE)/launchhook $(STAGE)/systemhook $(STAGE)/misfix $(STAGE)/hapticsfix $(STAGE)/batteryhealthfix $(STAGE)/devicehubfix $(STAGE)/devicename $(STAGE)/prefsfix $(STAGE)/signinfix $(STAGE)/gpu $(STAGE)/virtiosound:
+$(STAGE)/camfix $(STAGE)/vcamcaptured $(STAGE)/launchhook $(STAGE)/systemhook $(STAGE)/misfix $(STAGE)/hapticsfix $(STAGE)/batteryhealthfix $(STAGE)/devicehubfix $(STAGE)/devicename $(STAGE)/prefsfix $(STAGE)/signinfix $(STAGE)/gyroscope $(STAGE)/accelerometer $(STAGE)/attitude $(STAGE)/gpu $(STAGE)/virtiosound:
 	@mkdir -p $@
 
 $(CAMFIX): $(CAMFIX_SOURCES) $(CAMFIX_INPUTS) | $(STAGE)/camfix
@@ -200,7 +262,7 @@ $(CAMFIX): $(CAMFIX_SOURCES) $(CAMFIX_INPUTS) | $(STAGE)/camfix
 		-o $@ $(CAMFIX_SOURCES) \
 		-framework Foundation -framework AVFoundation -framework ImageIO \
 		-framework IOSurface -framework CoreMedia -framework CoreVideo \
-		-framework CoreGraphics -framework QuartzCore
+		-framework CoreGraphics -framework QuartzCore -framework Accelerate
 	@codesign --force --sign - $@
 
 $(VCAMCAPTURED): $(VCAMCAPTURED_SOURCES) $(VCAMCAPTURED_INPUTS) | $(STAGE)/vcamcaptured
@@ -211,10 +273,22 @@ $(VCAMCAPTURED): $(VCAMCAPTURED_SOURCES) $(VCAMCAPTURED_INPUTS) | $(STAGE)/vcamc
 		-framework CoreGraphics
 	@codesign --force --sign - $@
 
-$(LAUNCHHOOK): $(LAUNCHHOOK_SOURCES) $(LAUNCHHOOK_INCLUDES) LaunchHook Shared | $(STAGE)/launchhook
+$(LAUNCHHOOK): $(LAUNCHHOOK_SOURCES) $(LAUNCHHOOK_INCLUDES) LaunchHook Shared $(MACH_EXC_DEFS) | $(STAGE)/launchhook
+	@mkdir -p $(LAUNCHHOOK_GENERATED)
+	xcrun --sdk macosx mig -arch arm64 -isysroot $(MACOS_SDK) \
+		-server $(LAUNCHHOOK_GENERATED)/mach_excServer.c \
+		-sheader $(LAUNCHHOOK_GENERATED)/mach_excServer.h \
+		-user $(LAUNCHHOOK_GENERATED)/mach_excUser.c \
+		-header $(LAUNCHHOOK_GENERATED)/mach_exc.h $(MACH_EXC_DEFS)
+	/usr/bin/sed -i '' 's/msg_result = mach_msg(/msg_result = vp_mach_msg_kobject(/g' \
+		$(LAUNCHHOOK_GENERATED)/mach_excUser.c
+	@/usr/bin/grep -q 'msg_result = vp_mach_msg_kobject(' $(LAUNCHHOOK_GENERATED)/mach_excUser.c
+	@! /usr/bin/grep -q 'msg_result = mach_msg(' $(LAUNCHHOOK_GENERATED)/mach_excUser.c
 	$(CLANG) $(GUEST_C_FLAGS) -dynamiclib \
+		-I$(LAUNCHHOOK_GENERATED) -ILaunchHook -include VPhoneMachMessage.h \
 		-install_name /usr/lib/launchdhook-vphone.dylib \
-		-o $@ $(LAUNCHHOOK_SOURCES) -Wl,-not_for_dyld_shared_cache
+		-o $@ $(LAUNCHHOOK_SOURCES) $(LAUNCHHOOK_GENERATED)/mach_excServer.c \
+		$(LAUNCHHOOK_GENERATED)/mach_excUser.c -Wl,-not_for_dyld_shared_cache
 	@codesign --force --sign - $@
 
 $(SYSTEMHOOK): $(SYSTEMHOOK_SOURCES) $(SYSTEMHOOK_INCLUDES) SystemHook Shared | $(STAGE)/systemhook
@@ -278,6 +352,122 @@ $(SIGNINFIX): $(SIGNINFIX_SOURCES) $(SIGNINFIX_INCLUDES) SignInFix | $(STAGE)/si
 		-Wl,-not_for_dyld_shared_cache
 	@codesign --force --sign - $@
 
+$(GYROSCOPE): $(GYROSCOPE_SOURCES) $(GYROSCOPE_INPUTS) | $(STAGE)/gyroscope
+	$(CLANG) -arch arm64e -miphoneos-version-min=18.0 -Os -fobjc-arc \
+		-Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphonegyro.dylib -o $@ $(GYROSCOPE_SOURCES) \
+		-framework Foundation -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(ACCELEROMETER): $(ACCELEROMETER_SOURCES) $(ACCELEROMETER_INPUTS) | $(STAGE)/accelerometer
+	$(CLANG) -arch arm64e -miphoneos-version-min=18.0 -Os -fobjc-arc \
+		-Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphoneaccelerometer.dylib -o $@ $(ACCELEROMETER_SOURCES) \
+		-framework Foundation -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+.PHONY: test-gyroscope test-accelerometer
+test-accelerometer:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -IAccelerometer \
+		-o $(OUT)/AccelerometerTests Tests/AccelerometerTests.m Accelerometer/VPhoneOrientationSink.m -framework Foundation
+	@$(OUT)/AccelerometerTests
+
+$(ATTITUDE): $(ATTITUDE_SOURCES) $(ATTITUDE_INPUTS) | $(STAGE)/attitude
+	$(CLANG) -arch arm64e -miphoneos-version-min=18.0 -Os -fobjc-arc \
+		-Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphoneattitude.dylib -o $@ $(ATTITUDE_SOURCES) \
+		-framework Foundation -framework CoreMotion -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(HOMEPODDISPLAY): $(HOMEPODDISPLAY_SOURCES) $(HOMEPODDISPLAY_INPUTS)
+	@mkdir -p $(STAGE)/homepoddisplay
+	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 -Os -fobjc-arc \
+		-Wall -Wextra -Werror -dynamiclib -install_name /usr/lib/libvphonehomepoddisplay.dylib \
+		-o $@ $(HOMEPODDISPLAY_SOURCES) -framework Foundation -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(HOMEPODMISFIX): $(HOMEPODMISFIX_INPUTS)
+	@mkdir -p $(STAGE)/homepodmisfix
+	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 -Os -dynamiclib \
+		-install_name /usr/lib/libvphonehomepodmisfix.dylib \
+		-DVPHONE_MIS_SIGNATURE_ONLY=1 -o $@ $(HOMEPODMISFIX_SOURCES) -framework CoreFoundation -lmis -lobjc \
+		-Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(HOMEPODPERSONA): $(HOMEPODPERSONA_INPUTS)
+	@mkdir -p $(STAGE)/homepodpersona
+	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 -Os \
+		-Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphoneinstallpersona.dylib \
+		-o $@ $< -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(CRYPTEXSTAGING): $(CRYPTEXSTAGING_SOURCE)
+	@mkdir -p $(STAGE)/cryptexstaging
+	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 -Os \
+		-Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphonecryptexstaging.dylib \
+		-o $@ $< -framework CoreFoundation -lcryptex_core -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+.PHONY: test-cryptex-staging
+test-cryptex-staging:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -arch arm64 -O1 -Wall -Wextra -Werror -Wno-unused-parameter \
+		-o $(OUT)/CryptexStagingTests Tests/CryptexStagingTests.c -framework CoreFoundation
+	@$(OUT)/CryptexStagingTests
+
+$(HOMEPODSETUP): $(HOMEPODSETUP_SOURCES) $(HOMEPODSETUP_INPUTS)
+	@mkdir -p $(STAGE)/homepodsetup
+	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 -Os -fobjc-arc \
+		-Wall -Wextra -Werror -o $@ $(HOMEPODSETUP_SOURCES) -framework Foundation
+	@cp HomePodSetup/com.vphone.homepod-setup.plist $(STAGE)/homepodsetup/
+	@codesign --force --sign - $@
+
+.PHONY: test-homepod-setup
+test-homepod-setup:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IHomePodSetup \
+		-o $(OUT)/HomePodSetupTests Tests/HomePodSetupTests.m HomePodSetup/HomePodSetupState.m -framework Foundation
+	@$(OUT)/HomePodSetupTests
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IHomePodSetup \
+		-o $(OUT)/HomePodSetupProcessTests Tests/HomePodSetupProcessTests.m HomePodSetup/HomePodSetupProcesses.m -framework Foundation
+	@$(OUT)/HomePodSetupProcessTests
+
+.PHONY: test-attitude
+test-attitude:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -IAttitude \
+		-o $(OUT)/AttitudeTests Tests/AttitudeTests.m Attitude/VPhoneAttitudeSample.m \
+		-framework Foundation -framework CoreMotion
+	@$(OUT)/AttitudeTests
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -IAttitude \
+		-DVP_ATTITUDE_NOTIFICATION='"com.vphone.motion.attitude.host-test"' \
+		-o $(OUT)/AttitudeHookTests Tests/AttitudeHookTests.m $(ATTITUDE_SOURCES) \
+		-framework Foundation -framework CoreMotion
+	@$(OUT)/AttitudeHookTests
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -IAttitude \
+		-DVP_ATTITUDE_NOTIFICATION='"com.vphone.motion.attitude.lock-order-test"' \
+		-o $(OUT)/AttitudeLockOrderTests Tests/AttitudeLockOrderTests.m $(ATTITUDE_SOURCES) \
+		-framework Foundation -framework CoreMotion
+	@$(OUT)/AttitudeLockOrderTests
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -IAttitude \
+		-DVP_ATTITUDE_NOTIFICATION='"com.vphone.motion.attitude.lifecycle-test"' \
+		-DVP_ATTITUDE_MANAGER_CLASS='"VPhoneTestMotionManager"' \
+		-o $(OUT)/AttitudeLifecycleTests Tests/AttitudeLifecycleTests.m $(ATTITUDE_SOURCES) \
+		-framework Foundation -framework CoreMotion
+	@$(OUT)/AttitudeLifecycleTests
+	@mkdir -p $(OUT)/attitude-scope/System/Library/CoreServices/SpringBoard.app
+	@cp $(OUT)/AttitudeLifecycleTests $(OUT)/attitude-scope/System/Library/CoreServices/SpringBoard.app/SpringBoard
+	@$(OUT)/attitude-scope/System/Library/CoreServices/SpringBoard.app/SpringBoard
+
+test-gyroscope:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IGyroscope \
+		-o $(OUT)/GyroscopeTests Tests/GyroscopeTests.m -framework Foundation
+	@$(OUT)/GyroscopeTests
+
 $(STAGE)/misfix/libmisfix.plist: MISFix/libmisfix.plist | $(STAGE)/misfix
 	@cp $< $@
 
@@ -320,9 +510,46 @@ test-vcam-prewarm:
 		Tests/VCamPrewarmScanTests.c VCamCaptured/Prewarm/VCamPrewarmScan.c
 	@$(OUT)/VCamPrewarmScanTests
 
+# Host proof harness for the gate that runs cameracaptured's frame drive only
+# while a camera client exists.
+.PHONY: test-vcam-drive-gate
+test-vcam-drive-gate:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -O1 -Wall -Wextra -Werror -IVCamCaptured/Frames \
+		-o $(OUT)/VCamDriveGateTests \
+		Tests/VCamDriveGateTests.c VCamCaptured/Frames/VCamDriveGate.c
+	@$(OUT)/VCamDriveGateTests
+
+# Host proof harness for the crop, size and turn plan libcamfix uses for
+# AVCaptureVideoDataOutput frames.
+.PHONY: test-camfix-geometry
+test-camfix-geometry:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -O1 -Wall -Wextra -Werror -ICamFix/Frame \
+		-o $(OUT)/CamFixFrameGeometryTests \
+		Tests/CamFixFrameGeometryTests.c CamFix/Frame/CamFixFrameGeometry.c
+	@$(OUT)/CamFixFrameGeometryTests
+
 .PHONY: test-installcoordination-persona
 test-installcoordination-persona:
 	@mkdir -p $(OUT)
-	xcrun --sdk macosx clang -Wall -Wextra -Werror \
+	xcrun --sdk macosx clang -arch arm64 -O1 -Wall -Wextra -Werror -Wno-unused-parameter \
 		-o $(OUT)/InstallCoordinationPersonaTests Tests/InstallCoordinationPersonaTests.c
 	@$(OUT)/InstallCoordinationPersonaTests
+
+.PHONY: test-flutter-remap test-flutter-remap-repair
+test-flutter-remap:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -o $(OUT)/FlutterRemapPolicyTests Tests/FlutterRemapPolicyTests.c
+	@$(OUT)/FlutterRemapPolicyTests
+
+test-flutter-remap-repair:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -Wno-unused-function -o $(OUT)/FlutterRemapRepairTests Tests/FlutterRemapRepairTests.c
+	@$(OUT)/FlutterRemapRepairTests
+
+.PHONY: build-executable-remap-probe
+build-executable-remap-probe:
+	@mkdir -p $(OUT)
+	xcrun --sdk iphoneos swiftc -target arm64-apple-ios26.0 -O Tests/ExecutableRemapProbe.swift -module-cache-path $(OUT)/probe-module-cache -o $(OUT)/ExecutableRemapProbe
+	codesign --force --sign - --timestamp=none $(OUT)/ExecutableRemapProbe
