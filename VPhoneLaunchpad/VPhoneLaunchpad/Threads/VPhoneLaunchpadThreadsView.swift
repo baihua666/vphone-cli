@@ -23,13 +23,14 @@ struct VPhoneLaunchpadThreadsView: View {
     var body: some View {
         HSplitView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Threads 账号").font(.headline)
-                List(model.accounts, selection: $selectedAccount) { account in
-                    VStack(alignment: .leading) {
-                        Text("@" + account.username)
-                        Text(URL(fileURLWithPath: account.machinePath).lastPathComponent).font(.caption).foregroundStyle(.secondary)
-                    }.tag(account.id)
-                }.frame(minHeight: 120)
+                HStack {
+                    Text("Threads 账号").font(.headline)
+                    Spacer()
+                    Button("添加账号", systemImage: "plus") {
+                        selectedAccount = ""; username = ""; password = ""; machinePath = ""
+                    }.disabled(model.running != nil)
+                }
+                Text(account == nil ? "添加账号" : "编辑账号").font(.subheadline)
                 TextField("Instagram / Threads 用户名", text: $username)
                 SecureField("密码（留空保留已有凭据）", text: $password)
                 Picker("虚拟机", selection: $machinePath) {
@@ -38,12 +39,27 @@ struct VPhoneLaunchpadThreadsView: View {
                         Text(machine.name).tag(machine.path.url.path)
                     }
                 }
-                Button("保存账号") {
+                Button(account == nil ? "添加并保存账号" : "保存账号修改") {
                     model.saveAccount(username: username, machinePath: machinePath, password: password)
-                    if model.error.isEmpty { selectedAccount = username.lowercased(); password = "" }
+                    if model.error.isEmpty {
+                        selectedAccount = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        password = ""
+                    }
                 }.disabled(model.running != nil || username.isEmpty || machinePath.isEmpty)
+                if platform.machines.machines.isEmpty {
+                    Text("尚无虚拟机，请先在主窗口创建或导入实例。").font(.caption).foregroundStyle(.orange)
+                }
                 Text("凭据独立保存在本机。使用 Threads 用户名；遇到验证码需在虚拟机完成后重试。").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                if model.accounts.isEmpty { Text("还没有账号，请填写上方信息并添加。").foregroundStyle(.secondary) }
+                List(model.accounts, selection: $selectedAccount) { account in
+                    VStack(alignment: .leading) {
+                        Text("@" + account.username)
+                        Text(URL(fileURLWithPath: account.machinePath).lastPathComponent).font(.caption).foregroundStyle(.secondary)
+                    }.tag(account.id)
+                }.frame(minHeight: 100)
             }.padding().frame(minWidth: 240, idealWidth: 270, maxWidth: 320)
+            ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("新建发帖任务").font(.headline)
                 Text(account.map { "@\($0.username) · \(URL(fileURLWithPath: $0.machinePath).lastPathComponent)" } ?? "先选择账号")
@@ -75,7 +91,7 @@ struct VPhoneLaunchpadThreadsView: View {
                         }
                         Spacer(); Text(task.status)
                     }.tag(task.id)
-                }.frame(minHeight: 100)
+                }.frame(height: 150)
                 if let record, let folder = model.directory(record.id) {
                     HStack(alignment: .top) {
                         if let preview = NSImage(contentsOf: folder.appendingPathComponent("fixture.png")) {
@@ -102,7 +118,8 @@ struct VPhoneLaunchpadThreadsView: View {
                 }.frame(height: 100)
                 if !model.error.isEmpty { Text(model.error).foregroundStyle(.red).textSelection(.enabled) }
             }.padding().frame(minWidth: 580)
-        }.frame(minWidth: 900, minHeight: 800)
+            }
+        }.frame(minWidth: 900, minHeight: 560)
         .onChange(of: selectedAccount) { _, _ in
             if let account { username = account.username; machinePath = account.machinePath; password = "" }
         }
