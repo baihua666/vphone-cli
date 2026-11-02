@@ -46,6 +46,10 @@ import Foundation
         else { accounts.append(account) }
         try save()
     }
+    public func password(for username: String) throws -> String {
+        guard accounts.contains(where: { $0.id == username }) else { throw ThreadsDesktopError("账号不存在") }
+        return try String(contentsOf: credentials.appendingPathComponent(username + ".password"), encoding: .utf8)
+    }
     public func directory(_ id: UUID) -> URL { root.appendingPathComponent("tasks/" + id.uuidString) }
     public func create(account: ThreadsAccount, image: URL, caption: String, freshLogin: Bool, testProfile: Bool) throws -> ThreadsTaskRecord {
         let id = UUID()

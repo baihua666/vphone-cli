@@ -19,6 +19,12 @@ import Observation
         } catch { self.error = "本地数据读取失败，未覆盖原文件：" + error.localizedDescription }
     }
     private func reload() { accounts = store?.accounts ?? []; tasks = store?.tasks ?? [] }
+    public func password(for username: String) -> String {
+        do {
+            guard let store else { throw ThreadsDesktopError("存储不可用") }
+            return try store.password(for: username)
+        } catch { self.error = "密码读取失败：" + error.localizedDescription; return "" }
+    }
     public func saveAccount(username: String, machinePath: String, password: String) {
         do { guard let store else { throw ThreadsDesktopError("存储不可用") }
             try store.saveAccount(username: username, machinePath: machinePath, password: password); reload(); error = ""

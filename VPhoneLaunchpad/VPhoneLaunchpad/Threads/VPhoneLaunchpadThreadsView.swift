@@ -32,7 +32,7 @@ struct VPhoneLaunchpadThreadsView: View {
                 }
                 Text(account == nil ? "添加账号" : "编辑账号").font(.subheadline)
                 TextField("Instagram / Threads 用户名", text: $username)
-                SecureField("密码（留空保留已有凭据）", text: $password)
+                TextField("密码", text: $password)
                 Picker("虚拟机", selection: $machinePath) {
                     Text("请选择").tag("")
                     ForEach(platform.machines.machines) { machine in
@@ -43,7 +43,7 @@ struct VPhoneLaunchpadThreadsView: View {
                     model.saveAccount(username: username, machinePath: machinePath, password: password)
                     if model.error.isEmpty {
                         selectedAccount = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                        password = ""
+                        password = model.password(for: selectedAccount)
                     }
                 }.disabled(model.running != nil || username.isEmpty || machinePath.isEmpty)
                 if platform.machines.machines.isEmpty {
@@ -121,7 +121,10 @@ struct VPhoneLaunchpadThreadsView: View {
             }
         }.frame(minWidth: 900, minHeight: 560)
         .onChange(of: selectedAccount) { _, _ in
-            if let account { username = account.username; machinePath = account.machinePath; password = "" }
+            if let account {
+                username = account.username; machinePath = account.machinePath
+                password = model.password(for: account.username)
+            }
         }
         .fileImporter(isPresented: $chooseImage, allowedContentTypes: [.image]) { result in
             switch result {

@@ -19,6 +19,8 @@ import Vision
         try store.update(task.id, status: "运行中", detail: "publish: started")
         let reopened = try ThreadsStore(root: root, credentials: store.credentials)
         XCTAssertEqual(reopened.accounts.count, 1)
+        XCTAssertEqual(try reopened.password(for: "test409518"), "test-secret")
+        XCTAssertThrowsError(try reopened.password(for: "../bad"))
         XCTAssertEqual(reopened.tasks[0].id, task.id)
         XCTAssertEqual(reopened.tasks[0].status, "已中断")
         XCTAssertEqual(try Data(contentsOf: store.directory(task.id).appendingPathComponent("request.json")), requestBefore)
