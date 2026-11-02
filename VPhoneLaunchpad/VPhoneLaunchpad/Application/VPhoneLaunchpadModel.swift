@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if VPHONE_CUSTOM_THREADS_DESKTOP
+import ThreadsDesktop
+#endif
 
 /// Owns the host checks, the installed bundles and the machine library. The
 /// window always shows the machines; Host Setup and Core Bundle are sheets
@@ -30,6 +33,9 @@ final class VPhoneLaunchpadModel {
         }
     }
 
+    #if VPHONE_CUSTOM_THREADS_DESKTOP
+    let threads = ThreadsDesktopModel()
+    #endif
     let history = VPhoneLaunchpadCommandHistory()
     let helper = VPhoneLaunchpadHelperClient()
     let libraryRoot: URL

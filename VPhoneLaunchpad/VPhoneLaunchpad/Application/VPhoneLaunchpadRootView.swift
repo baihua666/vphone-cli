@@ -12,6 +12,9 @@ struct VPhoneLaunchpadRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
+                    #if VPHONE_CUSTOM_THREADS_DESKTOP
+                    Button { openWindow(id: "threads") } label: { Label("Threads 自动化", systemImage: "text.bubble") }
+                    #endif
                     #if VPHONE_CUSTOM_APPLICATION_MANAGEMENT
                     Button { openWindow(id: "applications") } label: { Label("应用管理", systemImage: "app.badge") }
                     #endif

@@ -38,6 +38,9 @@ codesign --force --options runtime --timestamp --identifier com.vphone.launchpad
   --sign "$identity" "$app/Contents/MacOS/vphone-launchpad-cli"
 codesign --force --options runtime --timestamp --identifier com.vphone.launchpad.launcher \
   --sign "$identity" "$app/Contents/MacOS/vphone-launchpad-launcher"
+if [[ -x "$app/Contents/MacOS/threads-automation" ]]; then
+  codesign --force --options runtime --timestamp --sign "$identity" "$app/Contents/MacOS/threads-automation"
+fi
 codesign --force --options runtime --timestamp --entitlements "$entitlements" \
   --sign "$identity" "$app"
 
