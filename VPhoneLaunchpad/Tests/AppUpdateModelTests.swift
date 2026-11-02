@@ -42,6 +42,12 @@ actor UpdateFetchCount {
         let calls = await count.value
         precondition(calls == 1 && updates.hasAppUpdate && updates.catalog?.tag == catalog.tag)
 
+        // Reopening the page must refresh even when a previous catalog is present.
+        updates.check()
+        try await idle(updates)
+        let reopenedCalls = await count.value
+        precondition(reopenedCalls == 2 && updates.catalog?.tag == catalog.tag)
+
         let failed = VPhoneLaunchpadAppUpdateModel(report: report) { throw DistributionError("offline") }
         failed.catalog = catalog
         failed.check()

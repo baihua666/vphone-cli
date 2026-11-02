@@ -8,7 +8,6 @@ struct VPhoneLaunchpadAppUpdateCommands: Commands {
         CommandGroup(after: .appInfo) {
             Button("检查 App 更新…") {
                 openWindow(id: "app-update")
-                model.appUpdates.check()
             }
         }
     }

@@ -50,6 +50,7 @@ struct VPhoneLaunchpadAppUpdateView: View {
         }
         .padding(24)
         .frame(width: 480)
+        .onAppear { updates.check() }
     }
 }
 #endif
