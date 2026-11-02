@@ -18,17 +18,20 @@ public struct ThreadsTaskRequest: Codable, Equatable, Sendable {
     public let caption: String
     public let freshLogin: Bool
     public let testProfile: Bool
+    public let hasImage: Bool?
+    public var includesImage: Bool { hasImage ?? true }
     public init(account: String, socket: String, marker: String, caption: String,
-                freshLogin: Bool = false, testProfile: Bool = false) {
+                freshLogin: Bool = false, testProfile: Bool = false, hasImage: Bool? = nil) {
         self.account = account; self.socket = socket; self.marker = marker
         self.caption = caption; self.freshLogin = freshLogin; self.testProfile = testProfile
+        self.hasImage = hasImage
     }
     public var publishedCaption: String { marker + "\n" + caption }
     public func validate() throws {
         guard account.range(of: "^[A-Za-z0-9_.]{1,30}$", options: .regularExpression) != nil,
               marker.range(of: "^VPHONE-[A-F0-9]{8}$", options: .regularExpression) != nil,
               socket.hasPrefix("/"), socket.hasSuffix("/vphone.sock"),
-              !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              includesImage || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               publishedCaption.count <= 500 else { throw ThreadsDesktopError("账号、实例或文案无效（含任务编号最多 500 字）") }
     }
 }

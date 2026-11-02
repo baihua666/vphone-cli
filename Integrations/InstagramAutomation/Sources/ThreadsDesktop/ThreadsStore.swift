@@ -51,15 +51,15 @@ import Foundation
         return try String(contentsOf: credentials.appendingPathComponent(username + ".password"), encoding: .utf8)
     }
     public func directory(_ id: UUID) -> URL { root.appendingPathComponent("tasks/" + id.uuidString) }
-    public func create(account: ThreadsAccount, image: URL, caption: String, freshLogin: Bool, testProfile: Bool) throws -> ThreadsTaskRecord {
+    public func create(account: ThreadsAccount, image: URL?, caption: String, freshLogin: Bool, testProfile: Bool) throws -> ThreadsTaskRecord {
         let id = UUID()
         let request = ThreadsTaskRequest(account: account.username, socket: account.machinePath + "/vphone.sock",
-            marker: "VPHONE-" + id.uuidString.prefix(8), caption: caption, freshLogin: freshLogin, testProfile: testProfile)
+            marker: "VPHONE-" + id.uuidString.prefix(8), caption: caption, freshLogin: freshLogin, testProfile: testProfile, hasImage: image != nil)
         try request.validate()
         let folder = directory(id)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         do {
-            try ThreadsImage.prepare(source: image, marker: request.marker, destination: folder.appendingPathComponent("fixture.png"))
+            if let image { try ThreadsImage.prepare(source: image, marker: request.marker, destination: folder.appendingPathComponent("fixture.png")) }
             try write(request, to: folder.appendingPathComponent("request.json"))
             let task = ThreadsTaskRecord(id: id, createdAt: Date(), request: request, status: "待运行", detail: "")
             tasks.insert(task, at: 0); try save(); return task

@@ -18,6 +18,13 @@ struct VPhoneLaunchpadThreadsView: View {
     @State private var selectedTask: UUID?
     private var account: ThreadsAccount? { model.accounts.first { $0.id == selectedAccount } }
     private var record: ThreadsTaskRecord? { model.tasks.first { $0.id == selectedTask } }
+    private var taskRequirement: String? {
+        if model.running != nil { return "请等待当前任务结束" }
+        if account == nil { return "请先添加并选择账号" }
+        if image == nil && caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "请填写文字或选择图片" }
+        if caption.count + 16 > 500 { return "文案过长：含任务编号最多 500 字" }
+        return nil
+    }
     private var executable: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/threads-automation") }
 
     var body: some View {
@@ -65,7 +72,8 @@ struct VPhoneLaunchpadThreadsView: View {
                 Text(account.map { "@\($0.username) · \(URL(fileURLWithPath: $0.machinePath).lastPathComponent)" } ?? "先选择账号")
                 HStack {
                     Button("选择图片…") { chooseImage = true }
-                    Text(image?.lastPathComponent ?? "未选择图片").lineLimit(1)
+                    Text(image?.lastPathComponent ?? "图片可选；不选则发纯文字").lineLimit(1)
+                    if image != nil { Button("移除图片") { image = nil } }
                 }
                 TextEditor(text: $caption).frame(height: 75).border(.separator)
                     .accessibilityLabel("发帖文案")
@@ -73,14 +81,18 @@ struct VPhoneLaunchpadThreadsView: View {
                     Toggle("重新登录", isOn: $freshLogin)
                     Toggle("完整测试（简介修改后恢复）", isOn: $testProfile)
                 }
-                Text("发布副本将加入任务识别条，文案加上任务编号，用于选图核验与防重。创建后可先查看预览；原图不变。")
+                Text("支持纯文字或图片帖。文案会附任务编号用于防重；选图时发布副本附识别条，原图不变。")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("创建任务") {
-                    if let account, let image {
+                    if let account {
                         selectedTask = model.create(account: account, image: image, caption: caption,
                                                     freshLogin: freshLogin, testProfile: testProfile)
                     }
-                }.disabled(account == nil || image == nil || caption.isEmpty || model.running != nil)
+                }.disabled(taskRequirement != nil)
+                if let taskRequirement {
+                    Label(taskRequirement, systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Divider()
                 Text("任务记录").font(.headline)
                 List(model.tasks, selection: $selectedTask) { task in

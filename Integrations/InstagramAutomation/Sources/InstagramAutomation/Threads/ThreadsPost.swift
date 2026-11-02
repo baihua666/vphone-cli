@@ -4,6 +4,7 @@ struct ThreadsPost {
     let ui: Screen
     let journal: RunJournal
     var customCaption: String? = nil
+    var includesImage = true
     static func attachmentCount(_ elements: [[String: Any]]) -> Int {
         let old = elements.filter { ($0["label"] as? String ?? "").hasPrefix("Remove photo at attached item #") }
         if !old.isEmpty { return old.count }
@@ -22,6 +23,7 @@ struct ThreadsPost {
     }
     var caption: String { customCaption ?? journal.state.marker + "\nAutomated test. Generated image; no personal content." }
     func prepare() throws {
+        if includesImage {
         if try !ui.has("Manage") && !ui.has(id: "Update") && !ui.has("Select more photos") {
             if !(try ui.has(id: "composer-text-view")) {
                 try ThreadsSession(ui: ui, journal: journal).profile()
@@ -66,6 +68,15 @@ struct ThreadsPost {
         try ui.wait(journal.state.account)
         try waitForSinglePhoto()
         guard !(try ui.has("Remove photo at attached item #2")) else { throw Failure("草稿包含多张图片，停止发布") }
+        } else {
+            if !(try ui.has(id: "composer-text-view")) {
+                try ThreadsSession(ui: ui, journal: journal).profile()
+                try ui.wait("Create post", tap: true)
+            }
+            try ui.wait(journal.state.account)
+            try ui.wait(id: "composer-text-view")
+            guard !(try hasPhoto()) else { throw Failure("纯文字任务发现已有图片草稿，停止覆盖") }
+        }
         let draft = try ui.tree().first(where: { $0["identifier"] as? String == "composer-text-view" })
         let text = draft?["label"] as? String ?? ""
         guard text == "What’s new?" || text.isEmpty || text.hasPrefix(journal.state.marker) else {
@@ -74,7 +85,7 @@ struct ThreadsPost {
         // Clear caption before OCR so the marker can only come from the attached image.
         try ui.wait(id: "composer-text-view", tap: true)
         try ui.clearAndType("")
-        try ui.waitMarker(journal.state.marker)
+        if includesImage { try ui.waitMarker(journal.state.marker) }
         try ui.socket.call("input.type", ["text": caption, "delay_ms": 100])
         try ui.wait(caption)
         try ui.wait(id: "composer-post-button")
@@ -82,7 +93,8 @@ struct ThreadsPost {
     func publish() throws {
         try ui.wait(journal.state.account)
         try ui.wait(caption)
-        try waitForSinglePhoto()
+        if includesImage { try waitForSinglePhoto() }
+        else { guard !(try hasPhoto()) else { throw Failure("纯文字任务包含意外附件，停止发布") } }
         try journal.checkpoint()
         try ui.wait(id: "composer-post-button", tap: true)
         try ui.wait("Profile")
@@ -113,6 +125,10 @@ struct ThreadsPost {
                let frame = captionElement["frame"] as? [String: Double],
                let x = frame["x"], let y = frame["y"], let w = frame["width"], let h = frame["height"],
                try ui.has(journal.state.account) {
+                if !includesImage {
+                    try ui.image().write(to: journal.directory.appendingPathComponent("published.jpg"), options: .atomic)
+                    return
+                }
                 let barcodeFound = try ui.codes().filter({ $0.0 == journal.state.marker }).count == 1
                 if try barcodeFound || Self.markerIsInImage(words: ui.words(), marker: journal.state.marker,
                                         captionFrame: CGRect(x: x, y: y, width: w, height: h)) {

@@ -4,6 +4,22 @@ import Vision
 @testable import ThreadsDesktop
 #if VPHONE_CUSTOM_THREADS_DESKTOP
 @MainActor final class ThreadsStoreTests: XCTestCase {
+    func testTextOnlyTaskPersistsWithoutImageAndRejectsEmptyContent() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ThreadsStore(root: root, credentials: root.appendingPathComponent("credentials"))
+        try store.saveAccount(username: "test409518", machinePath: "/example/vm", password: "test-secret")
+        let account = try XCTUnwrap(store.accounts.first)
+        XCTAssertThrowsError(try store.create(account: account, image: nil, caption: " \n", freshLogin: false, testProfile: false))
+        let task = try store.create(account: account, image: nil, caption: "text only", freshLogin: false, testProfile: false)
+        XCTAssertFalse(task.request.includesImage)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory(task.id).appendingPathComponent("fixture.png").path))
+        let reopened = try ThreadsStore(root: root, credentials: store.credentials)
+        XCTAssertFalse(try XCTUnwrap(reopened.tasks.first).request.includesImage)
+        let legacy = ThreadsTaskRequest(account: account.username, socket: "/example/vm/vphone.sock", marker: "VPHONE-1234ABCD", caption: "")
+        XCTAssertNoThrow(try legacy.validate()) // Images need no user caption.
+        XCTAssertTrue(try JSONDecoder().decode(ThreadsTaskRequest.self, from: JSONEncoder().encode(legacy)).includesImage)
+    }
     func testPersistenceFrozenTaskAndCrashRecovery() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

@@ -13,7 +13,7 @@ enum ThreadsWorkflow {
         guard screen["width"] as? Int == 430, screen["height"] as? Int == 932,
               screen["orientation"] as? Int == 0 else { throw Failure("Threads 仅校准了 430×932 竖屏") }
         let session = ThreadsSession(ui: ui, journal: journal)
-        let post = ThreadsPost(ui: ui, journal: journal, customCaption: request?.publishedCaption)
+        let post = ThreadsPost(ui: ui, journal: journal, customCaption: request?.publishedCaption, includesImage: request?.includesImage ?? true)
         // A rejected login can leave the embedded form stale. Reopen only before
         // a new attempt; never restart an unknown in-flight login or publication.
         if journal.state.completed.isEmpty && !journal.state.loginSubmitted && !journal.state.publishAttempted {
@@ -29,10 +29,10 @@ enum ThreadsWorkflow {
             try journal.stage("profile") { try session.testProfile() }
         }
         let image = directory.appendingPathComponent("fixture.png")
-        try journal.stage("import") {
+        if post.includesImage { try journal.stage("import") {
             if request == nil { try Fixture.create(marker: journal.state.marker, at: image, title: "Threads automation", markerSize: 80, barcode: true) }
             try MediaImport(ui: ui).run(image: image, marker: journal.state.marker)
-        }
+        } }
         try session.launch()
         // Recheck the actual draft on every resume, even if preparation was previously complete.
         try journal.event("prepare", "started")

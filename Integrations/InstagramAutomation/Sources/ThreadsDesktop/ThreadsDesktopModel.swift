@@ -30,7 +30,7 @@ import Observation
             try store.saveAccount(username: username, machinePath: machinePath, password: password); reload(); error = ""
         } catch { self.error = error.localizedDescription }
     }
-    public func create(account: ThreadsAccount, image: URL, caption: String, freshLogin: Bool, testProfile: Bool) -> UUID? {
+    public func create(account: ThreadsAccount, image: URL?, caption: String, freshLogin: Bool, testProfile: Bool) -> UUID? {
         do { guard let store else { throw ThreadsDesktopError("存储不可用") }
             let task = try store.create(account: account, image: image, caption: caption, freshLogin: freshLogin, testProfile: testProfile)
             reload(); error = ""; return task.id
