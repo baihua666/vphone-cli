@@ -48,7 +48,10 @@ struct ThreadsSession {
     func login(password: String?) throws {
         if try ui.has("Profile") {
             try profile()
-            if !journal.state.freshLogin || journal.state.loginSubmitted { return }
+            if !journal.state.freshLogin || journal.state.loginSubmitted {
+                try journal.event("session", "reused")
+                return
+            }
             try ui.wait("Settings", tap: true)
             for _ in 0..<10 {
                 if try ui.has("Log out") { break }

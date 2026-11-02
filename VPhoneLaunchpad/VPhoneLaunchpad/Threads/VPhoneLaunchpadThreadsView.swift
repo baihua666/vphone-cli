@@ -78,9 +78,11 @@ struct VPhoneLaunchpadThreadsView: View {
                 TextEditor(text: $caption).frame(height: 75).border(.separator)
                     .accessibilityLabel("发帖文案")
                 HStack {
-                    Toggle("重新登录", isOn: $freshLogin)
+                    Toggle("强制退出并重新登录（仅测试）", isOn: $freshLogin)
                     Toggle("完整测试（简介修改后恢复）", isOn: $testProfile)
                 }
+                Text("默认核对当前账号并复用登录态；未登录时才登录。账号不匹配时停止并提示。")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("支持纯文字或图片帖。文案会附任务编号用于防重；选图时发布副本附识别条，原图不变。")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("创建任务") {
@@ -111,14 +113,19 @@ struct VPhoneLaunchpadThreadsView: View {
                         }
                         VStack(alignment: .leading, spacing: 8) {
                             Text(record.request.publishedCaption).lineLimit(4).textSelection(.enabled)
-                            Button(record.status == "待运行" ? "一键登录并发帖" : record.status == "已完成" ? "重试（已完成不重复发布）" : "重试同一任务") {
+                            Text(record.request.freshLogin ? "此任务：强制重新登录测试" : "此任务：优先复用当前登录态")
+                                .font(.caption).foregroundStyle(.secondary)
+                            if record.request.testProfile {
+                                Text("此任务包含简介修改与恢复测试").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Button(record.status == "待运行" ? "检查登录并发帖" : record.status == "已完成" ? "重试（已完成不重复发布）" : "重试同一任务") {
                                 // Match by local directory, never by a reused display name.
                                 guard platform.machines.machines.contains(where: { $0.path.url.path + "/vphone.sock" == record.request.socket }) else {
                                     model.error = "任务绑定的虚拟机已不存在，请核对实例。"; return
                                 }
                                 model.run(record.id, executable: executable)
                             }.disabled(model.running != nil)
-                            Text("请先启动对应虚拟机。重试保留原图片、文案与发布状态。").font(.caption).foregroundStyle(.secondary)
+                            Text("请先启动对应虚拟机。重试沿用此任务保存的设置与发布状态；上方选项仅用于新建任务。").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

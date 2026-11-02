@@ -65,7 +65,9 @@ import Observation
                 let state = (try? Data(contentsOf: stateURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
                 let verified = (state?["completed"] as? [String] ?? []).contains("verify")
                 let limited = FileManager.default.fileExists(atPath: directory.appendingPathComponent("retry-after.json").path)
-                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? "等待验证" : "失败"
+                let attempted = state?["publishAttempted"] as? Bool ?? false
+                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? "等待验证"
+                    : attempted ? "发布结果待核验" : "失败（未提交发布）"
                 do { try store.update(id, status: status, detail: progress); reload() }
                 catch { self.error = "任务结果保存失败：" + error.localizedDescription }
                 running = nil; process = nil
