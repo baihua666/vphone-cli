@@ -42,12 +42,18 @@ import Vision
         XCTAssertEqual(try Data(contentsOf: store.directory(task.id).appendingPathComponent("request.json")), requestBefore)
         XCTAssertFalse(try String(contentsOf: root.appendingPathComponent("accounts.json"), encoding: .utf8).contains("test-secret"))
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: store.credentials.appendingPathComponent("test409518.password").path)[.posixPermissions] as? Int, 0o600)
-        let prepared = try XCTUnwrap(NSImage(contentsOf: store.directory(task.id).appendingPathComponent("fixture.png")))
-        let thumb = NSImage(size: NSSize(width: 322, height: 322))
-        thumb.lockFocus(); prepared.draw(in: NSRect(x: 0, y: 0, width: 322, height: 322)); thumb.unlockFocus()
-        let qr = VNDetectBarcodesRequest(); qr.symbologies = [.qr]
-        try VNImageRequestHandler(data: XCTUnwrap(thumb.tiffRepresentation)).perform([qr])
-        XCTAssertEqual(qr.results?.compactMap(\.payloadStringValue), [task.request.marker])
+        XCTAssertEqual(try Data(contentsOf: store.directory(task.id).appendingPathComponent(task.request.imageName)),
+                       try Data(contentsOf: input))
+        XCTAssertEqual(task.request.publishedCaption, "hello")
+    }
+    func testPublishedTextIsExactAndFull500CharactersAreAvailable() throws {
+        for text in ["", "  原文\n换行  ", "VPHONE-用户自己填写", String(repeating: "字", count: 500)] {
+            let request = ThreadsTaskRequest(account: "test409518", socket: "/vm/vphone.sock", marker: "VPHONE-1234ABCD", caption: text)
+            XCTAssertEqual(request.publishedCaption, text)
+            XCTAssertNoThrow(try request.validate())
+        }
+        let tooLong = ThreadsTaskRequest(account: "test409518", socket: "/vm/vphone.sock", marker: "VPHONE-1234ABCD", caption: String(repeating: "字", count: 501))
+        XCTAssertThrowsError(try tooLong.validate())
     }
     func testInvalidInputAndCorruptStoreAreNotOverwritten() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -22,7 +22,7 @@ struct VPhoneLaunchpadThreadsView: View {
         if model.running != nil { return "请等待当前任务结束" }
         if account == nil { return "请先添加并选择账号" }
         if image == nil && caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "请填写文字或选择图片" }
-        if caption.count + 16 > 500 { return "文案过长：含任务编号最多 500 字" }
+        if caption.count > 500 { return "文案过长：最多 500 字" }
         return nil
     }
     private var executable: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/threads-automation") }
@@ -83,7 +83,7 @@ struct VPhoneLaunchpadThreadsView: View {
                 }
                 Text("默认核对当前账号并复用登录态；未登录时才登录。账号不匹配时停止并提示。")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("支持纯文字或图片帖。文案会附任务编号用于防重；选图时发布副本附识别条，原图不变。")
+                Text("只发布你填写的文字和选择的原图，不添加编号、水印或其它内容。任务编号仅用于本地记录。")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("创建任务") {
                     if let account {
@@ -108,7 +108,7 @@ struct VPhoneLaunchpadThreadsView: View {
                 }.frame(height: 150)
                 if let record, let folder = model.directory(record.id) {
                     HStack(alignment: .top) {
-                        if let preview = NSImage(contentsOf: folder.appendingPathComponent("fixture.png")) {
+                        if let preview = NSImage(contentsOf: folder.appendingPathComponent(record.request.imageName)) {
                             Image(nsImage: preview).resizable().scaledToFit().frame(width: 130, height: 130)
                         }
                         VStack(alignment: .leading, spacing: 8) {

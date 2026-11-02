@@ -5,6 +5,12 @@ import ThreadsDesktop
 @testable import InstagramAutomation
 #if VPHONE_CUSTOM_INSTAGRAM_AUTOMATION && VPHONE_CUSTOM_THREADS_AUTOMATION
 final class ThreadsTests: XCTestCase {
+    func testOriginalPhotoSelectionRejectsMissingOrAmbiguousMatches() throws {
+        XCTAssertEqual(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.8, 0.05, 0.7]), 1)
+        XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: []))
+        XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.4]))
+        XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.08, 0.09]))
+    }
     func testTaskRetryCannotChangeImageOrCaption() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

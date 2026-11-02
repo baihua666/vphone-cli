@@ -9,7 +9,7 @@ enum ThreadsTaskBinding {
     }
     static func bind(_ request: ThreadsTaskRequest, journal: RunJournal) throws {
         let directory = journal.directory
-        let data = request.includesImage ? try Data(contentsOf: directory.appendingPathComponent("fixture.png")) : nil
+        let data = request.includesImage ? try Data(contentsOf: directory.appendingPathComponent(request.imageName)) : nil
         let binding = Binding(request: request, imageHash: data.map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() } ?? "")
         let url = directory.appendingPathComponent("bound-request.json")
         if FileManager.default.fileExists(atPath: url.path) {

@@ -66,7 +66,7 @@ import Observation
                 let verified = (state?["completed"] as? [String] ?? []).contains("verify")
                 let limited = FileManager.default.fileExists(atPath: directory.appendingPathComponent("retry-after.json").path)
                 let attempted = state?["publishAttempted"] as? Bool ?? false
-                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? "等待验证"
+                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? (attempted ? "发布结果待核验" : "等待验证")
                     : attempted ? "发布结果待核验" : "失败（未提交发布）"
                 do { try store.update(id, status: status, detail: progress); reload() }
                 catch { self.error = "任务结果保存失败：" + error.localizedDescription }
