@@ -4,8 +4,23 @@ import Vision
 struct Screen {
     let socket: GuestSocket
     var inspect: (([[String: Any]]) throws -> Void)? = nil
+    // Only repeat this read-only snapshot, never credential submission or publish taps.
+    static func readTree(read: () throws -> [[String: Any]], pause: () -> Void = { Thread.sleep(forTimeInterval: 1) }) throws -> [[String: Any]] {
+        for attempt in 0..<3 {
+            do { return try read() }
+            catch {
+                guard attempt < 2 else { throw error }
+                pause()
+            }
+        }
+        preconditionFailure("unreachable")
+    }
     func tree() throws -> [[String: Any]] {
-        let elements = try socket.request("ui.tree", ["limit": 300])["elements"] as? [[String: Any]] ?? []
+        let elements = try Self.readTree {
+            let result = try socket.request("ui.tree", ["limit": 300])
+            guard let elements = result["elements"] as? [[String: Any]] else { throw Failure("ui.tree 响应缺少 elements") }
+            return elements
+        }
         try inspect?(elements)
         return elements
     }

@@ -49,7 +49,11 @@ struct GuestSocket {
         let line = data.prefix { $0 != 10 }
         let reply = try JSONSerialization.jsonObject(with: line) as? [String: Any]
         guard reply?["ok"] as? Bool == true else {
-            throw Failure("guest 拒绝请求: " + (message["method"] as? String ?? "transport"))
+            let error = reply?["error"]
+            let details = error as? [String: Any]
+            let reason = details?["message"] as? String ?? error as? String ?? "未提供错误详情"
+            let code = details?["code"] as? String ?? "unknown"
+            throw Failure("guest 拒绝请求: \(message["method"] as? String ?? "transport") [\(code)] \(reason)")
         }
         return reply?["result"] as? [String: Any] ?? [:]
     }

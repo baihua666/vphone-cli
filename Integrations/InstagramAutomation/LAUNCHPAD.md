@@ -128,3 +128,18 @@ completed=[]，未提交发布。该任务创建时 freshLogin/testProfile 均�
 UI 将该选项明确为「强制退出并重新登录（仅测试）」，详情展示任务已保存的设置；
 复用时写 session/reused 事件。运行失败时区分「未提交发布」与「发布结果待核验」。
 ui.tree 拒绝的底层原因尚未确定，不能将此次失败描述为密码错误或发布失败。
+
+### ui.tree 读取容错修复与真实重试
+
+原客户端丢弃 guest 的具体错误，仅输出方法名，且单次快照失败就中止。
+现在保留错误 code/message，仅对只读 ui.tree 最多读三次；不重发任何点击、登录或发布请求，
+平台提示检查位于重试外，限流不会被当成读取故障重试。持续读取失败保留原错误退出。
+29 项自动测试和 Release 构建通过，执行器已替换本机测试 App 并严格验签。
+
+原目录真实重试记录 session: reused、login: passed，越过此前停止位置；随后简介保存
+得到 Try again in 24 hours，保存 retry-after.json。取消未保存编辑后重新打开 Edit profile，
+确认 Username: test409518、Bio: + Write bio，证据为任务目录 bio-after-cancel.json。
+保留 bioChanged 恢复标志，后续可再次核对；未篡改发布检查点或跳过原任务的简介测试。
+UI 点击同任务重试显示平台限流，暂停到北京时间 2026-11-03 20:43，无新增 guest 操作。
+publishAttempted 仍为 false。原单次读取错误无法事后恢复，底层具体成因仍未确定；
+本次完成的是错误可观测性与有限只读重试，不代表真实发帖已成功。
