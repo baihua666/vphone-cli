@@ -20,6 +20,7 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
         case iPad
         case appleTV
         case homePod
+        case homeView
         case watch
 
         public var osName: String {
@@ -28,14 +29,15 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
             case .iPad: "iPadOS"
             case .appleTV: "tvOS"
             case .homePod: "HomePod Software"
+            case .homeView: "HomeView Software"
             case .watch: "watchOS"
             }
         }
 
-        /// Apple TV and HomePod share the tvOS executable platform and
+        /// Apple TV, HomePod and HomeView share the tvOS executable platform and
         /// filesystem layout. Their user interfaces and device idioms differ.
         public var usesTVOS: Bool {
-            self == .appleTV || self == .homePod
+            self == .appleTV || self == .homePod || self == .homeView
         }
     }
 
@@ -115,6 +117,9 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
         )
     }
 
+    /// Experimental iPhone 15 / iOS 17.7 desktop bring-up on cloudOS 26.1.
+    public static let iPhone15_4 = iPhone("iPhone15,4", "d37ap", "iPhone 15", width: 1179, height: 2556)
+
     /// iPhone 16 Pro: 1206x2622, 402x874 points.
     public static let iPhone17_1 = iPhone("iPhone17,1", "d93ap", "iPhone 16 Pro", width: 1206, height: 2622)
     /// iPhone 16 Pro Max: 1320x2868, 440x956 points.
@@ -136,8 +141,9 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
     /// iPhone 18 Pro (V63AP): 1206x2622, 402x874 points.
     public static let iPhone19_2 = iPhone("iPhone19,2", "v63ap", "iPhone 18 Pro", width: 1206, height: 2622)
 
-    /// iPhone Duo (V68AP), using only its outer display for initial bring-up.
-    /// The inner display and hinge are not represented by the VM's single panel.
+    /// iPhone Duo (V68AP). The VM's panel is its outer display (the cover); the
+    /// guest publishes the inner display as a second, virtual display and shows
+    /// it on that panel while the device is open (libvphonefolddisplay).
     public static let iPhone19_4 = iPhone("iPhone19,4", "v68ap", "iPhone Duo", width: 1398, height: 2034)
 
     /// iPhone XS Max: 1242x2688 at 458 ppi, 414x896 points. Its IPSW carries the
@@ -222,6 +228,24 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
         screen: .init(width: 3840, height: 2160, pixelsPerInch: 144, scale: 2.0),
     )
 
+    /// HomeView's two OTA board identities. The square 1088-pixel canvas is
+    /// provisional; the donor tree supplies the home idiom and 2x artwork scale.
+    public static let homeAccessory17_1 = VPhoneGuestDevice(
+        family: .homeView,
+        productType: "HomeAccessory17,1",
+        deviceClass: "j490ap",
+        productName: "HomeView (J490)",
+        screen: .init(width: 1088, height: 1088, pixelsPerInch: 264, scale: 2.0),
+    )
+
+    public static let homeAccessory17_2 = VPhoneGuestDevice(
+        family: .homeView,
+        productType: "HomeAccessory17,2",
+        deviceClass: "j491ap",
+        productName: "HomeView (J491)",
+        screen: .init(width: 1088, height: 1088, pixelsPerInch: 264, scale: 2.0),
+    )
+
     /// HomePod mini (B520AP). It has no physical display; this small virtual
     /// canvas satisfies the VM graphics configuration and is not a panel
     /// specification or a promise of a graphical HomePod interface.
@@ -233,7 +257,7 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
         screen: .init(width: 320, height: 320, pixelsPerInch: 72, scale: 1.0),
     )
 
-    /// Apple Watch Series 11 (GPS), 46 mm: 416x496 at 330 ppi, 208x248 points.
+    /// Apple Watch Series 11 (GPS), 46 mm: 416x496 at 326 ppi, 208x248 points.
     /// The research board's kernel boots it with the watchOS kexts of its IPSW
     /// (the `watch` kernelcache recipe); N227b's device tree supplies the watch
     /// idiom and 2x identity.
@@ -242,7 +266,7 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
         productType: "Watch7,18",
         deviceClass: "n227bap",
         productName: "Apple Watch Series 11 (GPS)",
-        screen: .init(width: 416, height: 496, pixelsPerInch: 330, scale: 2.0),
+        screen: .init(width: 416, height: 496, pixelsPerInch: 326, scale: 2.0),
     )
 
     /// Whether the guest's userland is plain arm64 rather than arm64e: only
@@ -255,10 +279,11 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
 
     /// The device whose IPSW is restored under this one, for a device Apple
     /// ships no IPSW for: the Apple TV HD under the Apple TV 4K, whose own
-    /// device tree and userland `fw prepare` takes from its OTA. Nil for every
+    /// device tree and userland `fw prepare` takes from its OTA. HomeView uses
+    /// the same restore base with its own board tree and full OTA. Nil for every
     /// device restored from its own IPSW.
     public var restoreBase: VPhoneGuestDevice? {
-        self == .appleTV14_1 || self == .appleTV18_1 ? .appleTV5_3 : nil
+        self == .appleTV14_1 || self == .appleTV18_1 || family == .homeView ? .appleTV5_3 : nil
     }
 
     public static let known: [VPhoneGuestDevice] = [
@@ -266,14 +291,14 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
         iPhone17_4, iPhone17_1, iPhone17_2, iPhone17_5,
         iPhone18_3, iPhone18_4, iPhone18_1, iPhone18_2, iPhone18_5,
         iPhone19_2, iPhone19_4,
-        iPhone11_6,
+        iPhone11_6, iPhone15_4,
         iPad16_1,
         iPad15_7,
         iPad15_3, iPad15_5,
         iPad16_3, iPad16_5,
         iPad17_1, iPad17_3,
         appleTV5_3, appleTV14_1, appleTV18_1,
-        audioAccessory5_1,
+        audioAccessory5_1, homeAccessory17_1, homeAccessory17_2,
         watch7_18,
     ]
 
@@ -310,7 +335,7 @@ public struct VPhoneGuestDevice: Sendable, Equatable {
     public func restoreTreeName(version: String, build: String) -> String {
         switch family {
         case .iPhone: "\(productType)_\(version)_\(build)_Restore"
-        case .iPad, .appleTV, .homePod, .watch: "iPhoneOS_\(productType)_\(version)_\(build)_Restore"
+        case .iPad, .appleTV, .homePod, .homeView, .watch: "iPhoneOS_\(productType)_\(version)_\(build)_Restore"
         }
     }
 

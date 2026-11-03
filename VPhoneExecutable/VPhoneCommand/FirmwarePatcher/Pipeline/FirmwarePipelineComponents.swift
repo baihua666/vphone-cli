@@ -95,6 +95,14 @@ extension FirmwarePipeline {
         // of those patches is written.
         let applyIOS27 = baseIs27
 
+        // The AppleSEPKeyStore keybag-unlock external method began sending
+        // inputScalarCount == 5 in iOS 26.6 (26.5 and earlier send 4), so a
+        // 26.6-or-newer userland needs the count-5 acceptance patch on the
+        // 26.4-kernel hybrid — not just a 27 base. The patch's anchor self-guards
+        // on a kernel that already accepts 5, so no cloudOS condition is needed.
+        let applyAksUnlockBag5 = baseIs27
+            || (iOSBase?.major == 26 && (iOSBase?.minor ?? 0) >= 6)
+
         // Frida Stalker relaxations, off unless the VM asked for them. Their own
         // cloudOS 26.4+ gate decides whether they then land.
         let applyFrida = FirmwareKernelFridaPatchSet.manifest.patches.contains {
@@ -114,7 +122,7 @@ extension FirmwarePipeline {
         // Network.framework uses the BSD path (the 26.1-kernel skywalk
         // channel-create traps in the 18.x Network.framework and crash-loops
         // mDNSResponder → no DNS). Empty on 26.x bases (stock boot-args).
-        let extraBootArgs = baseIs18 ? "if_attach_nx=0x3" : ""
+        let extraBootArgs = (baseIs18 || iOSBase?.major == 17) ? "if_attach_nx=0x3" : ""
 
         // 1. AVPBooter — Apple's ROM, in the VM root. Patched when the plan keeps
         //    the boot chain set. A machine booting OpenAVB has nothing
@@ -326,11 +334,13 @@ extension FirmwarePipeline {
                     kernelCustomFirmwareFactories(
                         applyExcGuard: applyExcGuard,
                         applyIOS27: applyIOS27,
+                        applyAksUnlockBag5: applyAksUnlockBag5,
                         applyFrida: applyFrida,
                         applyProMotion: applyProMotion,
                         applyTVTPROPagers: isEnabled(FirmwareKernelCustomFirmwarePatchSet.tvTPROPagers, fallback: false),
                         applyParavirtUserClients: applyParavirtUserClients,
                         applyParavirtTask3: isEnabled(FirmwarePatchSetCatalog.paravirtTask3Patch, fallback: false),
+                        applyParavirtGLES: isEnabled(FirmwarePatchSetCatalog.paravirtGLESPatch, fallback: false),
                         includeBase: includeKernelBase,
                         includeCustomFirmware: includeKernelCustomFirmware,
                         includeHypervisor: includeHypervisor,
@@ -518,11 +528,13 @@ extension FirmwarePipeline {
     private func kernelCustomFirmwareFactories(
         applyExcGuard: Bool,
         applyIOS27: Bool,
+        applyAksUnlockBag5: Bool,
         applyFrida: Bool,
         applyProMotion: Bool,
         applyTVTPROPagers: Bool,
         applyParavirtUserClients: Bool,
         applyParavirtTask3: Bool,
+        applyParavirtGLES: Bool,
         includeBase: Bool,
         includeCustomFirmware: Bool,
         includeHypervisor: Bool,
@@ -540,11 +552,13 @@ extension FirmwarePipeline {
             factories.append { data, verbose in
                 let p = KernelCustomFirmwarePatcher(data: data, verbose: verbose)
                 p.applyIOS27 = applyIOS27
+                p.applyAksUnlockBag5 = applyAksUnlockBag5
                 p.applyFrida = applyFrida
                 p.applyProMotion = applyProMotion
                 p.applyTVTPROPagers = applyTVTPROPagers
                 p.applyParavirtUserClients = applyParavirtUserClients
                 p.applyParavirtTask3 = applyParavirtTask3
+                p.applyParavirtGLES = applyParavirtGLES
                 p.gate = gate
                 return p
             }

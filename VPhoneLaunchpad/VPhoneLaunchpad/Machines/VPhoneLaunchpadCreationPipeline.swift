@@ -114,6 +114,8 @@ final class VPhoneLaunchpadCreationPipeline {
             VPhoneLaunchpadMachinePath(libraryRoot: libraryRoot, name: name)
         }
 
+        /// For `fw set-patches` on a machine that already keeps the preset
+        /// (``VPhoneLaunchpadPatchSelection/machinePresetArguments``).
         var patchOverrides: VPhoneLaunchpadPatchOverrides {
             VPhoneLaunchpadPatchOverrides(
                 preset: patches.preset,
@@ -129,7 +131,7 @@ final class VPhoneLaunchpadCreationPipeline {
                 iphoneSource: iphoneSource,
                 cloudOSSource: cloudOSSource,
                 device: device,
-                preset: patches.preset,
+                preset: patches.presetArgument,
                 blocked: patchOverrides.bootChainBlocked,
                 allowed: patchOverrides.bootChainAllowed,
                 diskSizeGB: diskSizeGB,
@@ -238,7 +240,7 @@ final class VPhoneLaunchpadCreationPipeline {
     /// `fw patch`, as both the step's log line and the run build it. One array so
     /// the command the sheet shows cannot drift from the command that runs.
     private func patchArguments(_ name: String) -> [String] {
-        ["fw", "patch", name] + options.patches.presetArguments
+        ["fw", "patch", name] + options.patches.machinePresetArguments
     }
 
     private var deviceArguments: [String] {

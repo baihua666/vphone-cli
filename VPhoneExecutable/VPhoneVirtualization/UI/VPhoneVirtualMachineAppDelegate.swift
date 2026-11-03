@@ -114,10 +114,11 @@ class VPhoneVirtualMachineAppDelegate: NSObject, NSApplicationDelegate {
 
         let control = VPhoneGuestControl()
         control.isHomePodGuest = options.isHomePodGuest
+        control.isHomeViewGuest = options.isHomeViewGuest
         self.control = control
         if !command.dfu {
             control.unlocksAtStartup = vm.unlocksAtStartup
-            control.syncsGuestEnvironment = !options.isTVGuest && !options.isHomePodGuest
+            control.syncsGuestEnvironment = !options.usesTVOS
             control.syncsHostLocation = vm.syncsHostLocation
             control.guestDeviceName = Self.guestDeviceName(forConfig: options.configURL)
             startNetworkServices(vm: vm, control: control)
@@ -180,6 +181,8 @@ class VPhoneVirtualMachineAppDelegate: NSObject, NSApplicationDelegate {
                     .resolvingSymlinksInPath()
                     .path,
                 homePodGuest: options.isHomePodGuest,
+                usesTVOS: options.usesTVOS,
+                foldableGuest: options.isFoldableGuest,
             )
             wc.captureView?.escapeIsBackGesture = !options.isPadGuest && !options.isTVGuest
             wc.captureView?.isTVGuest = options.isTVGuest
@@ -328,6 +331,7 @@ class VPhoneVirtualMachineAppDelegate: NSObject, NSApplicationDelegate {
                 mc?.updateRestartAvailability(available: caps.contains("system_control"))
                 mc?.updateShutDownAvailability(available: caps.contains("system_shutdown"))
                 mc?.updateUDIDAvailability(available: caps.contains("udid_override"))
+                mc?.updateSoftwareKeyboardAvailability(available: true)
                 mc?.updatePanelAvailability(capabilities: caps)
                 if caps.contains("location") {
                     mc?.updateLocationCapability(available: true)
@@ -355,6 +359,7 @@ class VPhoneVirtualMachineAppDelegate: NSObject, NSApplicationDelegate {
             }
             control.onDisconnect = { [weak mc, weak provider = locationProvider, weak timeZoneSync, weak clockSync, weak hostAudioLatencySync] in
                 mc?.updateConnectAvailability(available: false)
+                mc?.updateSoftwareKeyboardAvailability(available: false)
                 mc?.updateInstallAvailability(available: false)
                 mc?.updateBootstrapAvailability(available: false)
                 mc?.updateBootstrapUninstallAvailability(available: false)
@@ -543,6 +548,7 @@ class VPhoneVirtualMachineAppDelegate: NSObject, NSApplicationDelegate {
         cameraServer?.disconnect()
         menuController?.stopBatteryMonitoring()
         menuController?.guestPanelsWindowController.closeAttitudeDials()
+        menuController?.tvRemoteWindowController.close()
         windowController?.closeForRestart()
         // Tool windows belong to the old guest connection too.
         for window in NSApp.windows {

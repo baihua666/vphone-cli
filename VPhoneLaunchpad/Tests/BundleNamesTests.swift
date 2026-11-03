@@ -31,6 +31,14 @@ struct BundleNamesTests {
             Expectation(name: "2.10.2-local.ab12", bundleVersion: "2.10.2-local.ab12", isLocalBuild: false, isCompatible: false, isValid: true),
             Expectation(name: "2.10.2-ci.abcdef1", bundleVersion: "2.10.2", isLocalBuild: false, isCompatible: true, isValid: true),
             Expectation(name: "2.7.9-local.ab12cd34", bundleVersion: "2.7.9", isLocalBuild: true, isCompatible: false, isValid: true),
+            Expectation(name: "2.15.0", bundleVersion: "2.15.0", isLocalBuild: false, isCompatible: true, isValid: true),
+            Expectation(name: "2.15.0-local", bundleVersion: "2.15.0", isLocalBuild: true, isCompatible: true, isValid: true),
+            Expectation(name: "2.15.0-local.ab12cd34", bundleVersion: "2.15.0", isLocalBuild: true, isCompatible: true, isValid: true),
+            // The build identifier is lowercase hex; uppercase is no build.
+            Expectation(name: "2.15.0-local.AB12CD34", bundleVersion: "2.15.0-local.AB12CD34", isLocalBuild: false, isCompatible: false, isValid: true),
+            Expectation(name: "2.15.0-local.ab12", bundleVersion: "2.15.0-local.ab12", isLocalBuild: false, isCompatible: false, isValid: true),
+            Expectation(name: "2.15.0-ci.abcdef1", bundleVersion: "2.15.0", isLocalBuild: false, isCompatible: true, isValid: true),
+            Expectation(name: "2.15.1", bundleVersion: "2.15.1", isLocalBuild: false, isCompatible: true, isValid: true),
             Expectation(name: "../x", bundleVersion: "../x", isLocalBuild: false, isCompatible: false, isValid: false),
             Expectation(name: "", bundleVersion: "", isLocalBuild: false, isCompatible: false, isValid: false),
         ]

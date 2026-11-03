@@ -68,8 +68,9 @@ public enum FirmwarePatchSetCatalog {
         Set(FirmwareKernelFridaPatchSet.manifest.patches.map(\.identifier))
             .union(hypervisorConcealmentPatches)
             .union(experimentalIdentityPatches)
-            .union([FirmwareGuestSystemPatchSet.otaUserland, FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAudioProduct, FirmwareGuestSystemPatchSet.homePodWelcome, FirmwareGuestSystemPatchSet.homePodSiriSpeech, FirmwareGuestSystemPatchSet.homePodOTAUserland, FirmwareGuestSystemPatchSet.homePodSoundGlow, FirmwareGuestSystemPatchSet.homePodCryptexStaging, FirmwareGuestSystemPatchSet.homePodCryptexClass, FirmwareGuestSystemPatchSet.homePodAdHocInstall])
-            .union([FirmwareKernelCustomFirmwarePatchSet.tvTPROPagers, misTrustAuthPatch, FirmwareGuestSystemPatchSet.settingsRootRows, FirmwareGuestSystemPatchSet.settingsSoftwareUpdate, FirmwareGuestSystemPatchSet.tvTPRO, FirmwareGuestSystemPatchSet.tvOTAUserland, FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.tvLegacySetup])
+            .union([FirmwareGuestSystemPatchSet.homeViewEnvironmentService, FirmwareGuestSystemPatchSet.ios17Desktop])
+            .union([FirmwareGuestSystemPatchSet.homeViewProfileLookup, FirmwareGuestSystemPatchSet.homeViewDisplayLookups, FirmwareGuestSystemPatchSet.homeViewSetupBypass, FirmwareGuestSystemPatchSet.otaUserland, FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAirPlayVM, FirmwareGuestSystemPatchSet.homePodAudioProduct, FirmwareGuestSystemPatchSet.homePodWelcome, FirmwareGuestSystemPatchSet.homePodSiriSpeech, FirmwareGuestSystemPatchSet.homePodOTAUserland, FirmwareGuestSystemPatchSet.homePodSoundGlow, FirmwareGuestSystemPatchSet.homePodCryptexStaging, FirmwareGuestSystemPatchSet.homePodCryptexClass, FirmwareGuestSystemPatchSet.homePodAdHocInstall])
+            .union([FirmwareKernelCustomFirmwarePatchSet.tvTPROPagers, misTrustAuthPatch, FirmwareGuestSystemPatchSet.settingsRootRows, FirmwareGuestSystemPatchSet.settingsSoftwareUpdate, FirmwareGuestSystemPatchSet.tvTPRO, FirmwareGuestSystemPatchSet.tvOTAUserland, FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.tvSetupFocus, FirmwareGuestSystemPatchSet.tvLocalActivation, FirmwareGuestSystemPatchSet.tvLegacySetup])
 
     /// ProMotion: the 120 Hz timing for the paravirtual display.
     ///
@@ -94,6 +95,11 @@ public enum FirmwarePatchSetCatalog {
     /// `Research/Guest/gpu_acceleration.md`.
     public static let paravirtTask3Patch = "kernel-cfw-paravirt_gpu_task3"
 
+    /// OpenGL ES: the paravirtual GPU's personality names AppleMetalGLRenderer
+    /// as AGX's does, so `EAGLContext` gets a renderer. On in `standard`. See
+    /// `Research/Guest/gpu_acceleration.md`.
+    public static let paravirtGLESPatch = "kernel-cfw-paravirt_gles_renderer"
+
     /// Identifiers an installed bundle declared that a later one renamed, old to new.
     ///
     /// A VM's `PatchSelection.plist` and `PatchReceipt.plist` outlive the bundle
@@ -103,6 +109,7 @@ public enum FirmwarePatchSetCatalog {
     public static let renamedPatches: [String: String] = [
         "kernel-exp-display_refresh_120hz": proMotionPatch,
         "kernel-exp-paravirt_gpu_task3": paravirtTask3Patch,
+        "preboot-exp-devicetree_foldable_product_id": FirmwareGuestSystemPatchSet.prebootFoldableProductId,
     ]
 
     /// The identifiers this bundle declares for ones a VM recorded, in order, each
@@ -226,7 +233,7 @@ public enum FirmwarePatchSetCatalog {
         freshly restored 26.4 guest does not survive. The HomePod-only top cap is off.
         """,
         patchSets: bundledReferences,
-        selection: .block([FirmwareGuestSystemPatchSet.tvLegacySetup, FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAudioProduct, FirmwareGuestSystemPatchSet.homePodWelcome, FirmwareGuestSystemPatchSet.homePodSiriSpeech, FirmwareGuestSystemPatchSet.homePodOTAUserland, FirmwareGuestSystemPatchSet.homePodSoundGlow, FirmwareGuestSystemPatchSet.homePodCryptexStaging, FirmwareGuestSystemPatchSet.homePodCryptexClass, FirmwareGuestSystemPatchSet.homePodAdHocInstall]),
+        selection: .block([FirmwareGuestSystemPatchSet.ios17Desktop, FirmwareGuestSystemPatchSet.homeViewEnvironmentService, FirmwareGuestSystemPatchSet.homeViewProfileLookup, FirmwareGuestSystemPatchSet.homeViewDisplayLookups, FirmwareGuestSystemPatchSet.homeViewSetupBypass, FirmwareGuestSystemPatchSet.tvLegacySetup, FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.tvSetupFocus, FirmwareGuestSystemPatchSet.tvLocalActivation, FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAirPlayVM, FirmwareGuestSystemPatchSet.homePodAudioProduct, FirmwareGuestSystemPatchSet.homePodWelcome, FirmwareGuestSystemPatchSet.homePodSiriSpeech, FirmwareGuestSystemPatchSet.homePodOTAUserland, FirmwareGuestSystemPatchSet.homePodSoundGlow, FirmwareGuestSystemPatchSet.homePodCryptexStaging, FirmwareGuestSystemPatchSet.homePodCryptexClass, FirmwareGuestSystemPatchSet.homePodAdHocInstall]),
     )
 
     /// The iOS payloads, hooks and shared-cache patches an Apple TV guest has no
@@ -235,8 +242,10 @@ public enum FirmwarePatchSetCatalog {
     /// the iPhone 19 ARM64E_X1 boot path.
     public static let tvOSBlockedPatches: Set<String> = [
         paravirtTask3Patch,
+        paravirtGLESPatch,
         FirmwareGuestSystemPatchSet.arm64eX1CacheBootstrap,
-        FirmwareGuestSystemPatchSet.virtualBluetooth,
+        FirmwareGuestSystemPatchSet.arm64eX1CacheRemaining,
+        FirmwareGuestSystemPatchSet.arm64eX1CIBarcode,
         "dyld-boot-iomfb_force_kern",
         "dyld-boot-iomfb_swapend",
         "dyld-boot-lockdown_mode",
@@ -249,6 +258,9 @@ public enum FirmwarePatchSetCatalog {
         "preboot-cfw-devicetree_board_audio",
         "preboot-cfw-devicetree_haptics",
         "preboot-cfw-devicetree_iphone_product",
+        "preboot-cfw-devicetree_foldable_vm_subtype",
+        "preboot-cfw-devicetree_foldable_product_id",
+        "preboot-cfw-devicetree_foldable_displays",
         "preboot-cfw-devicetree_microphone_array",
         RestoreRamDiskSealPatcher.patchIdentifier,
         "system-apps-cfw-attitude",
@@ -256,6 +268,9 @@ public enum FirmwarePatchSetCatalog {
         FirmwareGuestSystemPatchSet.followUpGroups,
         "system-backboardd-cfw-gyroscope",
         "system-backboardd-cfw-accelerometer",
+        "system-backboardd-cfw-hinge",
+        "system-springboard-cfw-fold_guard",
+        "system-springboard-cfw-fold_display",
         "system-campo-cfw-entitlements",
         "system-debugserver-cfw-install",
         FirmwareGuestSystemPatchSet.arm64eX1DyldBootstrap,
@@ -271,9 +286,11 @@ public enum FirmwarePatchSetCatalog {
         "system-mobileactivationd-boot-should_hactivate",
         FirmwareGuestSystemPatchSet.arm64eX1MountBootstrap,
         "system-paravirt_gpu-cfw-heap_index_offset",
+        "system-paravirt_gpu-cfw-primitive_restart",
         "system-systemhook-cfw-metal_cache_reuse",
         "system-systemversion-cfw-build_version",
         "system-virtiosound-cfw-hal_plugin",
+        "system-virtualaudio-cfw-device_state_null_gate",
         "system-virtualaudio-cfw-microphone_graph_chains",
         "system-virtualaudio-cfw-mute_set_throw",
         "system-virtualaudio-cfw-speaker_graph_chains",
@@ -321,7 +338,21 @@ public enum FirmwarePatchSetCatalog {
         patchSets: bundledReferences,
         selection: .block(
             manualOnlyPatches
-                .subtracting([FirmwareGuestSystemPatchSet.tvOTAUserland, FirmwareGuestSystemPatchSet.tvLegacySetup])
+                .subtracting([FirmwareGuestSystemPatchSet.tvOTAUserland, FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.tvSetupFocus, FirmwareGuestSystemPatchSet.tvLocalActivation])
+                .union(tvOSBlockedPatches.subtracting(["system-extensions-boot-gpu_bundle"]).subtracting(tvOS27UserlandPatches)),
+        ),
+    )
+
+    /// HomeView shares the arm64e tvOS OTA path but keeps its touch-driven setup.
+    /// Apple TV remote/focus/activation adapters are deliberately left off.
+    public static let homeViewPreset = VPhonePatchPreset(
+        identifier: VPhonePatchPreset.homeViewIdentifier,
+        title: "HomeView",
+        summary: "Research: HomeView's own arm64e tvOS OTA over the Apple TV HD restore base, with its donor board identity, touch display, vphoned and paravirtual GPU. Native setup is retained by default.",
+        patchSets: bundledReferences,
+        selection: .block(
+            manualOnlyPatches
+                .subtracting([FirmwareGuestSystemPatchSet.tvOTAUserland, FirmwareGuestSystemPatchSet.homeViewDisplayLookups, FirmwareGuestSystemPatchSet.homeViewProfileLookup])
                 .union(tvOSBlockedPatches.subtracting(["system-extensions-boot-gpu_bundle"]).subtracting(tvOS27UserlandPatches)),
         ),
     )
@@ -334,10 +365,10 @@ public enum FirmwarePatchSetCatalog {
     public static let homePodMiniPreset = VPhonePatchPreset(
         identifier: VPhonePatchPreset.homePodMiniIdentifier,
         title: "HomePod mini",
-        summary: "Research: HomePod mini's own arm64e TVOS IPSW with vphoned, its donor-driven top cap, local setup completion and virtio audio using an audio-only B520 route, without changing the VM product token or adding Apple TV OTA replacement or iPhone display, camera and routing hooks.",
+        summary: "Research: HomePod mini's own arm64e TVOS IPSW with vphoned, its donor-driven top cap, local setup completion, AirPlay's own VM override and virtio audio using an audio-only B520 route, without changing the VM product token or adding Apple TV OTA replacement or iPhone display, camera and routing hooks.",
         patchSets: bundledReferences,
         selection: .block(
-            manualOnlyPatches.subtracting([FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodWelcome, FirmwareGuestSystemPatchSet.homePodSiriSpeech, FirmwareGuestSystemPatchSet.homePodOTAUserland, FirmwareGuestSystemPatchSet.homePodSoundGlow, FirmwareGuestSystemPatchSet.homePodCryptexStaging, FirmwareGuestSystemPatchSet.homePodCryptexClass, FirmwareGuestSystemPatchSet.homePodAdHocInstall])
+            manualOnlyPatches.subtracting([FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAirPlayVM, FirmwareGuestSystemPatchSet.homePodWelcome, FirmwareGuestSystemPatchSet.homePodSiriSpeech, FirmwareGuestSystemPatchSet.homePodOTAUserland, FirmwareGuestSystemPatchSet.homePodSoundGlow, FirmwareGuestSystemPatchSet.homePodCryptexStaging, FirmwareGuestSystemPatchSet.homePodCryptexClass, FirmwareGuestSystemPatchSet.homePodAdHocInstall])
                 .union(tvOSBlockedPatches.subtracting(tvOS27UserlandPatches).subtracting([FirmwareGuestSystemPatchSet.virtioSoundDriver, FirmwareGuestSystemPatchSet.installCoordinationPersona])),
         ),
     )
@@ -416,7 +447,7 @@ public enum FirmwarePatchSetCatalog {
     public static let watchOSPreset = VPhonePatchPreset(
         identifier: VPhonePatchPreset.watchOSIdentifier,
         title: "Apple Watch",
-        summary: "Minimal for an Apple Watch guest: the watch board's device tree, and a resealed system with vphoned, the GPU driver and activation restored onto a stock kernel and TXM.",
+        summary: "Minimal for an Apple Watch guest: the watch board's device tree, and a resealed system with vphoned, the GPU driver, speaker audio and activation restored onto a stock kernel and TXM.",
         patchSets: minimalPreset.patchSets,
         selection: .allow(
             minimalBootChainPatches
@@ -427,5 +458,5 @@ public enum FirmwarePatchSetCatalog {
     )
 
     /// The presets the bundle ships.
-    public static let builtInPresets: [VPhonePatchPreset] = [standardPreset, experimentalPreset, tvOSPreset, tvOS4KPreset, homePodMiniPreset, minimalPreset, watchOSPreset]
+    public static let builtInPresets: [VPhonePatchPreset] = [standardPreset, experimentalPreset, tvOSPreset, tvOS4KPreset, homeViewPreset, homePodMiniPreset, minimalPreset, watchOSPreset]
 }

@@ -31,6 +31,8 @@ public extension VPhoneVirtualMachineCreator {
         /// Which patch preset the new VM is built with. Individual patches are
         /// turned on or off per VM afterwards, through its patch selection.
         public var patchPreset: String
+        /// The preset when `--preset` named a file; kept in the machine.
+        public var patchPresetFile: VPhonePatchPreset?
         public var cpuCount: UInt
         public var memoryMB: UInt64
         public var diskSizeGB: UInt64
@@ -47,6 +49,9 @@ public extension VPhoneVirtualMachineCreator {
         /// itself). This is the clone's boot; a template boots only for its
         /// setup boot, before it is frozen.
         public var skipsFirstBoot: Bool
+        /// Install the Irisin bootstrap in this layout (`roothide` or `rootless`)
+        /// during the first boot; nil leaves the guest without one.
+        public var bootstrapLayout: String?
         /// What a template built for this create is slimmed of; part of the
         /// key it is looked up by.
         public var slimming: VPhoneMachineTemplateSlimming
@@ -61,6 +66,7 @@ public extension VPhoneVirtualMachineCreator {
             otaSource: String? = nil,
             otaKey: String? = nil,
             patchPreset: String = VPhonePatchPreset.standardIdentifier,
+            patchPresetFile: VPhonePatchPreset? = nil,
             cpuCount: UInt = 8,
             memoryMB: UInt64 = 8192,
             diskSizeGB: UInt64 = 64,
@@ -71,6 +77,7 @@ public extension VPhoneVirtualMachineCreator {
             template: TemplateUse = .none,
             templateRequest: VPhoneMachineTemplateRequest = VPhoneMachineTemplateRequest(),
             skipsFirstBoot: Bool = false,
+            bootstrapLayout: String? = nil,
             slimming: VPhoneMachineTemplateSlimming = VPhoneTemplateSlimmingRequest.defaultSlimming,
         ) {
             self.name = name
@@ -82,6 +89,7 @@ public extension VPhoneVirtualMachineCreator {
             self.otaSource = otaSource
             self.otaKey = otaKey
             self.patchPreset = patchPreset
+            self.patchPresetFile = patchPresetFile
             self.cpuCount = cpuCount
             self.memoryMB = memoryMB
             self.diskSizeGB = diskSizeGB
@@ -92,6 +100,7 @@ public extension VPhoneVirtualMachineCreator {
             self.template = template
             self.templateRequest = templateRequest
             self.skipsFirstBoot = skipsFirstBoot
+            self.bootstrapLayout = bootstrapLayout
             self.slimming = slimming
         }
     }

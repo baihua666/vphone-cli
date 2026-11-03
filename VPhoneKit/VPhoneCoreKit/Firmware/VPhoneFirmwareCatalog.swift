@@ -516,10 +516,14 @@ public enum VPhoneFirmwareCatalog {
         ]),
     ]
 
-    /// HomePod mini's native IPSW. The boot chain still comes from cloudOS;
-    /// this is a research pairing, not a claim about Siri or Home pairing.
+    /// HomePod mini's native IPSWs. The boot chain still comes from cloudOS:
+    /// the research board's for 26.5, whose kernelcache recipe
+    /// (`homepod_26.5_23L471`) rebuilds that kernel with the HomePod's kexts,
+    /// and cloudOS 26.4 for 27. These are research pairings, not a claim about
+    /// Siri or Home pairing.
     static let homePodReleases: [(devices: [String], releases: [(version: String, url: String)])] = [
         (devices: ["AudioAccessory5,1"], releases: [
+            ("26.5", "https://updates.cdn-apple.com/2026SpringFCS/fullrestores/122-40034/C2B2422A-6010-46B6-AF80-6D766EABA8D2/AudioAccessory5,1_26.5_23L471_Restore.ipsw"),
             ("27.0", "https://updates.cdn-apple.com/2026SFallFCS/a595a3b2-2c42-470a-9417-a705aaafa05c/AudioAccessory5,1_27.0_24J361_Restore.ipsw"),
         ]),
     ]
@@ -558,6 +562,28 @@ public enum VPhoneFirmwareCatalog {
     /// `tvReleases` entry of its `baseVersion` for its `restoreBase`. The keys
     /// are from AppleDB or the device's Pallas response.
     public static let otaReleases: [VPhoneOTARelease] = [
+        // HomeView 27.2 (Pallas, 2026-10-30), staged over the Apple TV HD restore base.
+        .init(
+            productType: "HomeAccessory17,1",
+            version: "27.2",
+            build: "24V514",
+            url: "https://updates.cdn-apple.com/2026FallFCS/0e08432f-4524-4949-ac8d-cddd47d4940f/com_apple_MobileAsset_SoftwareUpdate/91e6292d137569817d83050e9a21c6c93c25af6ab02fbaa7eeddb9ad5439b99a.aea",
+            size: 6_509_559_808,
+            key: "C6bVk4JwejgY6PfCJTX/nbrw/CtdphOG5EmsQMYe6As=",
+            baseVersion: "26.6",
+            minimumHostMacOS: VPhoneOTARelease.lzravenMinimumMacOS,
+        ),
+        .init(
+            productType: "HomeAccessory17,2",
+            version: "27.2",
+            build: "24V514",
+            url: "https://updates.cdn-apple.com/2026FallFCS/0e08432f-4524-4949-ac8d-cddd47d4940f/com_apple_MobileAsset_SoftwareUpdate/91e6292d137569817d83050e9a21c6c93c25af6ab02fbaa7eeddb9ad5439b99a.aea",
+            size: 6_509_559_808,
+            key: "C6bVk4JwejgY6PfCJTX/nbrw/CtdphOG5EmsQMYe6As=",
+            baseVersion: "26.6",
+            minimumHostMacOS: VPhoneOTARelease.lzravenMinimumMacOS,
+        ),
+
         .init(
             productType: "AppleTV14,1",
             version: "26.6",
@@ -618,6 +644,14 @@ public enum VPhoneFirmwareCatalog {
         return otaReleases.first { $0.url == source || $0.fileName == name }
     }
 
+    /// Shared assets can cover more than one board. Prefer the requested
+    /// model while retaining mismatch diagnostics for an unrelated source.
+    public static func otaRelease(source: String, preferring productType: String?) -> VPhoneOTARelease? {
+        let name = (source as NSString).lastPathComponent
+        let matches = otaReleases.filter { $0.url == source || $0.fileName == name }
+        return matches.first { $0.productType == productType } ?? matches.first
+    }
+
     /// The URL of the base device's IPSW `release` is restored over.
     public static func restoreBaseURL(for release: VPhoneOTARelease) -> String? {
         guard let device = VPhoneGuestDevice.named(release.productType) else { return nil }
@@ -630,7 +664,8 @@ public enum VPhoneFirmwareCatalog {
     /// or another model's releases with the cloudOS an iPhone17,3 of that
     /// release uses. A cellular iPad gets its Wi-Fi model's; an Apple TV gets
     /// cloudOS 26.4, the only kernel its TPRO compatibility patch covers; a
-    /// watch gets the research board cloudOS its kernelcache recipe covers; a
+    /// watch, and a HomePod of a release with one, gets the research board
+    /// cloudOS its kernelcache recipe covers, a HomePod otherwise cloudOS 26.4; a
     /// device without an IPSW gets one per OTA for it, named for the OTA: the
     /// base's IPSW when the OTA is of the same version, else the OTA itself,
     /// which `fw prepare` restores over its base's IPSW; an unknown device
@@ -666,11 +701,7 @@ public enum VPhoneFirmwareCatalog {
             }
         }
         return releases.map { release in
-            let cloudOS = switch guest.family {
-            case .appleTV, .homePod: VPhoneCloudOSOption(name: "cloudOS 26.4", url: cloud264)
-            case .watch: researchBoardCloudOS(forVersion: release.version) ?? recommendedCloudOS(forVersion: release.version)
-            case .iPhone, .iPad: recommendedCloudOS(forVersion: release.version)
-            }
+            let cloudOS = recommendedCloudOS(for: guest.family, version: release.version)
             return VPhoneFirmwarePairing(
                 device: guest.productType,
                 iosName: "\(guest.family.osName) \(release.version)",
@@ -678,6 +709,27 @@ public enum VPhoneFirmwareCatalog {
                 cloudosName: cloudOS.name,
                 cloudosURL: cloudOS.url,
             )
+        }
+    }
+
+    /// The cloudOS for `device`'s release at `url`, of `version`: its pairing's,
+    /// else the one the pairings give that version on its family.
+    public static func recommendedCloudOS(forDevice device: String, version: String, url: String) -> VPhoneCloudOSOption {
+        let guest = VPhoneGuestDevice.named(device)
+        let pairings = pairings(for: device)
+        let name = "\((guest?.family ?? .iPhone).osName) \(version)"
+        if let pairing = pairings.first(where: { $0.iosURL == url }) ?? pairings.first(where: { $0.iosName == name }) {
+            return VPhoneCloudOSOption(name: pairing.cloudosName, url: pairing.cloudosURL)
+        }
+        return recommendedCloudOS(for: guest?.family ?? .iPhone, version: version)
+    }
+
+    static func recommendedCloudOS(for family: VPhoneGuestDevice.Family, version: String) -> VPhoneCloudOSOption {
+        switch family {
+        case .appleTV, .homeView: VPhoneCloudOSOption(name: "cloudOS 26.4", url: cloud264)
+        case .homePod: researchBoardCloudOS(forVersion: version) ?? VPhoneCloudOSOption(name: "cloudOS 26.4", url: cloud264)
+        case .watch: researchBoardCloudOS(forVersion: version) ?? recommendedCloudOS(forVersion: version)
+        case .iPhone, .iPad: recommendedCloudOS(forVersion: version)
         }
     }
 
@@ -713,7 +765,7 @@ public enum VPhoneFirmwareCatalog {
     public static func report(hostMacOS: Int) -> VPhoneFirmwareCatalogReport {
         func entries(_ pairings: [VPhoneFirmwarePairing]) -> [VPhoneFirmwareCatalogReport.Entry] {
             pairings.map {
-                let ota = otaRelease(source: $0.iosURL)
+                let ota = otaRelease(source: $0.iosURL, preferring: $0.device)
                 let base = ota.flatMap(restoreBaseURL(for:)).map { ($0 as NSString).lastPathComponent }
                 return .init(
                     ios: .init(

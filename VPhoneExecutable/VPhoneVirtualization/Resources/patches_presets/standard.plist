@@ -73,8 +73,13 @@
 		<string>Block</string>
 		<key>Patches</key>
 		<array>
+			<string>system-userprofilesd-exp-keybag_lookup</string>
+			<string>system-breadboard-exp-mach_lookup</string>
+			<string>system-homeview-exp-setup_bypass</string>
+			<string>dyld-exp-homeview_environment_service</string>
 			<string>system-homepod-exp-top_cap</string>
 			<string>system-homepod-exp-setup_bypass</string>
+			<string>system-homepod-exp-airplay_vm</string>
 			<string>system-homepod-exp-welcome</string>
 			<string>system-homepod-exp-siri_speech</string>
 			<string>system-homepod-exp-ota_userland</string>
@@ -106,8 +111,11 @@
 			<string>kernel-exp-tv_tpro_pagers</string>
 			<string>system-tv-exp-ota_userland</string>
 			<string>system-setupbackground-exp-pineboard_lookup</string>
+			<string>system-setup-exp-deferred_focus</string>
+			<string>system-mobileactivationd-exp-tv_activation</string>
 			<string>system-tv-exp-legacy_setup</string>
 			<string>system-exp-ota_userland</string>
+			<string>system-springboard-exp-ios17_desktop</string>
 		</array>
 	</dict>
 	<key>Summary</key>

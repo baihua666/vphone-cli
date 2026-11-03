@@ -7,7 +7,9 @@ struct VPhoneLaunchpadError: Error { let message: String; var detail: String?; i
 struct VPhoneLaunchpadPatchSelection: Sendable {
     var preset = "standard"; var blocked: Set<String> = []; var allowed: Set<String> = []
     var customisesRestoredSystem: Bool { false }
-    var presetArguments: [String] { [] }; var hasOverrides: Bool { false }; var setPatchesArguments: [String] { [] }
+    var presetArgument: String { preset }
+    var presetArguments: [String] { [] }
+    var machinePresetArguments: [String] { [] }; var hasOverrides: Bool { false }; var setPatchesArguments: [String] { [] }
 }
 struct VPhoneLaunchpadMachinePath: Hashable, Sendable {
     let libraryRoot: String; let name: String

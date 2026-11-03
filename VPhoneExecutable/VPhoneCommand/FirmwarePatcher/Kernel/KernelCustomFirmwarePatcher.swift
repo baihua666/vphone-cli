@@ -25,6 +25,14 @@ public final class KernelCustomFirmwarePatcher: KernelCustomFirmwarePatcherBase,
     /// set (override with --target-os).
     public var applyIOS27 = false
 
+    /// The AppleSEPKeyStore keybag-unlock count-5 acceptance. iOS 26.6 is where
+    /// Apple's external method began sending inputScalarCount == 5 (26.5 and
+    /// earlier send 4), so a 26.6-or-newer userland needs it on the 26.4 kernel —
+    /// not only a 27 base. The pipeline sets this from the iPhone base; the patch
+    /// anchor self-guards on a kernel that already accepts 5, so it no-ops where
+    /// unneeded. False here so a patcher built directly preserves the reference corpus.
+    public var applyAksUnlockBag5 = false
+
     /// Opt-in Frida Stalker kernel relaxations. Set from the plan: `standard` blocks
     /// both, `experimental` and a per-VM checkmark turn them on, and their own
     /// cloudOS 26.4+ gate then decides whether they land. Baseline CFW/EXP firmware is
@@ -49,6 +57,10 @@ public final class KernelCustomFirmwarePatcher: KernelCustomFirmwarePatcherBase,
     /// Paravirtual GPU binary version 252 (Task3). Set from the plan; `standard`
     /// enables it. False here so direct patchers preserve the reference corpus.
     public var applyParavirtTask3 = false
+
+    /// The paravirtual GPU's OpenGL ES renderer. Set from the plan; `standard`
+    /// enables it. False here so direct patchers preserve the reference corpus.
+    public var applyParavirtGLES = false
 
     public func findAll() throws -> [PatchRecord] {
         parseMachO()
@@ -94,6 +106,14 @@ public final class KernelCustomFirmwarePatcher: KernelCustomFirmwarePatcherBase,
             patchParavirtUserClientsNarrow()
         }
 
+        // AppleSEPKeyStore keybag unlock: accept the 5 scalars an iOS 26.6-or-newer
+        // userland sends (26.5 and earlier send 4). Gated on the base, not on
+        // applyIOS27, so a 26.6/26.6.1 base on the 26.4 kernel gets it too; the
+        // anchor self-guards on a kernel that already accepts 5.
+        if applyAksUnlockBag5 {
+            patchAksUnlockBagCount5()
+        }
+
         // Group B
         patchPostValidationAdditional()
         patchProcSecurityPolicy()
@@ -136,6 +156,11 @@ public final class KernelCustomFirmwarePatcher: KernelCustomFirmwarePatcherBase,
                     NSLocalizedDescriptionKey: "Cannot resolve the complete Task3 shader-cache patch; kernel was not installed",
                 ])
             }
+        }
+
+        // Name the GLES renderer in the paravirtual GPU's personality.
+        if applyParavirtGLES {
+            patchParavirtGLESRenderer()
         }
 
         // Group C

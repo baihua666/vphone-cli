@@ -21,7 +21,7 @@ import Foundation
 enum GuestServiceProfile {
     /// Raised whenever a label list changes, and kept in the record, so a
     /// guest shows which list its overrides came from.
-    static let listVersion = 2
+    static let listVersion = 4
     static let recordPath = "/var/db/vphoned/service-profile.plist"
     static let trimmed = "trimmed"
     static let none = "none"
@@ -82,7 +82,9 @@ enum GuestServiceProfile {
     /// Appendix A of the 2026-10-07 measurement on `svctest-a` (iPhone, 27.0
     /// 24A435): the LaunchDaemons that were loaded at boot and stayed unloaded
     /// after the override, with the four traps below already taken out: 137,
-    /// less siriactionsd since list version 2 (see `neverDisable`).
+    /// less siriactionsd since list version 2, passd and financed since list
+    /// version 3 and generativeexperiencesd since list version 4 (see
+    /// `neverDisable`).
     static let base27: [String] = [
         "com.apple.CallHistorySyncHelper",
         "com.apple.Maps.mapspushd",
@@ -129,14 +131,12 @@ enum GuestServiceProfile {
         "com.apple.email.maild",
         "com.apple.eyereliefd",
         "com.apple.familycircled",
-        "com.apple.financed",
         "com.apple.findmy.findmybeaconingd",
         "com.apple.findmy.findmylocated",
         "com.apple.finhealthd",
         "com.apple.fitnesscoachingd",
         "com.apple.fitnessintelligenced",
         "com.apple.gamed",
-        "com.apple.generativeexperiencesd",
         "com.apple.geoanalyticsd",
         "com.apple.hangtelemetryd",
         "com.apple.homed",
@@ -174,7 +174,6 @@ enum GuestServiceProfile {
         "com.apple.nfcd",
         "com.apple.ospredictiond",
         "com.apple.parsec-fbf",
-        "com.apple.passd",
         "com.apple.peopled",
         "com.apple.perfpowermetricd",
         "com.apple.photoanalysisd",
@@ -245,18 +244,21 @@ enum GuestServiceProfile {
 
     /// Jobs the profile refuses to disable, whatever list or group names them.
     ///
-    /// The first four kinds were measured to make things worse when off: without
+    /// The first five kinds were measured to make things worse when off: without
     /// sleepd, SpringBoard and mobiletimerd reconnect to it with no back-off
-    /// (about 400% host CPU); without CommCenter, SpringBoard reconnects every
-    /// second and resets the idle timer, so the screen never sleeps; without
-    /// cloudd, transparencyd and ScreenTimeSettingsAgent retry CloudKit and
-    /// write more than the untrimmed guest; without NanoRegistry, locationd
-    /// waits on it synchronously. The rest are what vphone's own features and
-    /// the tools it drives (Xcode, DeviceHub, ideviceinstaller, Frida, crash
-    /// logs, camera and audio) rely on.
+    /// (about 400% host CPU); without generativeexperiencesd,
+    /// BackgroundShortcutRunner does the same to its ExternalProviderService
+    /// (about 130% host CPU on iOS 27); without CommCenter, SpringBoard
+    /// reconnects every second and resets the idle timer, so the screen never
+    /// sleeps; without cloudd, transparencyd and ScreenTimeSettingsAgent retry
+    /// CloudKit and write more than the untrimmed guest; without NanoRegistry,
+    /// locationd waits on it synchronously. The rest are what vphone's own
+    /// features and the tools it drives (Xcode, DeviceHub, ideviceinstaller,
+    /// Frida, crash logs, camera and audio) rely on.
     static let neverDisable: Set<String> = [
         // Worse when disabled.
         "com.apple.sleepd",
+        "com.apple.generativeexperiencesd",
         "com.apple.CommCenter", "com.apple.CommCenterMobileHelper", "com.apple.CommCenterRootHelper",
         "com.apple.cloudd",
         "com.apple.nanoregistryd", "com.apple.nanoregistrylaunchd",
@@ -285,6 +287,10 @@ enum GuestServiceProfile {
         // without it WidgetKit traps in each extension and the controls draw
         // blank.
         "com.apple.siriactionsd",
+        // Wallet: its first screen asks passd synchronously for the pass groups,
+        // and passd waits on financed's Core Data store; with either disabled
+        // FrontBoard kills Wallet at the scene-create watchdog.
+        "com.apple.passd", "com.apple.financed",
     ]
 
     // MARK: - Selection

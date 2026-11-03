@@ -299,6 +299,17 @@ public enum FirmwareKernelCustomFirmwarePatchSet {
                 applicability: ios27,
                 bootEssential: true,
             ),
+            VPhonePatchDeclaration(
+                identifier: "kernel-cfw-aks_unlock_bag",
+                title: "Keybag unlock arguments",
+                summary: "Accepts the five-argument keybag unlock an iOS 26.6-or-newer userland sends, so escrow unlock and encrypted backups work on the 26.4 kernel.",
+                target: .firmware(.kernelcache),
+                // iOS 26.6 is where Apple's keybag-unlock external method began
+                // sending inputScalarCount == 5 (26.5 and earlier send 4); the
+                // anchor self-guards on a kernel that already accepts 5, so no
+                // cloudOS bound is needed.
+                applicability: VPhonePatchApplicability(iOSBase: .atLeast(major: 26, minor: 6)),
+            ),
 
             VPhonePatchDeclaration(
                 identifier: FirmwarePatchSetCatalog.paravirtUserClientsPatch,
@@ -311,7 +322,7 @@ public enum FirmwareKernelCustomFirmwarePatchSet {
                 prewarm its shaders and crash-loops at every boot.
                 """,
                 target: .firmware(.kernelcache),
-                applicability: VPhonePatchApplicability(iOSBase: .oneOf([.major(26), .major(18)])),
+                applicability: VPhonePatchApplicability(iOSBase: .oneOf([.major(26), .major(18), .major(17)])),
             ),
 
             // MARK: Display
@@ -343,6 +354,17 @@ public enum FirmwareKernelCustomFirmwarePatchSet {
                 // The task initializer and owning-task anchors differ on the
                 // cloudOS 26.1–26.3 kernels; discovery fails there.
                 applicability: VPhonePatchApplicability(cloudOS: .release(major: 26, minor: 4)),
+            ),
+
+            VPhonePatchDeclaration(
+                identifier: FirmwarePatchSetCatalog.paravirtGLESPatch,
+                title: "OpenGL ES",
+                summary: """
+                Names AppleMetalGLRenderer as the paravirtual GPU's OpenGL ES renderer, \
+                as Apple GPUs do, so apps that create an EAGLContext get OpenGL ES over \
+                Metal instead of nil.
+                """,
+                target: .firmware(.kernelcache),
             ),
         ],
         requires: ["vphone.kernel.base"],

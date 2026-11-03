@@ -125,7 +125,16 @@ menu item retains the verified latest-release download.
 Rootless uses `/var/jb`. RootHide reuses the sole valid `.jbroot-<16 hex>` under
 `/var/containers/Bundle/Application`, or creates
 `.jbroot-000114514191980C` when none exists. The selected stem is zero padded
-and its final byte carries RootHide's XOR checksum. Missing bootstrap directories are created.
+and its final byte carries RootHide's XOR checksum. Missing bootstrap directories are created,
+an empty `Applications` among them, which the package watcher's app refresh reads.
+A guest whose vphoned dyld runs as tvOS (`vphoned-tvos`: every Apple TV and
+HomePod guest) has one layout, `roothide`, and one package, Irisin's
+`appletvos-arm64e`; `rootless` is refused before anything is created
+(`GuestBootstrapPlatform`). That package carries no app, so vphoned checks its
+daemon, helper and plist, makes no data directory, registers nothing
+(`registration` and `app_path` are null) and loads the daemon as on iOS. The
+Apple TV HD's plain-arm64 userland takes the same package: Irisin's tvOS
+binaries are arm64.
 It selects the matching architecture, verifies the release
 asset's GitHub SHA-256 digest and Debian control fields, then uses IcliKit to
 extract the `.deb` into a temporary directory. It copies the full payload
@@ -487,13 +496,14 @@ request carries `"force": true`.
 
 | Area | Methods |
 | --- | --- |
-| Device | `device.snapshot`, `device.info` (snapshot plus network, screen, rotation, brightness, volume, low power, Developer Mode, agent, `device_name` `{name, own_name}`: the pinned name and the guest's own ComputerName), `device.screen`, `device.network`, `device.ioreg {plane}`, `device.environment`, `device.basebin {archive?}` |
-| Display, audio | `display.brightness {value?}`, `display.rotation {orientation?}`, `display.orientation` (`{degrees, source}`: SpringBoard's interface orientation without a screen capture, for polling; `degrees` is null while SpringBoard has no answer; capability `display_orientation`), `display.rotation_lock {locked}`, `display.auto_lock` (`{auto_lock_seconds, never, lock_screen_minimum_seconds}`), `display.auto_lock.set {seconds}` (writes the mobile UserSettings input through cfprefsd, posts profiled's effective-settings notification, and returns an immediate readback; the caller must verify the effective value), `screen.unlock {passcode?, timeout?}` (`{locked, screen_off, was_locked, was_screen_off}`: the display on and the Lock Screen passed, see below; capability `screen_unlock`), `audio.volume {value?, category?}`, `audio.state` |
+| Device | `device.snapshot`, `device.info` (snapshot plus network, screen, rotation, brightness, volume, low power, Developer Mode, agent, `device_name` `{name, own_name}`: the pinned name and the guest's own ComputerName), `device.screen`, `device.network`, `device.displays` (a flat IOService probe of every display-ish object with its small properties — what the display stack bound; built for the foldable display work: `AppleParavirtGPU` `DisplayPortCount`, and each `AppleParavirtDisplay` width/height/`primary`), `device.ioreg {plane}`, `device.environment`, `device.basebin {archive?}` |
+| Display, audio | `display.pose` (read-only SpringBoard pose snapshot: orientation, device_orientation, hinge, tabletop; reports unavailable for an unsupported ABI), `display.modes` (read-only CoreAnimation display bounds, native size, current/available modes, and virtual-mode selector availability; availability does not prove a mode change is supported), `display.brightness {value?}`, `display.rotation {orientation?}`, `display.posture {hinge, orientation?, tabletop?}` (a foldable guest's pose through SpringBoard's test-automation override, see below; capability `device_pose`), `display.orientation` (`{degrees, source, fold_angle?, screen_off?}`: SpringBoard's interface orientation without a screen capture, for polling; `degrees` is null while SpringBoard has no answer; on a foldable `fold_angle` is the virtual hinge's angle, so a host can follow folds it did not ask for, and `screen_off` whether SpringBoard has the screen off, so a host can keep the panel's frame from before off its window as it comes on; capability `display_orientation`), `display.rotation_lock {locked}`, `display.auto_lock` (`{auto_lock_seconds, never, lock_screen_minimum_seconds}`), `display.auto_lock.set {seconds}` (writes the mobile UserSettings input through cfprefsd, posts profiled's effective-settings notification, and returns an immediate readback; the caller must verify the effective value), `screen.unlock {passcode?, timeout?}` (`{locked, screen_off, was_locked, was_screen_off}`: the display on and the Lock Screen passed, see below; capability `screen_unlock`), `audio.volume {value?, category?}`, `audio.state` |
 | Input | `input.touch`, `input.hid {page, usage, down?, long_press?}`, `input.button {name}`, `input.key {name}`, `input.type {text, delay_ms?}`, `input.paste {text}`, `input.tap`, `input.double_tap`, `input.long_press`, `input.swipe`, `input.drag {points}`, `input.touch_sequence {events}` — gesture coordinates are screen points; `input.pointer {x, y, seq?, buttons?}`, `input.scroll {phase, dx?, dy?, x?, y?}` (capabilities `pointer_scroll` and `pointer_buttons`, see below) |
 | UI | `ui.tree` (alias `accessibility.tree`), `ui.element_at`, `ui.tap_element`, `ui.wait`, `ui.wait_gone`, `ui.ocr {languages?, min_confidence?}`, `ui.describe`, `screen.screenshot` |
-| Processes | `processes.list {filter?}`, `processes.kill {pid, signal?}` **force**, `memory.jetsam`, `memory.pressure` (only the three kernel memory sysctls, for polling) |
+| Processes | `processes.list {filter?}`, `processes.kill {pid, signal?}` **force**, `process.spawn {executable, arguments?, timeout_seconds?}`, `memory.jetsam`, `memory.pressure` (only the three kernel memory sysctls, for polling) |
 | launchd | `services.list`, `status`, `print`, `dump`, `disabled`, `start`, `enable`, `load`, `profile` (see below), `kickstart {label, kill?}` (`launchctl kickstart`, capability `service_kickstart`, see below); `services.stop`, `disable`, `remove`, `signal`, `unload`, `profile.apply {profile, groups?, allow?}` **force**, and `kickstart` with `kill` **force**; `launchd.getenv`, `setenv`, `unsetenv`. On tvOS, which never enables user sessions, they read the system domain alone; before icli 0.8.6 the foreground-user lookup trapped there and killed vphoned |
-| Logs | `logs.syslog {seconds, process?, level?, max_lines?}` (a bounded capture of at most 60 s), `logs.crashes {bundle_id?}`, `logs.crash {path}` |
+| Logs | `logs.syslog {seconds, process?, level?, max_lines?, subsystem?, category?, message_contains?}` (a bounded capture of at most 60 s; filters apply before the line cap), `logs.crashes {bundle_id?}`, `logs.crash {path}` |
+| HomeView distance | `homeview.distance.get`, `homeview.distance.set {mode, reset_environment?}` (capability `homeview_distance`; near/standard/far map to native detail2/1/0; automatic requires `reset_environment:true` and clears persona, display-style, detail and backlight overrides together). Returns `available`, `mode`, `level_of_detail`, `override_active`, `applied`, `reset_scope:"environment"`, plus native `display_style` and `backlight_state` (null if their integer ABI is unavailable). Unknown ownership is `mode:"unknown"`, `override_active:null`; readback does not prove a rendered UI change. |
 | Darwin notifications | `notify.post {name, state?}` (`postDarwinNotification`; `state` is a UInt64, as a number or a decimal string, stored before the post), `notify.state {name}` (`darwinNotificationState`) |
 | Network, security | `network.capture {seconds, interface?, filter?}` (writes a pcap in the guest scratch directory and returns its path), `network.ipv4.get {interface?}`, `network.ipv4.set {interface?, method, address?, subnet_mask?, router?, dns?}`, `network.hostname.get`, `network.hostname.set {local_host_name?}`, `device.name.get`, `device.name.set {name}` (see below), `network.static_names.get`, `network.static_names.set {entries}`, `network.resolve {host, family?, port?, first_only?, timeout_ms?}` (see below), `security.ssl_killswitch` |
 | Apps | `apps.list`, `search`, `refresh`, `launch`, `terminate`, `foreground`, `open_url`, `install`, `info`, `binary`, `data_dir`, `url_schemes`, `handlers`, `registration`, `register`, `network_policy {repair?}`; `apps.uninstall`, `unregister`, `unregister_dir` **force**; `apps.removed_system`, `apps.remove_system {bundle_ids, backup?, respring?}` **force**, `apps.restore_system {bundle_ids?, respring?}` **force** (removable system apps, see below) |
@@ -768,8 +778,8 @@ with the same override as `services.disable`; launchd honors it from the next
 boot, so the guest has to restart. `apply {profile, groups?, allow?}`:
 
 - `profile: "trimmed"` disables the default groups of the list for the
-  guest's iOS major version (`base`, the 137 labels measured on iOS 27.0, or
-  on iOS 26 the 131 of them 26.6.2 loads;
+  guest's iOS major version (`base`, the 133 labels measured on iOS 27.0, or
+  on iOS 26 the 127 of them 26.6.2 loads;
   `app_store`, appstored and itunesstored; `signin_followup`, followupd and
   appleidsetupd), plus the optional groups named in `groups` (`accounts`:
   akd, amsaccountsd, appleaccountd, after which the guest cannot sign in to an
@@ -780,7 +790,8 @@ boot, so the guest has to restart. `apply {profile, groups?, allow?}`:
 - A label already disabled by somebody else (the OTA block, a user in the
   Services panel) is skipped and never recorded, so `none` leaves it disabled.
   A recorded label the profile no longer selects is turned back on. The jobs
-  in `GuestServiceProfile.neverDisable` (sleepd, CommCenter and its helpers,
+  in `GuestServiceProfile.neverDisable` (sleepd, generativeexperiencesd,
+  CommCenter and its helpers,
   cloudd, NanoRegistry, mobileassetd, storekitd, vphoned, and what vphone's
   features use) are refused whatever names them.
 - The labels the profile owns go to `/var/db/vphoned/service-profile.plist`
@@ -845,6 +856,16 @@ resolver's order. With `port`, each address is also connected to for up to two
 seconds and reports `connect`, `connect_ms` and the `local` address used, which
 names the interface the connection left from; `first_only` connects to the
 first address only, as a client that does not fall back would.
+
+`process.spawn` is a bounded diagnostic escape hatch for guest-internal
+investigation. `executable` is a logical name mapped to a fixed path (`ps`,
+`launchctl`, or `log`); arguments are passed directly without a shell and are
+limited to 16 items, 256 bytes per item, and 2048 bytes total. The timeout is
+between 0.1 and 10 seconds (default 3), and each output stream is capped at
+64 KiB. The reply includes the child PID, timeout flag, exit code or signal,
+and UTF-8 stdout/stderr. It is intentionally insufficient for arbitrary code
+execution; future poster-extension tracing must stay within this allowlist or
+use a separately reviewed diagnostic binary.
 
 `processes.list` joins icli's kernel process list with `proc_pid_rusage`
 footprint, resident size and CPU time (`VPhoneDaemon/Native/vphoned_process.m`),
@@ -1190,3 +1211,142 @@ The listener accepts the address specified by the user. For local-only use,
 pass `127.0.0.1` or `[::1]`. Any other address prints a warning: every machine
 that can reach it needs only the token, which travels in clear text over
 plain HTTP, so use it only on a trusted network.
+
+## Device pose
+
+`display.posture` sets a foldable guest's pose (iPhone Duo). The virtual
+hinge (`system-backboardd-cfw-hinge`, `libvphonehinge.dylib` in backboardd)
+publishes Apple's VM host controls, primary usage `0xFF61` / `0x5B`, and sends
+the angle and device orientation as `hinge-slider-control` and
+`orientation-picker-control` dictionaries. With the foldable's own
+`product-id` in the device tree (`preboot-cfw-devicetree_foldable_product_id`)
+CoreMotion has the foldable's capabilities, locationd's device-state relay
+turns those dictionaries into the hinge-angle and device-state services
+(`CoreMotion_DeviceStateRelay_Crane` `0xFF0C/0x21`, `_DeviceState`
+`0xFF0C/0x22`), and SpringBoard reads its pose — angle, hinge state, each
+panel's orientation — from CoreMotion as on a device; CoreDevice's
+`hingeAngle` stream reads the same manager. Opening a closed guest lights the
+screen first (`SBSUndimScreen`, the side button when SpringBoard refuses it):
+SpringBoard's pose provider publishes a moving pose only on display frames.
+
+On a guest whose CoreMotion lacks the capability, vphoned instead sets
+SpringBoard's test-automation override
+(`-[SBSTestAutomationService setDevicePoseOverride:]`, entitlement
+`com.apple.springboard.testautomation`), whose server builds a synthetic
+magic pose and derives the angle from the hinge state (0, 0, 90, 180 and 180
+degrees for states 0–4). The reply's `source` says which: `coremotion` or
+`test-automation`. `display.pose` reads the test-automation snapshot and is
+only current in the second case.
+
+On the iPhone Duo (iPhone19,4) the fold display patch
+(`system-springboard-cfw-fold_display`) publishes the inner panel as a second
+display, and SpringBoard picks the posture policy from the pose itself:
+`FoldingDual` open, `FullyClosed` closed. `display.rotation` turns a
+foldable guest (one with the virtual hinge enabled) through the same channel:
+it sends the device orientation that gives the lit panel the requested
+interface orientation (cover: 0 portrait, 90 landscape-right, 180
+upside-down, 270 landscape-left; inner panel, mounted a quarter turn from the
+cover: 0 landscape-left, 90 portrait, 180 landscape-right, 270 upside-down)
+and reads the interface back. The host controls' orientation picker has no
+upside-down, so with CoreMotion the cover's 180 and the inner panel's 270 are
+refused. With the override, a turn that does not land gets the old pose
+orientation back, since SpringBoard keeps a refused one and later folds carry
+it, and partially open the request is refused, because the override means 90°
+there and slides the fold toward the cover. The accelerometer and the
+AssistiveTouch rotation other iPhones use do not turn a foldable's panels.
+
+Without CoreMotion's relay a `position` request is a fold that SpringBoard
+runs the way Apple's `suiatool swap` does (with the relay the virtual hinge
+sweeps and SpringBoard folds from the hinge): vphoned calls
+`-[SBSDisplayToolService swapDisplayWithSettings:completion:]` with the
+position as an absolute hinge target (0 closed, 1 open flat), the duration
+(−1 the per-direction default, measured 0.391 s opening and 0.420 s
+closing) and the profile (none, fade 1, continuous 2), and waits for the
+reply that comes once the swap has finished. SpringBoard
+(`SBDisplayToolServiceCoordinator`) takes a 10 s test lock that ignores the
+hinge, sweeps its own hinge pose from the current angle, and swaps displays
+when the sweep crosses the boundary, with the transition style, lock screen
+and backlight handling of a real fold (`book` from closed swaps to the inner
+panel; `book` from open does not). The swap keeps the device orientation
+unless `orientation` is given. vphoned then sets only the virtual hinge to
+the end angle and leaves the override alone: the override reaches
+SpringBoard even under the test lock and stands for 0, 90 or 180 degrees
+only, so setting it after a `book` sweep (100 degrees) slid the pose to 90
+and started a transition toward the cover. SpringBoard does not return to
+the old override when the lock ends, and applies the next override against
+its current pose, so a later `hinge` request lands even when its value
+equals the old one. `display.pose` does not follow SpringBoard's own sweeps
+(it kept reading `open-flat` after a sweep to closed), so the posture
+replayed after a SpringBoard restart takes its hinge state from a completed
+sweep's request. The server checks for
+`com.apple.springboard.sbdisplay.service`, which vphoned carries; a client
+without it is logged as having insufficient authorization and never
+answered. On a guest without the service (or one that does not answer
+within 10 s plus the duration) the virtual hinge sweeps and the override
+jumps, as before. Verified 2026-10-29 on iPhone19,4 27.1 (24A94425).
+
+Posture requests run one at a time. SpringBoard answers a swap it refuses
+("system is not idle") at once and exactly like a finished one, so a reply
+under 0.3 s for a sweep that had to move is treated as a refusal and retried
+every 0.25 s until 10 s plus the duration have passed; then the request
+fails with "SpringBoard kept refusing the fold". The virtual hinge takes the
+target angle as SpringBoard's sweep starts, and the old angle again if the
+fold does not run: Xcode's DeviceHub reads it and, with the old angle
+lingering through the sweep, sent its slider back there. DeviceHub's own fold
+and orientation controls arrive in the guest as vendor-defined HID events,
+and vphoned runs them through this request on an iPhone Duo; with the relay
+locationd takes them itself and the virtual hinge follows each slider value (see
+`Guest/devicehub_screen_viewing.md`, "iPhone Duo: the fold").
+
+| Param | Values |
+| --- | --- |
+| `hinge` (required) | `ambiguous` 0, `closed` 1, `partially-open` 2, `open-flat` 3, `open` 4 |
+| `orientation` | `ambiguous` 0, `portrait` 1 (default), `upside-down` 2, `landscape-left` 3, `landscape-right` 4, `face-up` 5, `face-down` 6 |
+| `tabletop` | 0–10 (default 0, ambiguous) |
+| `angle` | 0–180 (default: the hinge state's angle; partially open is book, 100°) |
+| `position` | `closed` 0°, `book` ~100°, `open` 180°, or a fraction 0–1 — Apple's three screen states; requests a sweep |
+| `duration` | sweep seconds; default the per-direction hand-fold time (opening faster), 0 instant |
+| `profile` | `continuous` or `fade`, the two profiles suiatool names; default SpringBoard's own |
+
+The reply echoes the numeric values, the published `angle`, `source`, and
+`hinge_hid` (`applied`, `provider_running`, `provider`) describing the
+virtual hinge service, so a host can tell a live sensor from an absent one.
+For a `position` it carries `sweep` (`duration_ms` as requested, −1 the
+default; `profile`; `completed`, true when SpringBoard ran the fold and has
+finished it, so the host settles its chrome at once). With CoreMotion the
+hinge is the pose, so a hinge that did not take the request fails it;
+`tabletop` is CoreMotion's to compute and comes back null. With the override,
+a refused override fails the request and a missing hinge provider does not.
+The hinge's stored angle and orientation survive a reboot and the provider
+hands them to the relay when it enumerates; the override is state of the
+running SpringBoard, gone with it at shutdown. The VM sub-type's own
+restore path (`preboot-cfw-devicetree_foldable_vm_subtype`) does not stand
+in on a single display: its `SBFDevicePoseLastKnown*` defaults are written
+on display-mode transitions, which one display never makes (measured
+2026-10-25: they stay zero), so on a guest without CoreMotion's capability
+vphoned re-applies the saved posture over the boot itself (`GuestFoldPose`
+in the daemon: a bounded ladder of pose and hinge applications across
+SpringBoard's first 90 s; only a guest whose hinge was configured is
+touched).
+
+The VM window's Motion Sensors › Fold Posture panel (capability
+`device_pose`) is the host-side driver: a Closed / Book / Open picker with a
+sweep duration, sending `position` and showing the reply's angle, hinge
+state and provider status. A successful posture also publishes the settled
+angle on `VPhoneGuestControl.foldAngle` (reset on disconnect), and the VM
+window folds its own chrome with it — an opaque spine band grows from the
+center by 1 − cos((180−θ)/2) of the display's width, animated over the
+reply's sweep duration; the guest's pixels are never scaled, host-side
+visualization only. On a Duo guest the posture is also persisted beside
+config.plist (`display-posture.plist`), and the next start sizes the real
+panel from it — closed on the outer display, open and book on the inner
+(2034×2853); the host refuses runtime display resizing, so the restart is
+what changes the guest's screen size for real.
+
+### `device.input_devices` (read-only)
+
+Returns HID event-service count and whitelisted product/usage/display-geometry
+properties, plus up to4096 bytes per available report descriptor as base64.
+No HID event is dispatched. `available=false` reports missing native APIs or
+failure to create the read client. Absent properties are omitted; their absence
+does not establish a zero range. Service metadata is not a touch-hit receipt.

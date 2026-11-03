@@ -110,6 +110,7 @@ enum GuestAPI {
                 "keychain_edit",
                 "ipa_install",
                 "bootstrap_install",
+                "bootstrap_packages",
                 "bootstrap_uninstall",
                 "port_forward",
                 "camera",
@@ -118,6 +119,7 @@ enum GuestAPI {
                 "display",
                 "display_orientation",
                 "display_auto_lock",
+                "device_pose",
                 "screen_unlock",
                 "audio",
                 "input_gestures",
@@ -153,7 +155,7 @@ enum GuestAPI {
                 "motion_gyroscope_toggle",
                 "motion_attitude",
             ] + pointerCapabilities() + scriptCapabilities() + GuestHomePodDisplay.capabilities
-                + GuestHomePodDebug.capabilities,
+                + GuestHomePodDebug.capabilities + GuestHomeViewDistance.capabilities,
         ]
     }
 
@@ -299,6 +301,8 @@ enum GuestAPI {
                 layout: layout,
                 packagePath: params["package_path"] as? String,
             )
+        case "bootstrap.packages":
+            return try GuestIrisinInstaller.installPackages(GuestIrisinInstaller.initialPackages)
         case "bootstrap.status":
             return GuestIrisinInstaller.status()
         case "bootstrap.inspect":
@@ -421,11 +425,15 @@ enum GuestAPI {
         case "clipboard.set":
             return try setClipboard(string(params, "text"))
         case "clipboard.clear":
+            #if os(tvOS)
+            throw GuestAPIError.operationFailed("tvOS has no system clipboard")
+            #else
             guard let pasteboard = UIPasteboard(name: .general, create: false) else {
                 throw GuestAPIError.operationFailed("The system clipboard is unavailable")
             }
             pasteboard.items = []
             return try clipboardInfo()
+            #endif
         case "files.list":
             return try fileList(string(params, "path"))
         case "files.mkdir":

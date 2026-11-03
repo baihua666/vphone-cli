@@ -62,9 +62,12 @@ BATTERYHEALTHFIX_INCLUDES := $(wildcard BatteryHealthFix/*.h)
 # CoreDeviceUtilities lives on the developer disk image, not in the SDK, and
 # the image is mounted only after the host enables developer services. The two
 # interposed Swift getters are weak flat-namespace imports. CoreVideo, IOSurface
-# and libobjc are for the avconferenced band reads it waits on the scaler for.
+# and libobjc are for the avconferenced band reads it waits on the scaler for;
+# Foundation and the ObjC runtime are for the CMAngleManager and
+# CMDeviceStateManager stand-ins (VPCMAngleManager.m) dtdeviceinfod answers
+# the hinge and device motion state streams from.
 DEVICEHUBFIX := $(STAGE)/devicehubfix/libdevicehubfix.dylib
-DEVICEHUBFIX_SOURCES := $(wildcard DeviceHubFix/*.c)
+DEVICEHUBFIX_SOURCES := $(sort $(wildcard DeviceHubFix/*.c) $(wildcard DeviceHubFix/*.m))
 DEVICEHUBFIX_INCLUDES := $(wildcard DeviceHubFix/*.h)
 DEVICEHUBFIX_DYNAMIC_LOOKUP_SYMS := \
 	'-Wl,-U,_$$s19CoreDeviceUtilities28MediaStreamSupportedFeaturesV7currentACvgZ' \
@@ -83,6 +86,7 @@ PREFSFIX_SOURCES := $(wildcard PrefsFix/*.m PrefsFix/*.c)
 PREFSFIX_INCLUDES := $(wildcard PrefsFix/*.h)
 # Foundation + ObjC runtime for the sign-in presentation swizzles; AppleAccountUI
 # etc. are reached through the runtime at runtime, so nothing is needed at link.
+IOS17DESKTOP := $(STAGE)/ios17desktop/libvphoneios17desktop.dylib
 SIGNINFIX := $(STAGE)/signinfix/libsigninfix.dylib
 SIGNINFIX_SOURCES := $(wildcard SignInFix/*.m SignInFix/*.c)
 SIGNINFIX_INCLUDES := $(wildcard SignInFix/*.h)
@@ -92,6 +96,20 @@ GYROSCOPE_INPUTS := $(call find_headers,Gyroscope) $(call find_folders,Gyroscope
 ACCELEROMETER := $(STAGE)/accelerometer/libvphoneaccelerometer.dylib
 ACCELEROMETER_SOURCES := $(call find_sources,Accelerometer)
 ACCELEROMETER_INPUTS := $(call find_headers,Accelerometer) $(call find_folders,Accelerometer)
+HINGE := $(STAGE)/hinge/libvphonehinge.dylib
+# The hinge detours backboardd's HID server to take a hinge value a client
+# dispatches (WebDriverAgent), with libmisfix's detour.
+HINGE_SOURCES := $(call find_sources,Hinge) MISFix/MISFixDetour.c MISFix/MISFixConfig.c
+HINGE_INPUTS := $(call find_headers,Hinge) $(call find_folders,Hinge) MISFix/MISFixDetour.h \
+	MISFix/MISFixConditionalBranch.h MISFix/MISFixConfig.h
+# The SpringBoard guard that lets the foldable product identity survive on a
+# single-display guest. See FoldGuard/libvphonefoldguard.m.
+FOLDGUARD := $(STAGE)/foldguard/libvphonefoldguard.dylib
+FOLDGUARD_SOURCES := $(call find_sources,FoldGuard)
+FOLDGUARD_INPUTS := $(call find_headers,FoldGuard) $(call find_folders,FoldGuard)
+FOLDDISPLAY := $(STAGE)/folddisplay/libvphonefolddisplay.dylib
+FOLDDISPLAY_SOURCES := $(call find_sources,FoldDisplay)
+FOLDDISPLAY_INPUTS := $(call find_headers,FoldDisplay) $(call find_folders,FoldDisplay) MISFix/MISFixDetour.h
 ATTITUDE := $(STAGE)/attitude/libvphoneattitude.dylib
 ATTITUDE_SOURCES := $(call find_sources,Attitude)
 ATTITUDE_INPUTS := $(call find_headers,Attitude) $(call find_folders,Attitude) Shared/AttitudeProcess.h
@@ -104,10 +122,13 @@ HOMEPODPERSONA := $(STAGE)/homepodpersona/libvphoneinstallpersona.dylib
 HOMEPODPERSONA_INPUTS := HomePodInstallPersona/libvphoneinstallpersona.c LaunchHook/InstallCoordinationPersona.h
 HOMEPODMISFIX := $(STAGE)/homepodmisfix/libvphonehomepodmisfix.dylib
 HOMEPODMISFIX_SOURCES := MISFix/MISFixSignature.c MISFix/MISFixDetour.c MISFix/MISFixConfig.c MISFix/MISFixInstallPolicy.c
-HOMEPODMISFIX_INPUTS := $(HOMEPODMISFIX_SOURCES) MISFix/MISFixDetour.h MISFix/MISFixConfig.h
+HOMEPODMISFIX_INPUTS := $(HOMEPODMISFIX_SOURCES) MISFix/MISFixDetour.h MISFix/MISFixConditionalBranch.h MISFix/MISFixConfig.h
 HOMEPODSETUP := $(STAGE)/homepodsetup/vphone-homepod-setup
 HOMEPODSETUP_SOURCES := $(call find_sources,HomePodSetup)
 HOMEPODSETUP_INPUTS := $(call find_headers,HomePodSetup) HomePodSetup/com.vphone.homepod-setup.plist
+TVSETUPFOCUS := $(STAGE)/tvsetupfocus/libvphonetvsetupfocus.dylib
+TVSETUPFOCUS_SOURCES := $(call find_sources,TVSetupFocus)
+TVSETUPFOCUS_INPUTS := $(call find_headers,TVSetupFocus) $(call find_folders,TVSetupFocus)
 GPU_PLUGIN := $(STAGE)/gpu/libAppleParavirtCompilerPluginIOGPUFamily.dylib
 GPU_PLUGIN_SOURCES := $(wildcard GraphicLoader/*.mm)
 GPU_PLUGIN_INCLUDES := $(wildcard GraphicLoader/*.h GraphicLoader/*.hpp GraphicLoader/*.inc)
@@ -128,6 +149,33 @@ GPU_DYNAMIC_LOOKUP_SYMS := \
 	-Wl,-U,_LLVMGetMDNodeNumOperands \
 	-Wl,-U,_LLVMGetMDNodeOperands \
 	-Wl,-U,_LLVMGetValueName2 \
+	-Wl,-U,_LLVMGetModuleContext \
+	-Wl,-U,_LLVMInt32TypeInContext \
+	-Wl,-U,_LLVMConstInt \
+	-Wl,-U,_LLVMMDNodeInContext \
+	-Wl,-U,_LLVMAddNamedMetadataOperand \
+	-Wl,-U,_LLVMABIAlignmentOfType \
+	-Wl,-U,_LLVMABISizeOfType \
+	-Wl,-U,_LLVMCountParamTypes \
+	-Wl,-U,_LLVMCountStructElementTypes \
+	-Wl,-U,_LLVMCreateMemoryBufferWithMemoryRangeCopy \
+	-Wl,-U,_LLVMDisposeMessage \
+	-Wl,-U,_LLVMGetArrayLength \
+	-Wl,-U,_LLVMGetElementType \
+	-Wl,-U,_LLVMGetIntTypeWidth \
+	-Wl,-U,_LLVMGetMDString \
+	-Wl,-U,_LLVMGetModuleDataLayout \
+	-Wl,-U,_LLVMGetParamTypes \
+	-Wl,-U,_LLVMGetPointerAddressSpace \
+	-Wl,-U,_LLVMGetReturnType \
+	-Wl,-U,_LLVMGetStructName \
+	-Wl,-U,_LLVMGetTypeKind \
+	-Wl,-U,_LLVMGetVectorSize \
+	-Wl,-U,_LLVMGlobalGetValueType \
+	-Wl,-U,_LLVMIsAMDString \
+	-Wl,-U,_LLVMParseIRInContext \
+	-Wl,-U,_LLVMPrintModuleToString \
+	-Wl,-U,_LLVMStructGetTypeAtIndex \
 	-Wl,-U,_MTLGPUCompilerCreate \
 	-Wl,-U,_MTLGPUCompilerDestroy \
 	-Wl,-U,_MTLDowngradeAIRModule \
@@ -141,7 +189,7 @@ GPU_DYNAMIC_LOOKUP_SYMS := \
 VIRTIOSOUND := $(STAGE)/virtiosound/VPhoneVirtIOSound.driver
 VIRTIOSOUND_SOURCES := $(wildcard VirtIOSound/*.m VirtIOSound/*.c)
 VIRTIOSOUND_INCLUDES := $(wildcard VirtIOSound/*.h) VirtIOSound/Info.plist VirtIOSound/AudioServerDriver.tbd
-ARTIFACTS := $(CAMFIX) $(VCAMCAPTURED) $(LAUNCHHOOK) $(SYSTEMHOOK) $(MISFIX) $(HAPTICSFIX) $(BATTERYHEALTHFIX) $(DEVICEHUBFIX) $(DEVICENAME) $(PREFSFIX) $(SIGNINFIX) $(GYROSCOPE) $(ACCELEROMETER) $(ATTITUDE) $(HOMEPODDISPLAY) $(CRYPTEXSTAGING) $(HOMEPODPERSONA) $(HOMEPODMISFIX) $(HOMEPODSETUP) $(GPU_PLUGIN) $(VIRTIOSOUND)
+ARTIFACTS := $(IOS17DESKTOP) $(CAMFIX) $(VCAMCAPTURED) $(LAUNCHHOOK) $(SYSTEMHOOK) $(MISFIX) $(HAPTICSFIX) $(BATTERYHEALTHFIX) $(DEVICEHUBFIX) $(DEVICENAME) $(PREFSFIX) $(SIGNINFIX) $(GYROSCOPE) $(ACCELEROMETER) $(HINGE) $(FOLDGUARD) $(FOLDDISPLAY) $(ATTITUDE) $(HOMEPODDISPLAY) $(CRYPTEXSTAGING) $(HOMEPODPERSONA) $(HOMEPODMISFIX) $(HOMEPODSETUP) $(TVSETUPFOCUS) $(GPU_PLUGIN) $(VIRTIOSOUND)
 PLISTS := $(STAGE)/camfix/libcamfix.plist $(STAGE)/vcamcaptured/libvcamcaptured.plist \
 	$(STAGE)/misfix/libmisfix.plist
 GPU_PROVENANCE := $(STAGE)/gpu/README.md
@@ -187,7 +235,7 @@ gpu: $(GPU_PLUGIN)
 
 package: all
 	@rm -f $(ARCHIVE)
-	@/usr/bin/tar -cf $(ARCHIVE) -C $(STAGE) camfix vcamcaptured launchhook systemhook misfix hapticsfix batteryhealthfix devicehubfix devicename prefsfix signinfix gyroscope accelerometer attitude homepoddisplay cryptexstaging homepodpersona homepodmisfix homepodsetup gpu virtiosound
+	@/usr/bin/tar -cf $(ARCHIVE) -C $(STAGE) ios17desktop camfix vcamcaptured launchhook systemhook misfix hapticsfix batteryhealthfix devicehubfix devicename prefsfix signinfix gyroscope accelerometer hinge foldguard attitude homepoddisplay cryptexstaging homepodpersona homepodmisfix homepodsetup tvsetupfocus gpu virtiosound folddisplay
 	@echo "Packaged $(ARCHIVE)"
 
 test-loader-links:
@@ -208,6 +256,18 @@ test-x1-lowering:
 	xcrun --sdk macosx clang -Wall -Wextra -Werror -ILaunchHook \
 		-o $(OUT)/X1LoweringTests Tests/X1LoweringTests.c LaunchHook/VPhoneX1Lowering.c
 	@$(OUT)/X1LoweringTests
+
+# Host proof harness for the compiler plugin's OpenGL ES path: the AIR modules
+# AppleMetalGLRenderer hands it, through the plugin and into the host's Metal.
+# The plugin resolves libLLVM and libGPUCompiler at load, so it and the tests
+# are one dylib the runner loads after them.
+.PHONY: test-gles-air
+test-gles-air:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang++ -std=c++17 -fobjc-arc -O1 -Wall -Wextra -IGraphicLoader -dynamiclib -Wl,-undefined,dynamic_lookup \
+		-o $(OUT)/GLESAIRTests.dylib Tests/GLESAIRTests.mm $(GPU_PLUGIN_SOURCES) -framework Foundation -framework Metal
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -o $(OUT)/GLESAIRTestRunner Tests/GLESAIRTestRunner.c
+	@$(OUT)/GLESAIRTestRunner $(OUT)/GLESAIRTests.dylib Tests/GLESAIRFixtures
 
 # Host proof harness for libdevicename's name decoding, configd publication
 # rewrite and lockdownd rename decision.
@@ -253,7 +313,7 @@ test-vcam-dataplane:
 		-framework CoreGraphics
 	@$(OUT)/VCamDataPlaneTests
 
-$(STAGE)/camfix $(STAGE)/vcamcaptured $(STAGE)/launchhook $(STAGE)/systemhook $(STAGE)/misfix $(STAGE)/hapticsfix $(STAGE)/batteryhealthfix $(STAGE)/devicehubfix $(STAGE)/devicename $(STAGE)/prefsfix $(STAGE)/signinfix $(STAGE)/gyroscope $(STAGE)/accelerometer $(STAGE)/attitude $(STAGE)/gpu $(STAGE)/virtiosound:
+$(STAGE)/camfix $(STAGE)/vcamcaptured $(STAGE)/launchhook $(STAGE)/systemhook $(STAGE)/misfix $(STAGE)/hapticsfix $(STAGE)/batteryhealthfix $(STAGE)/devicehubfix $(STAGE)/devicename $(STAGE)/prefsfix $(STAGE)/signinfix $(STAGE)/gyroscope $(STAGE)/accelerometer $(STAGE)/hinge $(STAGE)/foldguard $(STAGE)/folddisplay $(STAGE)/attitude $(STAGE)/gpu $(STAGE)/virtiosound:
 	@mkdir -p $@
 
 $(CAMFIX): $(CAMFIX_SOURCES) $(CAMFIX_INPUTS) | $(STAGE)/camfix
@@ -321,10 +381,10 @@ $(BATTERYHEALTHFIX): $(BATTERYHEALTHFIX_SOURCES) $(BATTERYHEALTHFIX_INCLUDES) Ba
 	@codesign --force --sign - $@
 
 $(DEVICEHUBFIX): $(DEVICEHUBFIX_SOURCES) $(DEVICEHUBFIX_INCLUDES) DeviceHubFix | $(STAGE)/devicehubfix
-	$(CLANG) $(GUEST_C_FLAGS) -dynamiclib \
+	$(CLANG) $(COMMON_FLAGS) -dynamiclib \
 		-install_name /usr/lib/libdevicehubfix.dylib \
 		-o $@ $(DEVICEHUBFIX_SOURCES) $(DEVICEHUBFIX_DYNAMIC_LOOKUP_SYMS) \
-		-framework CoreFoundation -framework CoreVideo -framework IOSurface -lMobileGestalt -lobjc \
+		-framework Foundation -framework CoreVideo -framework IOSurface -lMobileGestalt \
 		-Wl,-not_for_dyld_shared_cache
 	@codesign --force --sign - $@
 
@@ -366,12 +426,40 @@ $(ACCELEROMETER): $(ACCELEROMETER_SOURCES) $(ACCELEROMETER_INPUTS) | $(STAGE)/ac
 		-framework Foundation -Wl,-not_for_dyld_shared_cache
 	@codesign --force --sign - $@
 
-.PHONY: test-gyroscope test-accelerometer
+$(HINGE): $(HINGE_SOURCES) $(HINGE_INPUTS) | $(STAGE)/hinge
+	$(CLANG) -arch arm64e -miphoneos-version-min=18.0 -Os -fobjc-arc \
+		-Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphonehinge.dylib -o $@ $(HINGE_SOURCES) \
+		-framework Foundation -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(FOLDGUARD): $(FOLDGUARD_SOURCES) $(FOLDGUARD_INPUTS) | $(STAGE)/foldguard
+	$(CLANG) $(COMMON_FLAGS) -Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphonefoldguard.dylib -o $@ $(FOLDGUARD_SOURCES) \
+		-framework Foundation -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(FOLDDISPLAY): $(FOLDDISPLAY_SOURCES) $(FOLDDISPLAY_INPUTS) | $(STAGE)/folddisplay
+	$(CLANG) $(COMMON_FLAGS) -Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphonefolddisplay.dylib -o $@ $(FOLDDISPLAY_SOURCES) \
+		-framework Foundation -framework CoreGraphics -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+.PHONY: test-gyroscope test-accelerometer test-hinge
 test-accelerometer:
 	@mkdir -p $(OUT)
 	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter -IAccelerometer \
 		-o $(OUT)/AccelerometerTests Tests/AccelerometerTests.m Accelerometer/VPhoneOrientationSink.m -framework Foundation
 	@$(OUT)/AccelerometerTests
+
+# The hinge's transport and, on a Mac whose IOKit has them, the host-control
+# dictionaries serialized, read back and wrapped in a vendor-defined event as
+# the guest library does.
+test-hinge:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IHinge \
+		-o $(OUT)/HingeTests Tests/HingeTests.m -framework Foundation
+	@$(OUT)/HingeTests
 
 $(ATTITUDE): $(ATTITUDE_SOURCES) $(ATTITUDE_INPUTS) | $(STAGE)/attitude
 	$(CLANG) -arch arm64e -miphoneos-version-min=18.0 -Os -fobjc-arc \
@@ -418,6 +506,13 @@ test-cryptex-staging:
 		-o $(OUT)/CryptexStagingTests Tests/CryptexStagingTests.c -framework CoreFoundation
 	@$(OUT)/CryptexStagingTests
 
+$(TVSETUPFOCUS): $(TVSETUPFOCUS_SOURCES) $(TVSETUPFOCUS_INPUTS)
+	@mkdir -p $(STAGE)/tvsetupfocus
+	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.2 -Os -fobjc-arc \
+		-Wall -Wextra -Werror -dynamiclib -install_name /usr/lib/libvphonetvsetupfocus.dylib \
+		-o $@ $(TVSETUPFOCUS_SOURCES) -framework UIKit -framework Foundation -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
 $(HOMEPODSETUP): $(HOMEPODSETUP_SOURCES) $(HOMEPODSETUP_INPUTS)
 	@mkdir -p $(STAGE)/homepodsetup
 	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 -Os -fobjc-arc \
@@ -434,6 +529,9 @@ test-homepod-setup:
 	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IHomePodSetup \
 		-o $(OUT)/HomePodSetupProcessTests Tests/HomePodSetupProcessTests.m HomePodSetup/HomePodSetupProcesses.m -framework Foundation
 	@$(OUT)/HomePodSetupProcessTests
+	xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -IHomePodSetup \
+		-o $(OUT)/HomePodAirPlayTests Tests/HomePodAirPlayTests.m HomePodSetup/HomePodSetupState.m HomePodSetup/HomePodSetupProcesses.m -framework Foundation
+	@$(OUT)/HomePodAirPlayTests
 
 .PHONY: test-attitude
 test-attitude:
@@ -520,6 +618,19 @@ test-vcam-drive-gate:
 		Tests/VCamDriveGateTests.c VCamCaptured/Frames/VCamDriveGate.c
 	@$(OUT)/VCamDriveGateTests
 
+# Host proof harness for camera-session weak registration during teardown.
+.PHONY: test-camfix-session-reference
+test-camfix-session-reference:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -O1 -Wall -Wextra -Werror \
+		-ICamFix/Session -framework Foundation \
+		-o $(OUT)/CamFixSessionReferenceTests Tests/CamFixSessionReferenceTests.m
+	@$(OUT)/CamFixSessionReferenceTests
+
+.PHONY: build-camfix-session-reproducer
+build-camfix-session-reproducer:
+	zsh Tests/CameraSessionReproducer/build.zsh "$(OUT)/camera-session-reproducer"
+
 # Host proof harness for the crop, size and turn plan libcamfix uses for
 # AVCaptureVideoDataOutput frames.
 .PHONY: test-camfix-geometry
@@ -553,3 +664,17 @@ build-executable-remap-probe:
 	@mkdir -p $(OUT)
 	xcrun --sdk iphoneos swiftc -target arm64-apple-ios26.0 -O Tests/ExecutableRemapProbe.swift -module-cache-path $(OUT)/probe-module-cache -o $(OUT)/ExecutableRemapProbe
 	codesign --force --sign - --timestamp=none $(OUT)/ExecutableRemapProbe
+
+$(IOS17DESKTOP): IOS17Desktop/libvphoneios17desktop.m
+	@mkdir -p $(STAGE)/ios17desktop
+	$(CLANG) $(COMMON_FLAGS) -dynamiclib -install_name /usr/lib/libvphoneios17desktop.dylib -o $@ $< -framework Foundation -lobjc -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+.PHONY: test-ios17-desktop
+test-ios17-desktop:
+	@mkdir -p ../.build/ios17-desktop-tests
+	xcrun --sdk macosx clang -fobjc-arc -framework Foundation -Wno-unused-parameter -dynamiclib IOS17Desktop/libvphoneios17desktop.m -o ../.build/ios17-desktop-tests/hook.dylib
+	xcrun --sdk macosx clang -fobjc-arc -framework Foundation Tests/IOS17DesktopTests.m -o ../.build/ios17-desktop-tests/test
+	../.build/ios17-desktop-tests/test ../.build/ios17-desktop-tests/hook.dylib 17 SpringBoard
+	../.build/ios17-desktop-tests/test ../.build/ios17-desktop-tests/hook.dylib 18 SpringBoard
+	../.build/ios17-desktop-tests/test ../.build/ios17-desktop-tests/hook.dylib 17 OtherProcess

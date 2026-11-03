@@ -12,24 +12,63 @@ import VPhonePatchKit
 
 @Suite("Guest patch resolution")
 struct FirmwareGuestPatchResolutionTests {
-    @Test func `TV legacy setup is limited to the 27 point 2 4K preset`() throws {
-        let identifier = FirmwareGuestSystemPatchSet.tvLegacySetup
-        for version in ["26.6", "27.0", "27.1", "27.2", "27.3"] {
-            for preset in FirmwarePatchSetCatalog.builtInPresets {
-                let plan = try VPhonePatchPlan.resolve(
-                    preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
-                    iOSBase: VPhoneVersion(version), cloudOS: VPhoneVersion("26.4"),
-                )
-                #expect(plan.isEnabled(identifier) == (version == "27.2" && preset.identifier == VPhonePatchPreset.tvOS4KIdentifier))
-            }
+    @Test func `HomeView environment simulation is explicit and limited to its reviewed base`() throws {
+        let id = FirmwareGuestSystemPatchSet.homeViewEnvironmentService
+        for preset in FirmwarePatchSetCatalog.builtInPresets {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion("27.2"), cloudOS: VPhoneVersion("26.4")
+            )
+            #expect(!plan.isEnabled(id))
         }
-        #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [identifier], arm64eUserland: true).isEmpty)
-        #expect(FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: [identifier]) == [identifier])
-        #expect(FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: []).contains(identifier))
+        #expect(FirmwareGuestPatchResolution.unvalidatedHomeViewGuestPatches(enabled: [id]).isEmpty)
+        #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [id], arm64eUserland: true) == [id])
+        #expect(FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: [id]) == [id])
+        let declaration = try #require(FirmwarePatchSetCatalog.allDeclarations.first { $0.identifier == id })
+        #expect(declaration.applicability.matches(iOSBase: VPhoneVersion("27.2"), cloudOS: VPhoneVersion("26.4")))
+        for version in ["26.4", "27.0", "27.1", "27.3"] {
+            #expect(!declaration.applicability.matches(iOSBase: VPhoneVersion(version), cloudOS: VPhoneVersion("26.4")))
+        }
     }
 
-    @Test func `new TV setup display repair remains opt in`() throws {
-        let identifier = FirmwareGuestSystemPatchSet.tvSetupDisplayLookup
+    @Test func `HomeView keeps native setup and its bypass is an explicit reversible selection`() throws {
+        let plan = try VPhonePatchPlan.resolve(
+            preset: FirmwarePatchSetCatalog.homeViewPreset, patchSets: FirmwarePatchSetCatalog.bundled,
+            iOSBase: VPhoneVersion("27.2"), cloudOS: VPhoneVersion("26.4")
+        )
+        #expect(plan.isEnabled(FirmwareGuestSystemPatchSet.homeViewProfileLookup))
+        #expect(plan.isEnabled(FirmwareGuestSystemPatchSet.homeViewDisplayLookups))
+        #expect(plan.isEnabled(FirmwareGuestSystemPatchSet.tvOTAUserland))
+        #expect(plan.isEnabled("system-extensions-boot-gpu_bundle"))
+        #expect(!plan.isEnabled(FirmwareGuestSystemPatchSet.homeViewSetupBypass))
+        #expect(FirmwareGuestPatchResolution.unvalidatedHomeViewGuestPatches(enabled: plan.enabled).isEmpty)
+        #expect(FirmwareGuestPatchResolution.unvalidatedHomeViewGuestPatches(enabled: [FirmwareGuestSystemPatchSet.homeViewSetupBypass]).isEmpty)
+        #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [FirmwareGuestSystemPatchSet.homeViewSetupBypass], arm64eUserland: true) == [FirmwareGuestSystemPatchSet.homeViewSetupBypass])
+        #expect(FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: [FirmwareGuestSystemPatchSet.homeViewSetupBypass]) == [FirmwareGuestSystemPatchSet.homeViewSetupBypass])
+        #expect(!plan.isEnabled(FirmwareGuestSystemPatchSet.tvSetupFocus))
+        #expect(!plan.isEnabled(FirmwareGuestSystemPatchSet.tvLocalActivation))
+    }
+
+    @Test func `native TV setup adapters are limited to the 27 point 2 4K preset`() throws {
+        for identifier in [FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.tvSetupFocus, FirmwareGuestSystemPatchSet.tvLocalActivation] {
+            for version in ["26.6", "27.0", "27.1", "27.2", "27.3"] {
+                for preset in FirmwarePatchSetCatalog.builtInPresets {
+                    let plan = try VPhonePatchPlan.resolve(
+                        preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
+                        iOSBase: VPhoneVersion(version), cloudOS: VPhoneVersion("26.4"),
+                    )
+                    #expect(plan.isEnabled(identifier) == (version == "27.2" && preset.identifier == VPhonePatchPreset.tvOS4KIdentifier))
+                }
+            }
+            #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [identifier], arm64eUserland: true).isEmpty)
+            #expect(FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: [identifier]) == [identifier])
+            #expect(FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: []).contains(identifier))
+            #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [identifier]) == [identifier])
+        }
+    }
+
+    @Test func `legacy TV setup is not selected by any preset`() throws {
+        let identifier = FirmwareGuestSystemPatchSet.tvLegacySetup
         for preset in FirmwarePatchSetCatalog.builtInPresets {
             let plan = try VPhonePatchPlan.resolve(
                 preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
@@ -143,16 +182,20 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [identifier], arm64eUserland: true) == [identifier])
     }
 
-    @Test(arguments: [FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAudioProduct,
+    @Test(arguments: [FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAirPlayVM, FirmwareGuestSystemPatchSet.homePodAudioProduct,
                       FirmwareGuestSystemPatchSet.homePodWelcome, FirmwareGuestSystemPatchSet.homePodSiriSpeech])
     func `HomePod optional guest repairs are version gated and never selected for other devices`(identifier: String) throws {
-        for base in ["26.4", "27.0", "27.1"] {
+        for base in ["26.4", "26.5", "27.0", "27.1"] {
+            // The setup completion also applies to 26.5, the AirPlay override
+            // only there; the others need 27.
+            let applies = identifier == FirmwareGuestSystemPatchSet.homePodAirPlayVM ? base == "26.5"
+                : base.hasPrefix("27.") || (base == "26.5" && identifier == FirmwareGuestSystemPatchSet.homePodSetupBypass)
             for preset in FirmwarePatchSetCatalog.builtInPresets {
                 let plan = try VPhonePatchPlan.resolve(
                     preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
                     iOSBase: VPhoneVersion(base), cloudOS: VPhoneVersion("26.4"),
                 )
-                #expect(plan.isEnabled(identifier) == (base.hasPrefix("27.")
+                #expect(plan.isEnabled(identifier) == (applies
                     && identifier != FirmwareGuestSystemPatchSet.homePodAudioProduct
                     && preset.identifier == VPhonePatchPreset.homePodMiniIdentifier))
             }
@@ -161,6 +204,14 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [identifier]) == [identifier])
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [identifier], arm64eUserland: true) == [identifier])
         #expect(FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: []).contains(identifier))
+    }
+
+    @Test func `HomePod AirPlay override is a guest marker for the setup helper`() throws {
+        let airPlay = FirmwareGuestSystemPatchSet.homePodAirPlayVM
+        let declaration = try #require(FirmwarePatchSetCatalog.allDeclarations.first { $0.identifier == airPlay })
+        #expect(declaration.target == .guestFile(path: "/usr/share/vphone/HomePodAirPlay.plist"))
+        #expect(!declaration.bootEssential)
+        #expect(FirmwarePatchSetCatalog.manualOnlyPatches.contains(airPlay))
     }
 
     @Test func `HomePod welcome requires every selected runtime prerequisite but opt out is independent`() throws {
@@ -230,6 +281,7 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(unvalidated.contains("system-launchdaemons-boot-environment"))
         #expect(unvalidated.contains("system-extensions-boot-gpu_bundle"))
         #expect(unvalidated.contains(FirmwareGuestSystemPatchSet.paravirtGPUIndexOffset))
+        #expect(unvalidated.contains(FirmwareGuestSystemPatchSet.paravirtGPUPrimitiveRestart))
         #expect(unvalidated.contains("dyld-cfw-camera"))
         #expect(!unvalidated.contains("system-seputil-boot-gigalocker_uuid"))
         #expect(!unvalidated.contains("system-gigalocker-boot-rename"))
@@ -269,6 +321,19 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: ["dyld-cfw-camera"], arm64eUserland: true) == ["dyld-cfw-camera"])
     }
 
+    @Test
+    func `only an arm64e TV admits the environment hooks and the launchd patch that loads them`() {
+        let hooks: Set = ["system-launchdaemons-boot-environment", "system-launchd-boot-jetsam_panic_guard_bypass"]
+        #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: hooks, arm64eUserland: true).isEmpty)
+        // Both libraries are arm64e: a plain-arm64 launchd cannot load them.
+        #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: hooks) == hooks.sorted())
+        // The X1 launchd bootstrap shares the load command but stays out.
+        let x1 = FirmwareGuestSystemPatchSet.arm64eX1LaunchdBootstrap
+        #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [x1], arm64eUserland: true) == [x1])
+        // HomePod keeps its own launchd library and no environment.
+        #expect(FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: hooks) == hooks.sorted())
+    }
+
     @Test(arguments: ["27.0", "27.2"])
     func `the Apple TV 4K preset swaps in the OTA userland with the GPU driver and no TPRO patches`(version: String) throws {
         let gpu = "system-extensions-boot-gpu_bundle"
@@ -288,6 +353,7 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(tv4K.isEnabled("system-vphoned-boot-install"))
         // The upstream GPU heap index patch stays out, as for every TV guest.
         #expect(!tv4K.isEnabled(FirmwareGuestSystemPatchSet.paravirtGPUIndexOffset))
+        #expect(!tv4K.isEnabled(FirmwareGuestSystemPatchSet.paravirtGPUPrimitiveRestart))
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: tv4K.enabled, arm64eUserland: true).isEmpty)
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: tv4K.enabled) == [gpu, ota].sorted())
         // The 27 shared-cache patches are on but meet only a 27 userland.
@@ -305,6 +371,7 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: tv4K27.enabled, arm64eUserland: true).isEmpty)
         let x1Patches: Set<String> = [
             FirmwareGuestSystemPatchSet.arm64eX1CacheBootstrap,
+            FirmwareGuestSystemPatchSet.arm64eX1CacheRemaining,
             FirmwareGuestSystemPatchSet.arm64eX1DyldBootstrap,
             FirmwareGuestSystemPatchSet.arm64eX1FsckBootstrap,
             FirmwareGuestSystemPatchSet.arm64eX1LaunchdBootstrap,
@@ -382,6 +449,7 @@ struct FirmwareGuestPatchResolutionTests {
             FirmwareGuestSystemPatchSet.tvTPRO,
             FirmwareKernelCustomFirmwarePatchSet.tvTPROPagers,
             FirmwareGuestSystemPatchSet.paravirtGPUIndexOffset,
+            FirmwareGuestSystemPatchSet.paravirtGPUPrimitiveRestart,
             "system-launchdaemons-boot-environment",
             "dyld-cfw-camera",
         ]

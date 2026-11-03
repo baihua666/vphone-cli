@@ -22,11 +22,12 @@ import Foundation
 import VPhonePatchKit
 
 public enum FirmwareGuestPatchResolution {
-    /// TV admits the gigalocker repair, opt-in dyld TPRO compatibility, and
-    /// vphoned with the launchd cache gate its launchd.plist entry needs.
+    /// TV admits the gigalocker repair, opt-in dyld TPRO compatibility, virtual
+    /// Bluetooth, and vphoned with the launchd cache gate its launchd.plist entry needs.
     /// Other payloads, cache patches and shell integration need a TV port and
     /// validation before the installer can select them.
     public static let tvSupportedGuestPatches: Set<String> = [
+        FirmwareGuestSystemPatchSet.virtualBluetooth,
         "system-seputil-boot-gigalocker_uuid",
         "system-gigalocker-boot-rename",
         FirmwareGuestSystemPatchSet.tvTPRO,
@@ -37,11 +38,18 @@ public enum FirmwareGuestPatchResolution {
     /// An arm64e Apple TV (the 4K, from its OTA) also admits the paravirtual
     /// GPU driver, which a plain-arm64 userland cannot load, the OTA userland
     /// swap itself, and the iOS 27 shared-cache patches its tvOS 27 OTA meets.
+    /// It admits the environment's launchd hook and SystemHook too, marked
+    /// tvOS at install, with the launchd patch that loads the hook: both are
+    /// arm64e, so a plain-arm64 launchd could not load them.
     public static let tvArm64eGuestPatches: Set<String> = Set([
         "system-extensions-boot-gpu_bundle",
         FirmwareGuestSystemPatchSet.tvOTAUserland,
         FirmwareGuestSystemPatchSet.tvSetupDisplayLookup,
+        FirmwareGuestSystemPatchSet.tvSetupFocus,
+        FirmwareGuestSystemPatchSet.tvLocalActivation,
         FirmwareGuestSystemPatchSet.tvLegacySetup,
+        "system-launchdaemons-boot-environment",
+        "system-launchd-boot-jetsam_panic_guard_bypass",
     ]).union(FirmwarePatchSetCatalog.tvOS27UserlandPatches)
 
     public static func unvalidatedTVGuestPatches(enabled: Set<String>, arm64eUserland: Bool = false) -> [String] {
@@ -53,7 +61,7 @@ public enum FirmwareGuestPatchResolution {
     /// Apple TV OTA swap, GPU injection, or plain-arm64 dyld workarounds.
     public static let homePodSupportedGuestPatches = tvSupportedGuestPatches
         .subtracting([FirmwareGuestSystemPatchSet.tvTPRO])
-        .union([FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass,
+        .union([FirmwareGuestSystemPatchSet.homePodTopCap, FirmwareGuestSystemPatchSet.homePodSetupBypass, FirmwareGuestSystemPatchSet.homePodAirPlayVM,
                 FirmwareGuestSystemPatchSet.homePodAudioProduct, FirmwareGuestSystemPatchSet.homePodWelcome,
                 FirmwareGuestSystemPatchSet.homePodSiriSpeech,
                 FirmwareGuestSystemPatchSet.homePodOTAUserland, FirmwareGuestSystemPatchSet.homePodSoundGlow,
@@ -65,6 +73,19 @@ public enum FirmwareGuestPatchResolution {
 
     public static func unvalidatedHomePodGuestPatches(enabled: Set<String>) -> [String] {
         enabled.intersection(guestTargetIdentifiers).subtracting(homePodSupportedGuestPatches).sorted()
+    }
+
+    /// HomeView uses its own shell and setup. Sharing the tvOS ABI does not
+    /// admit Apple TV setup/focus/activation adapters or HomePod capabilities.
+    public static let homeViewSupportedGuestPatches = tvSupportedGuestPatches
+        .union(tvArm64eGuestPatches)
+        .subtracting([FirmwareGuestSystemPatchSet.tvTPRO, FirmwareGuestSystemPatchSet.tvLegacySetup,
+                     FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.tvSetupFocus,
+                     FirmwareGuestSystemPatchSet.tvLocalActivation])
+        .union([FirmwareGuestSystemPatchSet.homeViewProfileLookup, FirmwareGuestSystemPatchSet.homeViewDisplayLookups, FirmwareGuestSystemPatchSet.homeViewSetupBypass, FirmwareGuestSystemPatchSet.homeViewEnvironmentService])
+
+    public static func unvalidatedHomeViewGuestPatches(enabled: Set<String>) -> [String] {
+        enabled.intersection(guestTargetIdentifiers).subtracting(homeViewSupportedGuestPatches).sorted()
     }
 
     public static let homePodWelcomeDependencies: Set<String> = [

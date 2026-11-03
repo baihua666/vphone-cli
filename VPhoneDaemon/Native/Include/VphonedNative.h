@@ -2,10 +2,36 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <spawn.h>
 #include <sys/types.h>
 #ifdef __OBJC__
 #import <Foundation/Foundation.h>
 #endif
+
+// MARK: - Spawning
+
+// tvOS has posix_spawn and execv, and libSystem exports them there as on iOS,
+// but the AppleTVOS SDK declares them unavailable. vphoned is built for both
+// from one source, so it calls the same libSystem symbols under these names.
+int vp_spawn(pid_t * _Nullable pid, const char * _Nonnull path,
+    const posix_spawn_file_actions_t _Nullable * _Nullable actions,
+    const posix_spawnattr_t _Nullable * _Nullable attributes,
+    char * _Nullable const argv[_Nonnull], char * _Nullable const envp[_Nullable]) __asm__("_posix_spawn");
+int vp_spawn_file_actions_init(posix_spawn_file_actions_t _Nullable * _Nonnull actions)
+    __asm__("_posix_spawn_file_actions_init");
+int vp_spawn_file_actions_destroy(posix_spawn_file_actions_t _Nullable * _Nonnull actions)
+    __asm__("_posix_spawn_file_actions_destroy");
+int vp_spawn_file_actions_addclose(posix_spawn_file_actions_t _Nullable * _Nonnull actions, int descriptor)
+    __asm__("_posix_spawn_file_actions_addclose");
+int vp_spawn_file_actions_adddup2(posix_spawn_file_actions_t _Nullable * _Nonnull actions, int descriptor, int target)
+    __asm__("_posix_spawn_file_actions_adddup2");
+int vp_spawn_file_actions_addopen(posix_spawn_file_actions_t _Nullable * _Nonnull actions, int descriptor,
+    const char * _Nonnull path, int flags, mode_t mode) __asm__("_posix_spawn_file_actions_addopen");
+int vp_spawnattr_init(posix_spawnattr_t _Nullable * _Nonnull attributes) __asm__("_posix_spawnattr_init");
+int vp_spawnattr_destroy(posix_spawnattr_t _Nullable * _Nonnull attributes) __asm__("_posix_spawnattr_destroy");
+int vp_spawnattr_setflags(posix_spawnattr_t _Nullable * _Nonnull attributes, short flags)
+    __asm__("_posix_spawnattr_setflags");
+int vp_execv(const char * _Nonnull path, char * _Nullable const argv[_Nonnull]) __asm__("_execv");
 
 // Keep legacy bridge pointers explicitly unspecified: their Swift import stays
 // unchanged while sharing this header with APIs that declare nonnull pointers.
@@ -67,6 +93,14 @@ bool vp_homepod_debug_available(void);
 /// Validated operation result or error, returned as malloc-owned JSON.
 char * _Null_unspecified vp_homepod_debug_copy_json(const char * _Null_unspecified operation, const char * _Null_unspecified arguments_json);
 
+/// HomeView's native distance-derived level-of-detail override. A NULL mode
+/// reads the current environment; otherwise automatic, near, standard or far.
+/// Automatic clears all native environment simulation overrides. Its RPC caller
+/// must require explicit reset_environment acknowledgement before invoking it.
+/// Availability here is an artifact/ABI capability, not a live service verdict.
+bool vp_homeview_distance_available(void);
+char * _Null_unspecified vp_homeview_distance_copy_json(const char * _Null_unspecified mode);
+
 /// Load the IOKit digitizer symbols used for multi-finger injection. Idempotent,
 /// safe to call more than once; returns false (injection then stays a no-op)
 /// on bases that do not expose the private symbols.
@@ -89,6 +123,29 @@ void vp_hid_touch_edge(int phase, double x, double y, int edge);
 /// Turn the display on without pressing a button. False when
 /// SpringBoardServices has no SBSUndimScreen.
 bool vp_screen_undim(void);
+/// Call `touched` on a private queue when a finger lands on the screen while
+/// SpringBoard has it blanked, at most every half second: the tap a phone's
+/// touch controller reports as a wake gesture.
+void vp_tap_to_wake_start(void (* _Nonnull touched)(void));
+bool vp_device_pose_set(int deviceOrientation, int hingeState, int tabletopPose);
+/// Fold a foldable guest through SpringBoard's display tool service: sweep
+/// its hinge pose to `position` (0 closed, 1 open flat) and swap displays on
+/// the way. `durationSeconds` < 0 is the per-direction default, 0 an instant
+/// swap; `deviceOrientation` 0 keeps the current one; `profileOverride` 0
+/// keeps SpringBoard's profile, 1 fade, 2 continuous. Returns 1 once
+/// SpringBoard reports the swap finished, 0 when no reply came within
+/// `timeoutSeconds` (an unentitled client is never answered), -1 when this
+/// guest has no such service.
+int vp_display_swap(double position, double durationSeconds, int deviceOrientation, int profileOverride,
+                    double timeoutSeconds);
+/// Publish the device orientation (1 portrait … 4 landscape-right) for the
+/// device state DeviceHub reads (libdevicehubfix in dtdeviceinfod).
+void vp_device_orientation_publish(int deviceOrientation);
+/// Whether this guest's CoreMotion has a foldable's angle and device-state
+/// capabilities (the foldable product-id). Then locationd relays the virtual
+/// hinge's host controls into CoreMotion and SpringBoard reads its pose from
+/// there; otherwise only the test-automation pose override reaches it.
+bool vp_core_motion_hinge(void);
 
 #ifdef __OBJC__
 /// Ask ManagedConfiguration to persist Auto-Lock Never. Read back the
@@ -163,12 +220,46 @@ char * _Null_unspecified vp_ls_system_app_state(const char * _Null_unspecified b
 char * _Null_unspecified vp_ls_unregister_system_app(const char * _Null_unspecified bundle_id, const char * _Null_unspecified app_path);
 
 #ifdef __OBJC__
+/// Read-only HID service geometry and report descriptors; no event is sent.
+NSDictionary<NSString *, id> * _Nonnull vp_hid_input_devices(void);
 /// The configured radians/second and the injected HID provider's heartbeat.
 NSDictionary * _Null_unspecified vp_gyro_get(void);
 BOOL vp_gyro_set(double x, double y, double z, bool enabled);
 /// The backboardd HID gravity provider used by display.rotation.
 NSDictionary * _Nonnull vp_accelerometer_get(void);
 BOOL vp_accelerometer_set_orientation(NSString * _Nonnull spec);
+/// The virtual hinge HID provider behind display.posture: the fold angle
+/// (degrees, closed 0) and whether the provider in backboardd is enumerated
+/// and current.
+NSDictionary * _Nonnull vp_hinge_get(void);
+/// On an iPhone Duo, hand every control Xcode's DeviceHub sends (a decoded
+/// dictionary with `source`, `type` and `value`) to `handler`, on a serial
+/// queue of its own. False on any other device or without the HID API.
+bool vp_devicehub_controls_start(void (^_Nonnull handler)(NSDictionary * _Nonnull control));
+/// Publish a hinge reading (degrees, and the hinge state it names) where the
+/// hinge stand-ins in dtdeviceinfod read the virtual hinge's newest sample,
+/// without moving the hinge.
+void vp_hinge_reading_publish(double angleDegrees, int hingeState);
+/// Every display-ish IOService object the guest published, with its small
+/// properties: what the display stack bound, for the foldable display work.
+NSArray * _Nonnull vp_display_probe(void);
+/// Read-only CoreAnimation display modes and capability surface.
+NSDictionary<NSString *, id> * _Nonnull vp_display_modes(void);
+NSDictionary<NSString *, id> * _Nonnull vp_device_pose_get(void);
+/// Set the hinge to `angleDegrees` at once. `orientation` is CoreMotion's
+/// device orientation for the host controls (1 portrait … 6 face down), or 0
+/// to keep the stored one.
+BOOL vp_hinge_set(double angleDegrees, int orientation);
+/// Store `angleDegrees` as the hinge's angle, keeping its orientation, without
+/// a host-control event or waiting for the provider: the relay already has the
+/// angle, and the hinge keeps it for its periodic resend.
+bool vp_hinge_note(double angleDegrees);
+/// Sweep the hinge to `targetDegrees` the way Apple's Duo tooling does: over
+/// a profiled transition (0 continuous fold, 1 fade-in-out), `durationMs` < 0
+/// the per-direction default (opening faster than closing), 0 an instant
+/// swap. `orientation` as for `vp_hinge_set`. Returns false on an
+/// out-of-range request.
+BOOL vp_hinge_sweep(double targetDegrees, double durationMs, int profile, int orientation);
 NSDictionary * _Null_unspecified vp_attitude_get(void);
 BOOL vp_attitude_set(double roll, double pitch, double yaw, bool enabled);
 

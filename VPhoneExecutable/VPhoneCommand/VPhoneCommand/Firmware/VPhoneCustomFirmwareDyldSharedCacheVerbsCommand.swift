@@ -74,8 +74,10 @@ enum VPhoneCustomFirmwareDyldSharedCacheVerbs {
     /// Registered into `vphone-cli cfw` by `VPhoneCustomFirmwareCommand`.
     static var all: [ParsableCommand.Type] {
         [
+            VPhoneCustomFirmwarePatchHomeViewEnvironmentCommand.self,
             VPhoneCustomFirmwarePatchSettingsSoftwareUpdateCommand.self,
             VPhoneCustomFirmwarePatchArm64eX1BootstrapCacheCommand.self,
+            VPhoneCustomFirmwarePatchArm64eX1CacheCommand.self,
             VPhoneCustomFirmwareDyldSharedCacheRevertCommand.self,
             VPhoneCustomFirmwarePatchHypervisorVirtualMachineDyldSharedCacheCommand.self,
             VPhoneCustomFirmwarePatchIOMFBSwapEndCommand.self,
@@ -131,6 +133,29 @@ struct VPhoneCustomFirmwarePatchArm64eX1BootstrapCacheCommand: ParsableCommand {
     func run() throws {
         var captured = DyldSharedCacheUndoLog()
         try DyldSharedCacheArm64eX1BootstrapPatcher.patch(
+            directory: directory,
+            dryRun: dryRun,
+            captureUndo: undo.captures,
+            onUndo: { captured.merge($0) },
+            log: VPhoneCustomFirmwareDyldSharedCacheVerbs.stdout,
+        )
+        try undo.persist(captured, dryRun: dryRun)
+    }
+}
+
+struct VPhoneCustomFirmwarePatchArm64eX1CacheCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "patch-arm64e-x1-cache",
+        abstract: "Lower the X1 code in every cache image outside the bootstrap closure",
+    )
+
+    @Argument(transform: URL.init(fileURLWithPath:)) var directory: URL
+    @Flag(name: .customLong("dry-run")) var dryRun = false
+    @OptionGroup var undo: DyldSharedCacheUndoOptions
+
+    func run() throws {
+        var captured = DyldSharedCacheUndoLog()
+        try DyldSharedCacheArm64eX1BootstrapPatcher.patchRemaining(
             directory: directory,
             dryRun: dryRun,
             captureUndo: undo.captures,

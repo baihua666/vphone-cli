@@ -45,8 +45,11 @@ private let machOVerbLog: @Sendable (String) -> Void = { print($0) }
 struct VPhoneCustomFirmwarePatchArm64eX1Command: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "patch-arm64e-x1",
-        abstract: "Lower X1 instructions in a boot-critical executable",
-        discussion: "Supports dyld, launchd, fsck and mount. Later userland instructions are handled on demand. Re-attests modified code pages.",
+        abstract: "Lower X1 instructions in a supported standalone executable",
+        discussion: """
+        Supports dyld, launchd, fsck, mount and CIBarcode. Other standalone userland \
+        instructions are handled on demand. Re-attests modified code pages.
+        """,
     )
     @Argument(transform: URL.init(fileURLWithPath:)) var binary: URL
     func run() throws {
@@ -57,8 +60,9 @@ struct VPhoneCustomFirmwarePatchArm64eX1Command: ParsableCommand {
         case "launchd": identifier = FirmwareGuestSystemPatchSet.arm64eX1LaunchdBootstrap
         case "fsck": identifier = FirmwareGuestSystemPatchSet.arm64eX1FsckBootstrap
         case "mount": identifier = FirmwareGuestSystemPatchSet.arm64eX1MountBootstrap
+        case "CIBarcode": identifier = FirmwareGuestSystemPatchSet.arm64eX1CIBarcode
         default:
-            throw ValidationError("X1 static lowering is limited to the measured boot roots: dyld, launchd, fsck and mount")
+            throw ValidationError("X1 static lowering supports only dyld, launchd, fsck, mount and CIBarcode")
         }
         try CustomFirmwareArm64eX1.patch(
             fileAt: binary,
@@ -133,8 +137,8 @@ struct VPhoneCustomFirmwarePatchSeputilCommand: ParsableCommand {
         to "AA" makes the path /mnt7/AA.gl on every guest, which is what lets
         the install ship one pre-made .gl file instead of one per device.
 
-        The literal is found in __TEXT,__cstring and confirmed by an adrp+add
-        pair in __TEXT,__text that computes its address — the Python takes the
+        The literal is found in __TEXT,__cstring and confirmed by an adr or adrp+add
+        reference in __TEXT,__text that computes its address — the Python takes the
         first substring hit anywhere in the file. Both land on the same byte in
         this firmware; this one cannot land on a coincidence in the next.
 
@@ -351,7 +355,8 @@ struct VPhoneCustomFirmwarePatchVirtualAudioMuteCommand: ParsableCommand {
         "Unable to set property data." EXCEPTION log directly above the
         throw — iOS 27's wrapper holds a second, unrelated CAException that
         the window rules out. The epilogue is the wrapper's single `retab`
-        walked back to its entry. No address is literal.
+        (`retabsppc` on an X1 userland) walked back to its entry. No address
+        is literal.
 
         Idempotent: a site already holding the branch is reported and left
         alone, byte for byte.
@@ -489,6 +494,74 @@ struct VPhoneCustomFirmwarePatchVirtualAudioVolumeGateCommand: ParsableCommand {
     }
 }
 
+// MARK: - patch-virtualaudio-device-state-null-gate
+
+struct VPhoneCustomFirmwarePatchVirtualAudioDeviceStateNullGateCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "patch-virtualaudio-device-state-null-gate",
+        abstract: "Make VirtualAudio's device-state updates wait for the DeviceStateManager singleton",
+        discussion: """
+        Publishing the speaker route wakes VirtualAudio_Device's update,
+        which pushes the route's state at DeviceStateManager twice, each
+        push behind its own capability gate. On a guest with no haptic
+        hardware deferred initialization never constructs the manager —
+        no "Ending Deferred Initialization" is ever logged and no thread
+        is parked inside it; it exits early — so TheInstance() returns
+        null forever, and a push that arrives while the gates answer true
+        dereferences it: audiomxd dies, at any time from seconds to
+        minutes into its life.
+
+        The patch makes each update wait for the manager to exist: the
+        gate-check call above each `cbz w0, <skip>` is redirected to
+        TheInstance itself, so the branch the function already carries —
+        the one that skips the update when its check answers false — now
+        tests the singleton. Null manager: the update is skipped through
+        the function's own path, exactly as on any build whose gates
+        answer false. Manager present: the fall-through re-calls
+        TheInstance and the whole update — the save, the dereference,
+        the lock, the push — runs untouched, as designed. Nothing is
+        removed; the update happens whenever there is a manager to
+        receive it.
+
+        The sites are anchored on the singleton's own diagnostic string
+        ("TheInstance() called before SetInstance()"), whose reference
+        lives inside the accessor; every direct call to it is filtered to
+        the gated shape both updates share — the gate-check call, its
+        `cbz w0` skipping forward past the update, the singleton's return
+        moved aside, and that return dereferenced unchecked. Exactly two
+        callers carry the shape; both gate-check calls are redirected. No
+        address is literal.
+
+        Applies only to an arm64e.x1 plugin (cpusubtype 12 — iOS 27.1's
+        iPhone19,4). Every other build is reported and left
+        byte-identical, and the verb still exits 0: the install shares
+        one staged copy between all five VirtualAudio patches, and the
+        earlier builds are meant to keep their bytes.
+
+        Idempotent: a gate slot already calling TheInstance is reported
+        and left alone, byte for byte.
+        """,
+    )
+
+    @Argument(help: "Path to the VirtualAudio plugin Mach-O, patched in place", transform: URL.init(fileURLWithPath:))
+    var binary: URL
+
+    @Flag(name: .customLong("dry-run"), help: "Report the sites and write nothing")
+    var dryRun = false
+
+    func run() throws {
+        try requireUntruncatedMachO(at: binary)
+        // reattest: false — the caller re-signs.
+        try CustomFirmwareVirtualAudio.patchDeviceStateNullGate(
+            fileAt: binary,
+            reattest: false,
+            dryRun: dryRun,
+            log: machOVerbLog,
+        )
+    }
+}
+
+// MARK: - patch-virtualaudio
 // MARK: - patch-virtualaudio
 
 struct VPhoneCustomFirmwarePatchVirtualAudioCommand: ParsableCommand {
@@ -567,6 +640,36 @@ struct VPhoneCustomFirmwarePatchParavirtGPUIndexOffsetCommand: ParsableCommand {
     }
 }
 
+// MARK: - patch-paravirt-gpu-primitive-restart
+
+struct VPhoneCustomFirmwarePatchParavirtGPUPrimitiveRestartCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "patch-paravirt-gpu-primitive-restart",
+        abstract: "Stop the paravirtual GPU driver sending the primitive restart override",
+        discussion: """
+        OpenGL ES calls setPrimitiveRestartEnabled:index: with the restart
+        index itself, 0xffffffff. The cloudOS 26.4 driver sends it as command
+        0x91, and the host checks the index against maxViewportCount, throws,
+        and fails the command buffer. The serialiser method's pacibsp becomes
+        ret, so the command is never sent and Metal's own restart behaviour
+        applies.
+
+        The method is found from the command's mov w2/mov w3 setup, which is
+        unique in __text. Idempotent: a method that already returns at entry is
+        reported and the file is not rewritten.
+        """,
+    )
+
+    @Argument(help: "Path to the AppleParavirtGPUMetalIOGPUFamily Mach-O, patched in place", transform: URL.init(fileURLWithPath:))
+    var binary: URL
+
+    func run() throws {
+        try requireUntruncatedMachO(at: binary)
+        // No re-attestation: the caller re-signs.
+        try CustomFirmwareParavirtGPUPrimitiveRestart.patch(fileAt: binary, log: machOVerbLog)
+    }
+}
+
 enum VPhoneCustomFirmwareMachOVerbs {
     /// Registered into `vphone-cli cfw` by `VPhoneCustomFirmwareCommand`.
     ///
@@ -586,7 +689,9 @@ enum VPhoneCustomFirmwareMachOVerbs {
             VPhoneCustomFirmwarePatchVirtualAudioMuteCommand.self,
             VPhoneCustomFirmwarePatchVirtualAudioSPGateCommand.self,
             VPhoneCustomFirmwarePatchVirtualAudioVolumeGateCommand.self,
+            VPhoneCustomFirmwarePatchVirtualAudioDeviceStateNullGateCommand.self,
             VPhoneCustomFirmwarePatchParavirtGPUIndexOffsetCommand.self,
+            VPhoneCustomFirmwarePatchParavirtGPUPrimitiveRestartCommand.self,
         ]
     }
 }
