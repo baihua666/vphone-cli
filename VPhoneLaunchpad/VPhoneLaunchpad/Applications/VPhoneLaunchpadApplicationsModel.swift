@@ -33,6 +33,7 @@ final class VPhoneLaunchpadApplicationsModel {
         Task {
             defer { busy = false }
             do { try await operation() }
+            catch is CancellationError { status = "下载已取消。" }
             catch { status = VPhoneLaunchpadError.message(for: error) }
         }
     }
@@ -56,17 +57,18 @@ final class VPhoneLaunchpadApplicationsModel {
         status = "找到 \(online.count) 个应用；下载可用性以 ARM Store 返回为准"
     }
     func download(_ app: VPhoneStoreApplication) async throws {
-        status = "正在自动登录 ARM Store…"
-        let (cookie, agent) = try await storeLogin.credentials(for: app)
-        status = "正在请求 ARM Store、等待并下载 \(app.trackName)…"
+        status = "正在准备下载 \(app.trackName)…"
         let destination = cache.appendingPathComponent("\(app.trackId)-\(app.version).ipa")
-        do {
-            try await VPhoneApplicationLibrary.download(app, country: country, sessionCookie: cookie, userAgent: agent, output: destination)
-        } catch let error as ARMStoreLoginRequired {
-            storeLogin.verified = false
-            storeLogin.message = error.localizedDescription
-            storeLogin.open()
-            throw error
+        for attempt in 0..<2 {
+            do {
+                let (cookie, agent) = try await storeLogin.credentials(for: app)
+                status = "正在请求 ARM Store、等待并下载 \(app.trackName)…"
+                try await VPhoneApplicationLibrary.download(app, country: country, sessionCookie: cookie, userAgent: agent, output: destination)
+                break
+            } catch is ARMStoreLoginRequired where attempt == 0 {
+                storeLogin.invalidateSession()
+                status = "正在恢复下载连接…"
+            }
         }
         try await refresh()
         status = "下载完成，已加入本地应用。请核对包内版本后选择安装。"

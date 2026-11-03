@@ -2,7 +2,7 @@ import Foundation
 
 public struct ARMStoreLoginRequired: LocalizedError {
     public init() {}
-    public var errorDescription: String? { "ARM Store 登录已失效，请在 APP 内重新登录后重试。" }
+    public var errorDescription: String? { "下载权限验证失败，请重试下载。" }
 }
 
 public enum ARMStoreSession {
