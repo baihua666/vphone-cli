@@ -4,6 +4,8 @@
 
 适用分支：`origin/tb_dev`。近期功能见 [更新摘要](launchpad-updates-20261023.md)。
 这是本地定制源码的部署说明，不是官方公证发行包的安装说明。
+官方 2.15.0 合并摘要、已验证范围与离线源码接续见
+[2.15.0 跨 Mac 升级说明](launchpad-2.15.0-migration.md)。
 更新源码、构建 Launchpad、安装 Core、更新 guest 是四件独立的事；普通应用管理更新只需部署 Launchpad。
 
 ## 1. 获取完整源码
@@ -74,7 +76,8 @@ codesign --verify --strict --deep \
 不要同时运行相同 bundle ID 的两个副本。Debug 构建必须包含 `vphone-launchpad.debug.dylib`，不能仅复制同名主程序。
 Helper 是否需要更新以应用校验为准；不能仅按 Helper 版本号推断签名一致。
 
-Core 版本仍沿用实际官方基线 **2.8.0** 与 `-local.<内容哈希>`。不要复制其它 Mac 的 receipt、改目录或写死本机曾经出现的 hash；正常安装器决定该包身份。
+Core 版本使用实际合入的官方基线与 `-local.<内容哈希>`；本次已合入 **2.15.0**。
+不要复制其它 Mac 的 receipt、改目录或写死本机曾经出现的 hash；正常安装器决定该包身份。
 每台 VM 使用自己的 `launchpad.json` 绑定；更改默认 Core 只影响新建/库级命令，不是批量升级。
 接入已有资料库不需要重新 create/restore。新 Mac 没有 VM 时，先完成 Core 安装和正常新建/恢复，拉代码不会生成磁盘。
 
