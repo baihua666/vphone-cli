@@ -1,9 +1,27 @@
 import Foundation
 import ThreadsDesktop
 import Darwin
+import PhotoPicker
 #if VPHONE_CUSTOM_INSTAGRAM_AUTOMATION
 func main() throws {
     let args = Array(CommandLine.arguments.dropFirst())
+    if args.count == 4, args[0] == "photo-verify" {
+        guard PhotoPicker.isEnabled else { throw Failure("通用照片选择未编译启用") }
+        let socket = GuestSocket(path: args[1])
+        try PhotoPicker(rpc: socket.request).verify(image: URL(fileURLWithPath: args[2]), identifier: args[3])
+        print("单个图片视图与原图匹配；只读核验，未发布")
+        return
+    }
+    if args.count == 3, args[0] == "photo-select" {
+        guard PhotoPicker.isEnabled else { throw Failure("通用照片选择未编译启用") }
+        let lock = open(args[1] + ".instagram-test.lock", O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
+        guard lock >= 0 else { throw Failure("无法建立实例锁") }
+        defer { close(lock) }
+        guard flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw Failure("实例已有任务") }
+        try PhotoPicker(rpc: GuestSocket(path: args[1]).request).select(image: URL(fileURLWithPath: args[2]))
+        print("照片格子已选择；未点击完成、未输入文案、未发布")
+        return
+    }
 #if VPHONE_CUSTOM_THREADS_AUTOMATION
 if args.count == 2, args[0] == "threads-task" {
     let directory = URL(fileURLWithPath: args[1])
@@ -99,7 +117,7 @@ if args.first == "threads-e2e" {
 do { try main() } catch is VerificationRequired {
     exit(22)
 } catch {
-    let message = (error as? Failure)?.description ?? "配置、传输或文件操作失败"
+    let message = (error as? Failure)?.description ?? (error as? PhotoPickerError)?.message ?? "配置、传输或文件操作失败"
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
 }

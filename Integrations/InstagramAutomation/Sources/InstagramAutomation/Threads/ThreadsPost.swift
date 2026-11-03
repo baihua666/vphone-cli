@@ -4,6 +4,8 @@ struct ThreadsPost {
     let ui: Screen
     let journal: RunJournal
     var customCaption: String? = nil
+    var includesImage = true
+    var originalImage: URL? = nil
     static func attachmentCount(_ elements: [[String: Any]]) -> Int {
         let old = elements.filter { ($0["label"] as? String ?? "").hasPrefix("Remove photo at attached item #") }
         if !old.isEmpty { return old.count }
@@ -22,6 +24,7 @@ struct ThreadsPost {
     }
     var caption: String { customCaption ?? journal.state.marker + "\nAutomated test. Generated image; no personal content." }
     func prepare() throws {
+        if includesImage {
         if try !ui.has("Manage") && !ui.has(id: "Update") && !ui.has("Select more photos") {
             if !(try ui.has(id: "composer-text-view")) {
                 try ThreadsSession(ui: ui, journal: journal).profile()
@@ -42,11 +45,17 @@ struct ThreadsPost {
                 try ui.wait(id: "Update")
             }
             if try ui.has(id: "Update") {
-                try PhotoSelection(ui: ui).grant(marker: journal.state.marker)
+                if let originalImage {
+                    try ThreadsOriginalPhoto(ui: ui, source: originalImage).select(permission: true)
+                    try ui.wait(id: "Update", tap: true)
+                } else { try PhotoSelection(ui: ui).grant(marker: journal.state.marker) }
                 try ui.socket.call("ui.wait_gone", ["identifier": "Update", "match": "exact", "timeout": 30])
                 try ui.wait("Manage")
             }
             try ui.wait("Done")
+            if let originalImage {
+                try ThreadsOriginalPhoto(ui: ui, source: originalImage).select(permission: false)
+            } else {
             try ui.waitMarker(journal.state.marker)
             // Locate the unique marker's actual photo cell; never assume newest is cell zero.
             let matches = try ui.markerMatches(journal.state.marker)
@@ -60,29 +69,44 @@ struct ThreadsPost {
             }
             guard cells.count == 1, let id = cells[0]["identifier"] as? String else { throw Failure("测试图无法对应唯一格子") }
             if (cells[0]["traits"] as? UInt64 ?? 0) & 8 == 0 { try ui.wait(id: id, tap: true) }
+            }
             try ui.wait("Done", tap: true)
         }
         try ui.wait(id: "composer-text-view")
         try ui.wait(journal.state.account)
         try waitForSinglePhoto()
         guard !(try ui.has("Remove photo at attached item #2")) else { throw Failure("草稿包含多张图片，停止发布") }
+        } else {
+            if !(try ui.has(id: "composer-text-view")) {
+                try ThreadsSession(ui: ui, journal: journal).profile()
+                try ui.wait("Create post", tap: true)
+            }
+            try ui.wait(journal.state.account)
+            try ui.wait(id: "composer-text-view")
+            guard !(try hasPhoto()) else { throw Failure("纯文字任务发现已有图片草稿，停止覆盖") }
+        }
         let draft = try ui.tree().first(where: { $0["identifier"] as? String == "composer-text-view" })
         let text = draft?["label"] as? String ?? ""
-        guard text == "What’s new?" || text.isEmpty || text.hasPrefix(journal.state.marker) else {
+        guard text == "What’s new?" || text.isEmpty || text == caption else {
             throw Failure("已有不属于本任务的草稿，停止覆盖")
         }
         // Clear caption before OCR so the marker can only come from the attached image.
         try ui.wait(id: "composer-text-view", tap: true)
         try ui.clearAndType("")
-        try ui.waitMarker(journal.state.marker)
-        try ui.socket.call("input.type", ["text": caption, "delay_ms": 100])
-        try ui.wait(caption)
+        if let originalImage { try ThreadsOriginalPhoto(ui: ui, source: originalImage).checkAttachment() }
+        else if includesImage { try ui.waitMarker(journal.state.marker) }
+        if !caption.isEmpty {
+            try ui.socket.call("input.type", ["text": caption, "delay_ms": 100])
+            try ui.wait(caption)
+        }
         try ui.wait(id: "composer-post-button")
     }
     func publish() throws {
         try ui.wait(journal.state.account)
-        try ui.wait(caption)
-        try waitForSinglePhoto()
+        if !caption.isEmpty { try ui.wait(caption) }
+        if includesImage { try waitForSinglePhoto() }
+        else { guard !(try hasPhoto()) else { throw Failure("纯文字任务包含意外附件，停止发布") } }
+        if let originalImage { try ThreadsOriginalPhoto(ui: ui, source: originalImage).checkAttachment() }
         try journal.checkpoint()
         try ui.wait(id: "composer-post-button", tap: true)
         try ui.wait("Profile")
@@ -107,12 +131,23 @@ struct ThreadsPost {
         try session.launch()
         if try ui.has("Add this to your Instagram story") { try ui.wait("Not now", tap: true) }
         try session.profile()
+        if customCaption != nil {
+            // Plain user content may already exist in older posts. Do not claim a
+            // unique successful publication or click Post again without a post ID.
+            try ui.image().write(to: journal.directory.appendingPathComponent("publication-review.jpg"), options: .atomic)
+            print("已有发布尝试，结果待核验。正文与图片未添加标记；同一任务重试不会再次发布。")
+            throw VerificationRequired()
+        }
         for _ in 0..<40 {
             let elements = try ui.tree()
             if let captionElement = elements.first(where: { $0["label"] as? String == caption }),
                let frame = captionElement["frame"] as? [String: Double],
                let x = frame["x"], let y = frame["y"], let w = frame["width"], let h = frame["height"],
                try ui.has(journal.state.account) {
+                if !includesImage {
+                    try ui.image().write(to: journal.directory.appendingPathComponent("published.jpg"), options: .atomic)
+                    return
+                }
                 let barcodeFound = try ui.codes().filter({ $0.0 == journal.state.marker }).count == 1
                 if try barcodeFound || Self.markerIsInImage(words: ui.words(), marker: journal.state.marker,
                                         captionFrame: CGRect(x: x, y: y, width: w, height: h)) {

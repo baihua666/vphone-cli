@@ -24,7 +24,7 @@ import Observation
             try store.saveAccount(username: username, machinePath: machinePath, password: password); reload(); error = ""
         } catch { self.error = error.localizedDescription }
     }
-    public func create(account: ThreadsAccount, image: URL, caption: String, freshLogin: Bool, testProfile: Bool) -> UUID? {
+    public func create(account: ThreadsAccount, image: URL?, caption: String, freshLogin: Bool, testProfile: Bool) -> UUID? {
         do { guard let store else { throw ThreadsDesktopError("存储不可用") }
             let task = try store.create(account: account, image: image, caption: caption, freshLogin: freshLogin, testProfile: testProfile)
             reload(); error = ""; return task.id
@@ -59,7 +59,9 @@ import Observation
                 let state = (try? Data(contentsOf: stateURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
                 let verified = (state?["completed"] as? [String] ?? []).contains("verify")
                 let limited = FileManager.default.fileExists(atPath: directory.appendingPathComponent("retry-after.json").path)
-                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? "等待验证" : "失败"
+                let attempted = state?["publishAttempted"] as? Bool ?? false
+                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? (attempted ? "发布结果待核验" : "等待验证")
+                    : attempted ? "发布结果待核验" : "失败（未提交发布）"
                 do { try store.update(id, status: status, detail: progress); reload() }
                 catch { self.error = "任务结果保存失败：" + error.localizedDescription }
                 running = nil; process = nil

@@ -8,7 +8,7 @@ struct MediaImport {
               let root = groups["group.com.apple.FileProvider.LocalStorage"] else {
             throw Failure("当前 Files 未提供本地存储目录")
         }
-        let destination = root + "/File Provider Storage/" + marker + ".png"
+        let destination = root + "/File Provider Storage/" + marker + "." + image.pathExtension
         _ = try ui.socket.send(["t": "push", "local": image.path, "path": destination, "mode": "644"])
         try ui.socket.call("apps.launch", ["bundle_id": "com.apple.DocumentsApp"])
         Thread.sleep(forTimeInterval: 1)
