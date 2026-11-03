@@ -68,3 +68,51 @@ Launchpad/Core、将当前实例切换到新 Core、重启并验证 Threads 选�
 - 该缺口影响 iPhone 15 固件目录/创建覆盖；当前实例重启与触摸路径须另行实测。
 - 合并提交只包含官方导入、冲突保留、测试替身适配和本文；原有未提交工作仍在
   独立 stash 中，完成构建来源标记后恢复。
+
+## 部署进度
+
+- 合并提交 `94dbabe2`，两个 parent 为本地 `674b0adb` 与官方 `fd1610d7`。
+  最终 Core 在合并后干净 tracked 工作区重新完整构建，Info.plist 的
+  `VPhoneBuildHash=94dbabe2`、产品版本 `2.15.0`。
+- 最终 bundle admission 和严格递归 codesign 校验通过；seal SHA-256：
+  `f7570c4be76d2addd678ec71fadd769c4cf330d8f911419ddd5f92d9f49f77b9`，
+  对应安装身份 `2.15.0-local.f7570c4b`（test）。
+- Launchpad 三个既有可选定制编译条件关闭构建通过，产物位于
+  `.build/LaunchpadMacroOff215/`；正常开启构建位于 `.build/LaunchpadDecodo/`。
+  尚未迁移为宏的历史业务不因此视为已隔离。
+- 已按原绑定正常停止 `1-20261026`，创建 APFS 快照
+  `before-core-215-20261103`；配置和两台机器原绑定副本保存在验证目录。
+- 已恢复原工作区 stash，备份 stash 保留；未提交的 BundleActivity 测试及研究
+  记录没有被合并提交吸收。
+- 使用现有已签名 App 的 `bundle install-local ... --keep-default`，准备步骤
+  完成，安装步骤等待 macOS 管理员认证。已请求用户在系统窗口自行完成，
+  不读取或输入密码；此时尚未安装完成、尚未改变实例绑定、尚未启动新 Core。
+
+## 实机验收结果
+
+- 用户完成系统认证后，安装、运行许可和主机预检全部通过。保持原默认 Core，
+  仅将 `1-20261026` 绑定为 `2.15.0-local.f7570c4b`，正常启动后服务在 9 秒响应。
+  运行中的 launcher → CLI → VM 路径均指向新 Core（VM PID 91166）。
+- 正常启动流程通过 HTTP 更新 vphoned 并重连，日志确认启动解锁完成。早期交互
+  请求遇到 locked/AX 未就绪，桌面就绪后继续成功；不将 daemon ping 等同于 UI ready。
+  未执行 `--update-environment`，未刷写内核/固件；guestEnvironmentBundle 原 null
+  仍保留，不能宣称完整 guest 环境已重部署。
+- Threads 选图关闭按钮保持 guest frame `(24,127,36,36)`，中心 `(42,145)` points；
+  屏幕 `430×932`、scale 3。三种验证全部通过并用 `New thread` 控件确认关闭：
+  1. CUA 真实鼠标点击窗口截图中心 `(49,273)`（当前截图 502×1192）。
+  2. 宿主 socket `tap x=126,y=435`（guest pixels），此前同坐标不响应。
+  3. guest RPC `input.tap x=42,y=145`（guest points）。
+- CUA 截图另行确认返回空白发帖页；随后关闭空白页，`Create post` 控件恢复。
+  未选择或上传照片，未输入或发布帖子。
+- 当前实例 config.plist 与升级前逐字节一致，另一实例的 launchpad.json 与原文件
+  逐字节一致；另一实例继续停机并绑定原 `2.13.4-local.666ac4da`。
+- 本次实机覆盖当前普通窗口和上述三条点击路径；没有声称全屏、所有窗口比例、
+  所有边缘手势及新机型均完成验收。
+- 已安装 Launchpad 仍为已签名业务版 `2.13.4`；新 `2.15.0` 业务 App 仅完成
+  源码合并、完整构建和回归，因缺少有效 Apple 签名未替换安装。当前业务 UI
+  保持原版本，不能将 Core 升级报告为两套产品均已部署。
+- 验证目录保存 `install-core.json`、`set-bundle.json`、`start-new-core.json`、
+  `running-processes.txt`、`*-closed.json`、`threads-restored.json` 和 `vms-after.json`。
+- 自动锁定查询 `never=true`。北京时间 20:15:03 起停止交互，超过 125 秒后
+  查询仍为 `locked=false, screen_off=false`，两分钟空闲不锁屏检查通过。
+  原始时间及屏幕状态见 `idle-start.txt`、`idle-end.txt`、`idle-screen-*.json`。
