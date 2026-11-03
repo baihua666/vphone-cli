@@ -39,9 +39,77 @@ CLI 的 Xcode 工程及根目录布局保持不变。GUI 源码直接纳入同�
 
 现有两台实例及其宿主路径还参与 Mac 网络分流。构建不会部署、重签、替换库外固定宿主，也不会修改实例 sidecar、网络配置或固件。启用新的宿主版本需要单独做兼容与运行验收。
 
+## 远端仓库与跨 PC 配置
+
+2026-11-03 起，日常开发与跨 PC 同步以独立私有仓库为准。远端名称与地址统一如下；已有公开 Fork 及官方上游继续保留：
+
+| 远端 | URL | 职责 |
+| --- | --- | --- |
+| `private` | `git@github.com:baihua666/vphone-cli-private.git` | 私有开发与跨 PC 同步；默认推送目标，默认分支 `tb_dev` |
+| `origin` | `git@github.com:baihua666/vphone-cli.git` | 公开 Fork；仅按明确授权同步可公开内容或维护发行 |
+| `upstream` | `https://github.com/Lakr233/vphone-cli.git` | 官方 CLI 来源；本地 `main` 跟踪 `upstream/main` |
+| `workstation-upstream` | `https://github.com/zqxwce/vphone-ws.git` | Workstation subtree 上游 |
+| `workstation-fork` | `git@github.com:baihua666/vphone-ws.git` | 原 Workstation 定制来源，保留历史参考 |
+
+### 已有公开 Fork 克隆的 PC
+
+先检查工作区与远端。保留未提交工作和本地分支，不重新克隆覆盖工作目录：
+
+```sh
+git status --short --branch
+git remote -v
+# 仅在尚无 private 远端时添加；已存在则先核对 URL，不盲目覆盖。
+git remote add private git@github.com:baihua666/vphone-cli-private.git
+git fetch private
+git config --local remote.pushDefault private
+git config --local branch.tb_dev.pushRemote private
+git branch --set-upstream-to=private/tb_dev tb_dev
+```
+
+上述命令逐步执行；尚无本地 `tb_dev` 时，用 `git switch --track -c tb_dev private/tb_dev` 创建，再设置跟踪关系。私有访问失败时检查当前 GitHub 账号、SSH key 和仓库权限，不回退推送公开 Fork。
+
+### 新 PC 首次克隆
+
+显式使用 `--origin private`，避免将私有仓库误命名为约定中的公开 `origin`：
+
+```sh
+git clone --origin private --branch tb_dev git@github.com:baihua666/vphone-cli-private.git vphone-cli
+cd vphone-cli
+git remote add origin git@github.com:baihua666/vphone-cli.git
+git remote add upstream https://github.com/Lakr233/vphone-cli.git
+git remote add workstation-upstream https://github.com/zqxwce/vphone-ws.git
+git remote add workstation-fork git@github.com:baihua666/vphone-ws.git
+git config --local remote.pushDefault private
+git config --local branch.tb_dev.pushRemote private
+```
+
+不需要克隆相邻 GUI 仓库。构建、签名、安装、账号和实例接入继续按 [部署指南](launchpad-mac-setup.md) 操作。
+
+### 每台 PC 的配置验收
+
+Git 远端、跟踪分支及 `.git/config` 不会随提交或 pull 自动复制；从公开仓库拉到本文后，仍须在该 PC 执行配置。每个独立 clone 都要配置；同一仓库的 linked worktree 通常共享仓库级设置。
+
+```sh
+git switch tb_dev
+git remote -v
+git config --get remote.pushDefault
+git config --get-regexp '^branch\..*\.pushRemote$'
+git rev-parse --abbrev-ref '@{upstream}'
+git rev-parse --abbrev-ref '@{push}'
+git push --dry-run --porcelain
+```
+
+默认远端应为 `private`，`tb_dev` 的 upstream 与 push 都应为 `private/tb_dev`，dry-run 的目标应为私有仓库。其它开发分支若已有 `branch.<name>.pushRemote`，会覆盖 `remote.pushDefault`，须逐项核对并改为 `private`；不要修改 `main` 从 `upstream/main` 拉取官方基线的职责。Git 配置优先级见 [Git 官方说明](https://github.com/git/git/blob/master/Documentation/config/remote.adoc)。
+
+### 公开同步边界
+
+“提交 / push / 同步代码”默认仅推私有仓库。公开 Fork 只接收用户明确授权公开的内容；本次规范同步两个仓库是单次授权，不表示后续业务代码自动双推。私有仓库访问失败或公开分支缺少业务提交，都不是改推公开仓库的理由。
+
+公开推送前核对全部待推送提交和文件差异，不能只看最后一个提交。若开发分支已经含未公开内容，从公开基线另建分支并 cherry-pick 已核对的公开提交，不能整体 merge 私有分支。禁用 `push --mirror`、`push --all` 及同一远端多个 push URL 的自动双推做法；普通同步不删除或改写公开历史，也不复制 Release 附件。已公开的历史不会因新建私有仓库而变为私有。
+
 ## 多台 Mac 仅同步源码
 
-多台 Mac 通过 `origin/tb_dev` 同步代码、测试、工程与依赖锁文件、通用脚本、使用文档和技能。每台 Mac 自己构建、创建和管理实例；镜像、IPSW、IPA、固定宿主、归档、日志、令牌和本机运行配置不同步、不进 Git。构建产物在各机器本地生成。
+多台 Mac 通过 `private/tb_dev` 同步代码、测试、工程与依赖锁文件、通用脚本、使用文档和技能。每台 Mac 自己构建、创建和管理实例；镜像、IPSW、IPA、固定宿主、归档、日志、令牌和本机运行配置不同步、不进 Git。构建产物在各机器本地生成。私有仓库同样遵守镜像及分片禁止上传的要求。
 
 通用说明放在 `Documents/Guides/`；研究结论在 `Research/` 记录版本、复现方法和验证范围。本机路径、实例清单和代理节点留在仓库外，不把一台机器的运行状态当作其他机器的前置条件。不要仅为同步文档复制原始日志或含凭据的现场响应。
 
@@ -66,11 +134,9 @@ CLI 的 Xcode 工程及根目录布局保持不变。GUI 源码直接纳入同�
 
 所有 Mac 都要排除的运行数据放根 `.gitignore`；仅某台机器的临时文件放 `.git/info/exclude`，后者不会随 clone 同步。镜像和固定宿主优先保存在仓库外。新建大文件前用 `git check-ignore -v -- <目标文件>` 核对；用 `git ls-files -- <目标路径>` 排查是否已跟踪。忽略规则不影响已跟踪文件，也不能阻止 `git add -f`，不能把它当强制上传拦截。不要忽略全部 JSON、plist 或数据库后缀，以免隐藏工程和测试资源。
 
-首次获取（不需要克隆相邻 GUI 仓库）：
+首次获取按上方“新 PC 首次克隆”配置远端后，再在本机构建：
 
 ```sh
-git clone -b tb_dev git@github.com:baihua666/vphone-cli.git
-cd vphone-cli
 ./scripts/dev.sh build launchpad
 # 签名、安装、账号与实例接入继续按部署指南操作。
 ```
@@ -79,7 +145,8 @@ cd vphone-cli
 
 ```sh
 git status --short
-git pull --ff-only origin tb_dev
+git switch tb_dev
+git pull --ff-only private tb_dev
 ```
 
 完成一个改动后，代码、对应测试和文档一起提交；独立改动分开。选择具体文件或使用 `git add -p`，新增文件单独添加，避免将无关现场文件一起暂存：
@@ -93,7 +160,7 @@ git diff --cached
 # 按变更范围运行所属测试和构建；仅脚本/同步规范变更：
 zsh scripts/tests/source-sync-tests.zsh
 git commit -m "Describe the complete change"
-git push origin tb_dev
+git push
 ```
 
 `push` 只上传提交历史，不上传未提交文件或仓库外配置。两台机器都产生新提交时，`pull --ff-only` 会拒绝分叉；先检查双方提交，正常合并、解决冲突并验证，再 push，不强推覆盖。镜像永远不参与这条同步路径，也不因 pull 自动创建、迁移或启动。
@@ -106,12 +173,7 @@ git push origin tb_dev
 
 ## 持续同步两个上游
 
-远端职责：
-
-- `origin` → `baihua666/vphone-cli`，发布 monorepo 的 `tb_dev`。
-- `upstream` → `Lakr233/vphone-cli`，CLI 上游；`main` 只维护其基线。
-- `workstation-upstream` → `zqxwce/vphone-ws`，GUI 上游。
-- `workstation-fork` → `baihua666/vphone-ws`，仅保留原定制来源。
+远端地址与默认推送规则见上方“远端仓库与跨 PC 配置”。`main` 只维护官方 CLI 基线；Workstation 按子目录同步，合并后的开发代码推送到 `private`。
 
 每次先提交当前工作，确认工作区干净；分别同步并解决冲突，不强制覆盖：
 
@@ -128,7 +190,7 @@ git push origin tb_dev
 
 ./scripts/dev.sh test all
 ./scripts/dev.sh build all
-git push origin tb_dev
+git push private tb_dev
 ```
 
 以上命令需按阶段执行并检查成功，不在失败后继续。合并后核对 GUI/CLI 参数和 schema 兼容性，再决定运行部署。旧 CLI `tb_dev` 指针已保留为本地 `archive/tb_dev-before-monorepo-20261017`；现有业务工作也仍保留在 `codex/business-vm`。
@@ -141,11 +203,9 @@ CLI 产物：`.build/XcodeBundle/Build/Products/Debug/VPhone.bundle`。
 GUI 产物：`VPhoneWorkstation/.build/vphone-ws.app`。
 它们仍是两个产物，由 GUI 调用 CLI；本次没有新增统一安装器、自动升级或发布工作流。VM、IPSW、API token、个人运行配置和构建缓存不入库。
 
-新克隆只有 `origin` 时，先补齐只读同步来源：
+按上方配置好远端后，若本地 `main` 尚不存在，再建立官方跟踪分支：
 
 ```sh
-git remote add upstream https://github.com/Lakr233/vphone-cli.git
-git remote add workstation-upstream https://github.com/zqxwce/vphone-ws.git
 git fetch upstream
 # 若本地 main 尚不存在：
 git branch --track main upstream/main

@@ -1,5 +1,20 @@
 # 官方基线与业务分支
 
+## 2026-11-03 私有开发仓库与公开 Fork 分工
+
+日常开发与跨 PC 源码同步改用 `private/tb_dev`，对应独立私有仓库
+`git@github.com:baihua666/vphone-cli-private.git`；公开 Fork 继续保留为
+`origin`（`git@github.com:baihua666/vphone-cli.git`），官方来源保留为
+`upstream`（`https://github.com/Lakr233/vphone-cli.git`）。Workstation 远端不变。
+本机已设置 `remote.pushDefault=private`、`branch.tb_dev.pushRemote=private`，
+`tb_dev` 跟踪 `private/tb_dev`；其它 PC 必须各自配置，pull 不会复制 Git 本机配置。
+
+当前维护规则见根 [AGENTS.md](../AGENTS.md#远端仓库与跨-pc-维护2026-11-03)，
+操作步骤见 [跨 PC 远端配置](../Documents/Guides/monorepo-development.md#远端仓库与跨-pc-配置)。
+后续一般性的提交与推送仅进入私有仓库；本次规范更新经用户明确授权同步到两个仓库，
+不延伸为业务代码自动公开。官方更新仍正常合并，镜像及分片在两个仓库均禁止上传。
+以下日期条目保留当时真实分支、远端与运行状态，不能代替当前配置和部署验收。
+
 ## 2026-10-22 五台统一到正确基线版本的本地测试核心
 
 Launchpad 中 official/custom-2x-20261016、native-https-test-a/b 与

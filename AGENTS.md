@@ -10,6 +10,15 @@
 
 Virtual iPhone boot tool using Apple's Virtualization.framework with PCC research VMs.
 
+## 远端仓库与跨 PC 维护（2026-11-03）
+
+- 日常开发与跨 PC 同步以独立私有仓库 `baihua666/vphone-cli-private` 的 `tb_dev` 为准，本地远端固定命名为 `private`，URL 为 `git@github.com:baihua666/vphone-cli-private.git`。
+- `origin` 保留为公开 Fork `git@github.com:baihua666/vphone-cli.git`；`upstream` 保留为官方来源 `https://github.com/Lakr233/vphone-cli.git`。`workstation-upstream` / `workstation-fork` 保留原职责，不改名、不替换。
+- 每台 PC 的 Git 配置独立保存，不会随提交、pull 或 clone 自动复制。开始开发前按 [跨 PC 远端配置](Documents/Guides/monorepo-development.md#远端仓库与跨-pc-配置) 核对远端 URL，设置仓库级 `remote.pushDefault=private`、`branch.tb_dev.pushRemote=private`，并让 `tb_dev` 跟踪 `private/tb_dev`；用 `git push --dry-run --porcelain` 验证实际目标。新机器没有私有仓库权限时应报告访问问题，不能自动回退到公开仓库。
+- 一般性的“提交 / push / 同步代码”仅推送私有仓库。公开 Fork 仅在用户明确要求公开同步、贡献或发布对应内容时操作；本次用户明确授权将远端维护规范同步到两个仓库，不构成以后业务代码自动双推的授权。
+- 向公开仓库推送前检查实际待推送的全部提交与差异；私有开发历史不能整体合入公开分支。需要公开个别改动时，从公开基线建立分支并挑选已核对的提交。禁止用 `push --mirror`、`push --all` 或配置同一远端的多个 push URL 实现自动双推。
+- 官方代码继续从 `upstream/main` 合并，Workstation 按现有 subtree 流程同步；合并验证后默认推送 `private`。远端迁移与源码同步不部署 App/Core、不迁移现有 VM；镜像及分片在私有和公开仓库均禁止上传。
+
 ## Monorepo development
 
 - 版本声明与本地构建命名必须遵守下方「官方基线版本与本地标识」规范。
