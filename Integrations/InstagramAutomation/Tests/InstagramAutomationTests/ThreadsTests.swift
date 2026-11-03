@@ -5,6 +5,26 @@ import ThreadsDesktop
 @testable import InstagramAutomation
 #if VPHONE_CUSTOM_INSTAGRAM_AUTOMATION && VPHONE_CUSTOM_THREADS_AUTOMATION
 final class ThreadsTests: XCTestCase {
+    func testInstallationPreflightDistinguishesMissingFromUnavailable() throws {
+        XCTAssertNoThrow(try ThreadsWorkflow.requireInstalled {
+            ["apps": [["bundle_id": "com.burbn.barcelona"]]]
+        })
+        for apps: [[String: Any]] in [[], [["bundle_id": "com.burbn.instagram"]]] {
+            XCTAssertThrowsError(try ThreadsWorkflow.requireInstalled { ["apps": apps] }) {
+                XCTAssertEqual(String(describing: $0), "此虚拟机尚未安装 Threads，请先在应用管理中安装后重试同一任务。")
+            }
+        }
+        for response: [String: Any] in [[:], ["apps": "invalid"], ["apps": [["name": "Threads"]]]] {
+            XCTAssertThrowsError(try ThreadsWorkflow.requireInstalled { response }) {
+                XCTAssertTrue(String(describing: $0).contains("响应格式异常"))
+                XCTAssertFalse(String(describing: $0).contains("尚未安装"))
+            }
+        }
+        XCTAssertThrowsError(try ThreadsWorkflow.requireInstalled { throw Failure("连接超时") }) {
+            XCTAssertEqual(String(describing: $0), "无法检查 Threads 是否已安装：连接超时")
+        }
+    }
+
     func testOriginalPhotoSelectionRejectsMissingOrAmbiguousMatches() throws {
         XCTAssertEqual(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.8, 0.05, 0.7]), 1)
         XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: []))

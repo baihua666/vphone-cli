@@ -2,6 +2,19 @@ import Foundation
 import ThreadsDesktop
 #if VPHONE_CUSTOM_INSTAGRAM_AUTOMATION && VPHONE_CUSTOM_THREADS_AUTOMATION
 enum ThreadsWorkflow {
+    static func requireInstalled(query: () throws -> [String: Any]) throws {
+        let result: [String: Any]
+        do { result = try query() }
+        catch { throw Failure("无法检查 Threads 是否已安装：" + ((error as? Failure)?.description ?? error.localizedDescription)) }
+        guard let apps = result["apps"] as? [[String: Any]],
+              apps.allSatisfy({ ($0["bundle_id"] as? String)?.isEmpty == false }) else {
+            throw Failure("无法检查 Threads 是否已安装：应用列表响应格式异常，请检查实例连接后重试。")
+        }
+        guard apps.contains(where: { $0["bundle_id"] as? String == "com.burbn.barcelona" }) else {
+            throw Failure("此虚拟机尚未安装 Threads，请先在应用管理中安装后重试同一任务。")
+        }
+    }
+
     static func run(socket: String, directory: URL, freshLogin: Bool, password: String?, request: ThreadsTaskRequest? = nil) throws {
         let journal = try RunJournal(directory: directory, socket: socket, account: request?.account ?? "test409518",
                                      freshLogin: freshLogin, platform: "threads")
@@ -12,6 +25,7 @@ enum ThreadsWorkflow {
         }
         try ThreadsRestriction.check(directory: directory)
         let ui = Screen(socket: GuestSocket(path: socket), inspect: { try ThreadsRestriction.inspect($0, directory: directory) })
+        try requireInstalled { try ui.socket.request("apps.list", ["filter": "all"]) }
         let screen = try ui.socket.request("device.screen", [:])
         guard screen["width"] as? Int == 430, screen["height"] as? Int == 932,
               screen["orientation"] as? Int == 0 else { throw Failure("Threads 仅校准了 430×932 竖屏") }
