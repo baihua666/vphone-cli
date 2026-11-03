@@ -16,6 +16,7 @@ struct VPhoneLaunchpadApplicationsView: View {
     }
     var body: some View {
         @Bindable var model = model
+        let storePresentation = model.storeLogin.presentationID
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Picker("目标虚拟机", selection: $model.machinePath) {
@@ -74,13 +75,7 @@ struct VPhoneLaunchpadApplicationsView: View {
                 Text("版本状态与本地安装包比较，不代表 ARM Store 当前最新版本。重新安装或降级可使用列表右侧菜单。")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                HStack {
-                    Text("ARM Store 会话")
-                    Text(model.storeLogin.verified ? "已登录" : "待登录／验证")
-                    Button("登录／管理账号…") { model.storeLogin.open() }.disabled(model.busy)
-                    Button("退出登录") { model.storeLogin.logout() }.disabled(model.busy || model.storeLogin.checking || model.storeLogin.authenticating)
-                }
-                Text("在 APP 内登录后即可下载；会话仅保存在当前 Mac。下载可能消耗账户额度。")
+                Text("选择应用即可下载或安装；下载可能消耗 ARM Store 账户额度。")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("只显示目标机未安装的应用", isOn: $model.hideInstalled).disabled(!model.installedLoaded || model.busy)
                 List(model.online.filter { !model.hideInstalled || model.installed[$0.bundleId] == nil }) { app in
@@ -118,7 +113,7 @@ struct VPhoneLaunchpadApplicationsView: View {
             if state == .running, let machine { Task { try? await model.refreshInstalled(machine) } }
             else if state == .stopped { model.clearInstalled() }
         }
-        .sheet(isPresented: Binding(get: { model.storeLogin.presented }, set: { model.storeLogin.presented = $0 })) {
+        .sheet(isPresented: Binding(get: { model.storeLogin.presented }, set: { if !$0 { model.storeLogin.dismiss(presentation: storePresentation) } })) {
             VPhoneARMStoreLoginView(login: model.storeLogin)
         }
         .fileImporter(isPresented: $importFile, allowedContentTypes: [.data]) { result in
