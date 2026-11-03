@@ -38,6 +38,9 @@ extension VPhoneMenuController {
         )
         cameraSourceVideoFileItem = videoFile
         menu.addItem(videoFile)
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+        VPhoneHostCameraMenu.install(in: menu, controller: self)
+#endif
 
         menu.addItem(NSMenuItem.separator())
 
@@ -68,6 +71,9 @@ extension VPhoneMenuController {
             (kind == .testPattern) ? .on : .off
         cameraSourceVideoFileItem?.state =
             (kind == .videoFile) ? .on : .off
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+        VPhoneHostCameraMenu.refresh(controller: self)
+#endif
     }
 
     @objc func setCameraSourceOff() {

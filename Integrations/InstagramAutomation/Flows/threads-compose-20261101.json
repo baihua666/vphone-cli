@@ -1,0 +1,10 @@
+{"steps":[
+  {"id":"composer","action":"visualWait","text":"New thread"},
+  {"id":"account","action":"wait","text":"test409518"},
+  {"id":"image","action":"visualWait","text":"VPHONE-THREADS-20261101"},
+  {"id":"caption-field","action":"tap","identifier":"composer-text-view"},
+  {"id":"clear","action":"clear"},
+  {"id":"caption","action":"type","delayMs":100,"text":"VPHONE-THREADS-20261101\nAutomated test. Generated image; no personal content."},
+  {"id":"caption-read-back","action":"wait","text":"VPHONE-THREADS-20261101\nAutomated test. Generated image; no personal content."},
+  {"id":"publish-control","action":"wait","identifier":"composer-post-button"}
+]}

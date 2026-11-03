@@ -1,0 +1,38 @@
+{
+  "steps": [
+    {
+      "id": "caption-page",
+      "action": "visualWait",
+      "text": "New post"
+    },
+    {
+      "id": "focus-caption",
+      "action": "visualTap",
+      "text": "Add a caption..."
+    },
+    {
+      "id": "wait-caption-editor",
+      "action": "visualWait",
+      "text": "Caption"
+    },
+    {
+      "id": "clear-caption",
+      "action": "clear"
+    },
+    {
+      "id": "caption",
+      "action": "type",
+      "text": "VPHONE-TEST-20261030-01\nAutomation verification post.\nPhoto: Dschwen, Western Gull, Wikimedia Commons, CC BY 2.5.\nhttps://commons.wikimedia.org/wiki/File:Gull_portrait_ca_usa.jpg\nhttps://creativecommons.org/licenses/by/2.5/\nCropped by Instagram."
+    },
+    {
+      "id": "finish-caption",
+      "action": "visualTap",
+      "text": "OK"
+    },
+    {
+      "id": "verify-caption",
+      "action": "visualWait",
+      "text": "VPHONE-TEST-20261030-01"
+    }
+  ]
+}

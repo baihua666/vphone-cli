@@ -67,7 +67,7 @@ struct HelperCompatibilityTests {
         let rebuilt = client()
         precondition(rebuilt.state == .unknown, "Presence alone must not mark an unverified peer ready")
         await rebuilt.refresh()
-        precondition(rebuilt.state == .ready("15"))
+        precondition(rebuilt.state == .ready("21"))
         try await rebuilt.install()
         precondition(counter.value == 0)
 
@@ -76,7 +76,7 @@ struct HelperCompatibilityTests {
         let newerBytes = try Data(contentsOf: installed)
         let newer = client()
         await newer.refresh()
-        precondition(newer.state == .ready("21"))
+        precondition(newer.state == .ready("27"))
         try await newer.install()
         precondition(counter.value == 0)
         let retainedBytes = try Data(contentsOf: installed)
@@ -84,8 +84,15 @@ struct HelperCompatibilityTests {
         try replace("current")
         let olderCompatible = client("newer")
         await olderCompatible.refresh()
-        precondition(olderCompatible.state == .ready("15"))
+        precondition(olderCompatible.state == .ready("21"))
         try await olderCompatible.install()
+        precondition(counter.value == 0)
+
+        // A legacy App embedding build 15 still reuses the required installed 21.
+        let legacyApp = client("legacy")
+        await legacyApp.refresh()
+        precondition(legacyApp.state == .ready("21"))
+        try await legacyApp.install()
         precondition(counter.value == 0)
 
         // XPC errors must not turn into outdated or request a replacement.
@@ -99,7 +106,7 @@ struct HelperCompatibilityTests {
 
         // A stale running process, a missing job, and invalid metadata are errors.
         try replace("newer")
-        let stale = client(probe: { "15" })
+        let stale = client(probe: { "21" })
         await stale.refresh()
         guard case .unavailable = stale.state else { preconditionFailure("Expected stale peer rejection") }
         await expectRefused(stale)
@@ -135,9 +142,9 @@ struct HelperCompatibilityTests {
 
         // An upgrade during the XPC await must not allow a subsequent downgrade.
         try replace("old")
-        let raced = client(probe: { try replace("newer"); return "14" })
+        let raced = client(probe: { try replace("newer"); return "20" })
         await expectRefused(raced)
-        precondition(Compatibility.version(at: installed) == "21")
+        precondition(Compatibility.version(at: installed) == "27")
         precondition(counter.value == 0)
         do { try environment().requireUpgrade(); preconditionFailure("Disk downgrade must be refused") }
         catch {}
@@ -154,9 +161,9 @@ struct HelperCompatibilityTests {
                 try FileManager.default.copyItem(at: root.appendingPathComponent("current"), to: installed)
             })
             await install.refresh()
-            precondition(install.state == (initial == nil ? .notInstalled : .outdated(installed: "14", bundled: "15")))
+            precondition(install.state == (initial == nil ? .notInstalled : .outdated(installed: "20", bundled: "21")))
             try await install.install()
-            precondition(install.state == .ready("15"))
+            precondition(install.state == .ready("21"))
         }
         precondition(counter.value == 2)
 

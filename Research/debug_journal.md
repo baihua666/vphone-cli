@@ -1,3 +1,158 @@
+## 2026-11-02 Threads 最终一键验收通过，文件凭据与二维码选图
+
+在原实例 1-20261023 / pinned 2.13.4-local.666ac4da 上，最终任务
+threads-final-pass-20261102 于北京时间 00:53:28—00:56:48 单进程从新目录完成：
+自动退出、文件凭据登录 test409518、简介修改恢复、导图、有限照片授权、二维码选图、
+发布 VPHONE-6BE1E700、重启 App 后全文与图片核验。期间无人操作页面或重启脚本。
+原命令同目录重复运行退出 0；state 内容一致，事件和截图哈希不变，发布尝试仅一次。
+19 项测试及两种宏关闭检查通过。先前阶段“尚未完整通过”的结论由本条取代。
+
+修复了登录表单焦点与过渡页面点击、附件控件变化；登录与上传状态改用 AX，避免 OCR
+阻塞。仅放大文字仍会把 F 误识别，测试图新增二维码并按解码结果选图/核验。用户要求
+测试凭据简单存独立文件，现优先 ~/.config/vphone-social-tests/test409518.password，
+不再因重编译触发钥匙串弹窗。未改 Core/guest/helper/代理/实例绑定，X 保持暂停。
+详细校准过程、边界与证据见
+[Threads / X 验收记录](../Integrations/InstagramAutomation/SOCIAL-VALIDATION.md)。
+
+## 2026-11-02 Threads 一键流程实现；最终验收被平台登录错误阻断
+
+在 Integrations/InstagramAutomation 内增加 Threads 独立编译入口，复用既有 Swift 执行器；
+没有改 Core、guest、helper、VM 绑定或代理。校准任务 VPHONE-D5711E96 已发布并在重启
+Threads 后读回全文与图片编号；同目录不重复发布。实际密码登录另一次已通过，简介恢复
+和导图通过，但小缩略图 B/8 混淆阻止选图；放大编号并增加缩略图 OCR 回归测试。
+最终全新目录复跑返回官方 Unable to log in，一次重试仍失败，停止提交；未完成最终版本
+从登录到发布的单次无干预验收，不能用分段成功替代。17 项测试及宏关闭入口验证通过。
+X 按用户要求暂停。证据与后续步骤见
+[Threads / X 验收记录](../Integrations/InstagramAutomation/SOCIAL-VALIDATION.md)。
+
+## 2026-11-01 Threads：注册、简介往返与图文发布通过；X 等待邮箱验证码
+
+后续用户已分别确认两平台条款。Threads `test409518` 注册成功，分段脚本完成
+简介修改恢复、相册导入、有限照片授权、选图、全文断言后发布及主页读回。
+编号 `VPHONE-THREADS-20261101`，本机证据见 Integrations/InstagramAutomation/Artifacts。
+默认打字速度发生漏字，发布前全文断言阻止提交；增加可配置字符间隔并以 100ms 重填通过。
+12 项测试、关闭宏无副作用及同目录重复发布阻断通过。仍未交付 Threads 单进程一键链路。
+X 原生生日页无明确错误地停留，改用官方网页后已发送邮箱验证码，等待用户输入；
+未声称 X 注册、登录或发帖成功。详细边界见
+[社交平台验收记录](../Integrations/InstagramAutomation/SOCIAL-VALIDATION.md)。
+
+## 2026-11-01 X / Threads：安装与启动通过（历史阶段，条款等待已被上文取代）
+
+用户确认通过现有应用管理安装 ARM Store 包，并指定 X 使用此前的 163 邮箱。
+Launchpad 应用管理在 `1-20261023` 安装并读回 Threads 453.0.0（1098859560）
+和 X 12.39（20），两个 App 均实际启动，原 pinned Core 与代理未变。
+Threads 使用本机钥匙串中的 `test409518` 凭据通过验证，到达
+“Confirm and join Threads”最终条款页，尚未点击。X 到达邮箱/电话登录注册入口，
+页面明确继续即同意条款，尚未点击邮箱入口。等待两平台条款的操作当下确认。
+未发帖、未修改资料；X/Threads 的无 AI 完整链路仍未实现或验收。
+
+现场观察：X 首次通知提示延迟出现，可覆盖其他前台 App，`ui.tree` 却仍返回
+底层 App 元素；必须以截图核对，不能把 AX tap 成功当作输入成功。拒绝该通知后
+引导可继续。Threads 登录字段的 AX 标签不是输入区域，点击标签下方约 23pt
+才聚焦，随后键盘 `Next:` 可转到密码字段。密码通过已有执行器读取钥匙串，
+未写入配置或日志。`network.egress` 对 ipify 的一次探测超时，但 Threads
+认证实际成功，不据此认定全网或代理失效。
+
+## 2026-11-01 X / Threads 自动化：环境预检（后续安装已完成，见上）
+
+复用 Launchpad 启动 `1-20261023`，绑定仍为 `2.13.4-local.666ac4da`，
+未修改 Core、guest、代理或镜像。`apps.list` 的用户应用清单没有 X 或 Threads；
+在 Downloads、`.vphone` 与本仓库 Integrations 中未找到对应 IPA/TIPA。
+现有 Instagram 工具的传输、OCR、日志与导图可复用，但流程入口及选择器绑定
+Instagram，不能直接声称支持另外两个平台。等待目标测试账号与安装包路径/来源，
+未在 X / Threads 登录、修改资料或发布内容，也未创建未经实测的页面流程。
+本次启动的实例保持运行，供后续安装验收；另一个实例未操作。
+
+## 2026-10-31 Instagram：无大模型的一键账号测试链路
+
+在独立 `Integrations/InstagramAutomation` 宿主模块实现并实测账号密码登录、
+简介修改与原值恢复、Files 导入相册、按唯一编号选图、发布和全文/图像核验。
+最终单命令运行在 00:10:09–00:12:15 北京时间通过，账号 `test409518`，
+标记 `VPHONE-11F44A02`；同目录重跑没有重复发帖。11 项单元测试及宏关闭态通过。
+原实例 `1-20261023` 及 pinned Core 保持不变，没有底层源码或部署修改。
+设置页加载失败使退出后的冷登录未验收；实际验证使用官方“登录已有账号”入口
+提交密码，保留原会话。真实运行未触发验证码，不宣称自动取码或 PC 批准已验证。
+原因、校准过程、保留范围和证据见 [Instagram 验收记录](../Integrations/InstagramAutomation/VALIDATION.md)。
+
+## 2026-10-28 宿主摄像头：本机测试部署与原运行状态恢复
+
+经用户授权部署显式开启 `VPHONE_EXPERIMENTAL_HOST_CAMERA` 的本机测试 App，以及
+仅替换 VM 宿主、保留原 CLI／guest 资源的 Core `2.13.4-local.5591cc6b`。
+只绑定测试机 `4-20261023`；该机测试后停止，`1-20261023` 已用原 Core 恢复运行。
+默认 Core、系统 helper、原 guest 环境与实例配置校验保持一致。
+60 帧纯软件采集夹具及异常处理通过；真实 VM 使用既有测试图案完成系统相机预览，
+保存并查看 1280×720 JPEG。USB 摄像头未连接，真实采集、TCC 和第三方 APP 未验收。
+证据、一次正常退出后的重试、部署边界及完整 App 回退路径见
+[本次验收记录](Host/host_camera_deployment_20261028.md)。
+
+## 2026-10-27 Helper 兼容修复：本机实际部署与更新检查验收通过
+
+用户明确同意“现在重启 Launchpad 并验收”。部署前复核三台 VM 均停止且无安装任务，
+正常退出旧管理器后仅替换 `/Applications/vphone-launchpad.app`，保留完整原 App 于
+`/Applications/.vphone-helper-compat-20261027/previous.app`。新 App 深度严格验签通过，
+基线仍为 2.13.4、revision 14、本机测试构建；没有发布或替换线上 r14 附件。
+新主程序 SHA-256 为 `d926d497fc01bb7b60bf05c97a9f8a7401d127cb7aab636fb223e63c26014550`。
+
+重新启动真实 App 后，实际 XPC 返回 helper `ready (21)`、hostReady=true。
+真实主机设置显示“已通过 6 项，共 6 项”“特权 Helper 版本 21”，连续两次重新检查
+均保持通过，没有安装按钮或管理员重装提示；连续两次“检查 App 更新”显示当前已是
+最新版本，同样没有触发帮助程序安装。新 App 内附 helper 的 SHA-256 为
+`0726c348b471ba9d0f23206c31e3b95e342d90c5917a60649aa6bce9f2dee55b`，
+与系统 helper 不同，但同为构建 21，验证了本次需要覆盖的真实升级后复用条件。
+
+系统 helper 全程复用原 PID 41109，文件 SHA-256 仍为
+`7c56d399d1d43cf24992a645d41ce06b9b65061b47eecfa8de8d651f0106c1e0`。
+17 份受保护文件摘要全部一致，Core 默认值及 VM 绑定／配置、Decodo 配置保持原样；
+未升级或修改 Core／guest，没有启停 VM，三台均保持停止。修复版管理器保留运行。
+验收文件在 `.build/helper-recheck-20261027/deployment-verification.json` 及
+`status-after-launch.json`、`status-after-check-1.json`、`status-after-check-2.json`。
+另有真实签名 DMG 暂存、错误修订／签名／篡改拒绝、失败回滚保持原 App 的测试通过。
+
+边界：线上当前没有更高修订，本轮验证的是本机替换 App 后的真实启动／XPC，以及
+连续在线检查；没有发布新修订，也没有把一次新的在线下载升级冒充已完成。后续发行
+必须使用包含修复和交付校验的源码，不得再次从旧 r14 checkout 打包覆盖修复。
+
+## 2026-10-27 更新后重复安装 Helper：修复未进入 r14 交付包
+
+用户复测明确：更新安装并重启 App 后，主机设置提示安装／更新帮助程序。
+当前 App 为 2.13.4 / revision 14 / helper 21，主程序 SHA-256
+`3c079fb1fe702b9bb151097eedcff7e4b8596907d5076374f73b5727463e42d0`，
+与 launchpad-r13 工作树 r14/image 中的已签名交付 App 逐字节一致。
+该工作树的客户端仍比较版本相等和整文件 SHA-256；上次在 tb_dev 完成的修复没有进入
+r14 交付物。当前 App 点击“检查 App 更新”显示已是最新且 helper ready (21)，
+单纯检查不复现；缺陷位于更新替换 App 后的启动检查，而不是检查目录请求本身。
+
+已用 r14 的真实旧客户端重放：仅替换文件路径／已捕获的版本回复，读取真实签名的
+系统 helper 与新候选内附 helper；同为 build 21、文件字节不同，实际 refresh 返回
+`outdated(installed: "21", bundled: "21")`，复现程序退出 1。
+交付验收新增可选 App 参数，旧安装 App 检查失败，新签名候选检查通过。
+`Integrations/Distribution/scripts/package-app.zsh` 在签名后、DMG 创建前运行该验收。
+此检查读取编译后的主程序而非字符串资源，避免只验证另一个 checkout 的源码。
+它是交付回归检测，不是对任意二进制的全局功能证明；实际 XPC／UI 仍需验收。
+
+当前 tb_dev 已合入带 patchRestoreImage／linkKernelcache 的 helper 21 接口，因此
+最低兼容构建由原 2.8 客户端的 15 对齐到 21；不随 App 更新或签名变化递增。
+测试相应覆盖 21 同版不同字节、27 高版本、内附 15 复用已安装 21、真实必要升级和
+所有原有签名／错误／竞态路径。未改产品 baseline、helper 实现／协议或 Core。
+
+候选基于实际 r14 来源的 ab11cd57 快照，只移入客户端兼容修复、状态展示和对应测试，
+保留已有定制与私有预置。未修改 launchpad-r13 的工作区，也未带入该工作区正在进行的
+“一键停止并更新”等未提交修改。构建与签名产物在 `.build/helper-recheck-20261027/`，
+属于本机测试产物，含既有私有预置，不发布、不上传。原 App 完整备份已保存。
+系统 helper SHA-256 为
+`7c56d399d1d43cf24992a645d41ce06b9b65061b47eecfa8de8d651f0106c1e0`，
+候选内附 helper 为
+`0726c348b471ba9d0f23206c31e3b95e342d90c5917a60649aa6bce9f2dee55b`。
+两者均为 build 21，此差异用于验收真实更新后仍复用系统 helper 的场景。
+
+已通过 Release 构建、同团队签名与深度校验、HelperCompatibilityTests，App 更新模型的
+manual／automatic 两种编译条件测试。17 份 VM 配置／绑定、Core receipt／seal 和
+Decodo 配置／系统 helper 的保护摘要已记录，未启停 VM 或修改这些内容。
+当前三台 VM 均停止；已请求用户确认仅重启管理器的维护时间，尚未替换运行中的 App。
+实际新 App 的 XPC、更新检查及 Helper PID／文件不变验收仍待该确认，不能宣称已部署。
+日志：legacy-repro.log、delivery-before.log、delivery-after.log、build.log、sign.log、
+update-model-tests.log 均在上述验证目录。未新增固件补丁，不改二进制补丁计数。
+
 ## 2026-10-27 Launchpad 复用兼容帮助程序，阻止自动降级
 
 用户要求修复主 App 更新时重复安装帮助程序，以及已安装高版本被误判过期的问题。

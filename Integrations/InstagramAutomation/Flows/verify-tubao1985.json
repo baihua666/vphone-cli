@@ -1,0 +1,7 @@
+{
+  "steps": [
+    {"id": "open-instagram", "action": "launch"},
+    {"id": "open-profile", "action": "tap", "identifier": "profile-tab"},
+    {"id": "verify-account", "action": "wait", "identifier": "user-switch-title-button", "text": "tubao1985"}
+  ]
+}

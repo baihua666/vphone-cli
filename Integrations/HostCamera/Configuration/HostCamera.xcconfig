@@ -1,0 +1,4 @@
+// Opt in explicitly; never enable through DEBUG. Swift flags are disabled by removal, not FLAG=0.
+VPHONE_HOST_CAMERA =
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(VPHONE_HOST_CAMERA)
+// Enabled build: VPHONE_HOST_CAMERA=VPHONE_EXPERIMENTAL_HOST_CAMERA

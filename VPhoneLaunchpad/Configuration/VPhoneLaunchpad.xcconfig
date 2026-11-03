@@ -1,5 +1,6 @@
 // The app. Build configuration (Development or Release) comes from the
 // project level; this file only names the product.
+#include "../../Integrations/HostCamera/Configuration/HostCamera.xcconfig"
 
 PRODUCT_NAME = vphone-launchpad
 // PRODUCT_NAME has a dash, which is not a valid Swift module name.
@@ -9,6 +10,10 @@ PRODUCT_BUNDLE_IDENTIFIER = com.vphone.launchpad
 // Outside the synchronized group: a build input, not a bundled resource.
 GENERATE_INFOPLIST_FILE = NO
 INFOPLIST_FILE = Resources/VPhoneLaunchpad.Info.plist
+INFOPLIST_PREPROCESS = YES
+INFOPLIST_PREPROCESSOR_DEFINITIONS = $(inherited) $(VPHONE_HOST_CAMERA)
+// XML prose contains apostrophes; they are not C character literals.
+INFOPLIST_OTHER_PREPROCESSOR_FLAGS = $(inherited) -Wno-invalid-pp-token
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
 // VPhoneLaunchpad/AppIcon.icon, an Icon Composer document with light, dark
 // and tinted appearances. actool merges CFBundleIconName into the plist.
@@ -26,4 +31,6 @@ VPHONE_TEMPORARY_INSTALL_MEMORY = VPHONE_CUSTOM_TEMPORARY_INSTALL_MEMORY
 VPHONE_DISTRIBUTION = VPHONE_CUSTOM_DISTRIBUTION
 VPHONE_DISTRIBUTION_REVISION = 0
 VPHONE_DISTRIBUTION_SIGNING = notarized
-SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(VPHONE_APPLICATION_MANAGEMENT) $(VPHONE_TEMPORARY_INSTALL_MEMORY) $(VPHONE_DISTRIBUTION)
+// Threads desktop workflow; clear to omit UI and bundled runner.
+VPHONE_THREADS_DESKTOP = VPHONE_CUSTOM_THREADS_DESKTOP
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(VPHONE_APPLICATION_MANAGEMENT) $(VPHONE_TEMPORARY_INSTALL_MEMORY) $(VPHONE_DISTRIBUTION) $(VPHONE_HOST_CAMERA) $(VPHONE_THREADS_DESKTOP)

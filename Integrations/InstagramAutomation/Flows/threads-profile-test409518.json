@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {"id":"account","action":"wait","text":"test409518"},
+    {"id":"edit","action":"tap","text":"Edit profile"},
+    {"id":"empty-bio","action":"tap","text":"Bio: + Write bio"},
+    {"id":"bio-input","action":"tap","text":"Write a bio…"},
+    {"id":"write","action":"type","text":"VPHONE-THREADS-PROFILE-TEST"},
+    {"id":"save-bio","action":"tap","identifier":"done-button"},
+    {"id":"edited-value","action":"wait","text":"Bio: VPHONE-THREADS-PROFILE-TEST"},
+    {"id":"save-profile","action":"tap","identifier":"done-button"},
+    {"id":"read-back","action":"wait","text":"VPHONE-THREADS-PROFILE-TEST"},
+    {"id":"restore-edit","action":"tap","text":"Edit profile"},
+    {"id":"restore-bio","action":"tap","text":"Bio: VPHONE-THREADS-PROFILE-TEST"},
+    {"id":"restore-input","action":"tap","text":"VPHONE-THREADS-PROFILE-TEST"},
+    {"id":"clear","action":"clear"},
+    {"id":"restore-save-bio","action":"tap","identifier":"done-button"},
+    {"id":"restored-empty","action":"wait","text":"Bio: + Write bio"},
+    {"id":"restore-save-profile","action":"tap","identifier":"done-button"},
+    {"id":"restored-profile","action":"wait","text":"Edit profile"},
+    {"id":"marker-gone","action":"waitGone","text":"VPHONE-THREADS-PROFILE-TEST"}
+  ]
+}

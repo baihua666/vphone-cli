@@ -3,10 +3,11 @@ import Security
 
 /// App-side admission only; no helper protocol or installed daemon changes.
 nonisolated struct VPhoneLaunchpadHelperCompatibility {
-    // Build 15 supplies this app's XPC interface. Later builds must preserve it.
+    // Build 21 supplies patchRestoreImage and linkKernelcache. Later builds
+    // must preserve this app's existing XPC interface.
     // Raise this floor only for required helper features or security fixes,
     // independently of the main app's version and its bundled helper build.
-    static let minimumVersion = "15"
+    static let minimumVersion = "21"
 
     var bundledHelper = Bundle.main.bundleURL.appendingPathComponent(
         "Contents/Library/LaunchServices/\(VPhoneLaunchpadHelperIdentity.label)"

@@ -19,11 +19,17 @@
 # the matching entitlement or macOS refuses without asking. Afterwards the
 # app's entitlements are checked, and the helper is checked against the app's
 # SMPrivilegedExecutables requirement, which is what SMJobBless enforces.
+# The optional host-camera entitlement follows the built app's macro-gated Info.plist marker.
 set -euo pipefail
 
 app=${1:?usage: SignLaunchpad.sh <vphone-launchpad.app> <identity>}
 identity=${2:?usage: SignLaunchpad.sh <vphone-launchpad.app> <identity>}
-entitlements="${0:a:h}/../Resources/VPhoneLaunchpad.entitlements"
+base_entitlements="${0:a:h}/../Resources/VPhoneLaunchpad.entitlements"
+source "${0:a:h}/../../Integrations/HostCamera/Build/HostCameraBuild.zsh"
+signing_scratch=$(mktemp -d "${TMPDIR:-/tmp}/vphone-launchpad-sign.XXXXXXXX")
+trap 'rm -rf "$signing_scratch"' EXIT
+entitlements="$signing_scratch/Launchpad.entitlements"
+vphone_host_camera_entitlements "$app/Contents/Info.plist" "$base_entitlements" "$entitlements"
 label=com.vphone.launchpad.helper
 helper="$app/Contents/Library/LaunchServices/$label"
 
@@ -38,10 +44,14 @@ codesign --force --options runtime --timestamp --identifier com.vphone.launchpad
   --sign "$identity" "$app/Contents/MacOS/vphone-launchpad-cli"
 codesign --force --options runtime --timestamp --identifier com.vphone.launchpad.launcher \
   --sign "$identity" "$app/Contents/MacOS/vphone-launchpad-launcher"
+if [[ -x "$app/Contents/MacOS/threads-automation" ]]; then
+  codesign --force --options runtime --timestamp --sign "$identity" "$app/Contents/MacOS/threads-automation"
+fi
 codesign --force --options runtime --timestamp --entitlements "$entitlements" \
   --sign "$identity" "$app"
 
 codesign --verify --strict --deep "$app"
+vphone_host_camera_validate "$app/Contents/Info.plist" "$app"
 signed=$(codesign -d --entitlements - --xml "$app" 2>/dev/null)
 for key in com.apple.security.device.audio-input com.apple.security.personal-information.location; do
   if [[ $signed != *"<key>$key</key><true/>"* ]]; then

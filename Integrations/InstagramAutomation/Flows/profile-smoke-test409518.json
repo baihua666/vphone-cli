@@ -1,0 +1,93 @@
+{
+  "steps": [
+    {
+      "id": "verify-account",
+      "action": "wait",
+      "text": "test409518",
+      "identifier": "user-switch-title-button"
+    },
+    {
+      "id": "edit-profile",
+      "action": "tap",
+      "text": "Edit profile"
+    },
+    {
+      "id": "edit-bio",
+      "action": "tap",
+      "identifier": "profile-bio"
+    },
+    {
+      "id": "focus-bio",
+      "action": "tap",
+      "text": "Write a profile bio"
+    },
+    {
+      "id": "clear-bio",
+      "action": "clear"
+    },
+    {
+      "id": "write-bio",
+      "action": "type",
+      "text": "VPhone automation verification"
+    },
+    {
+      "id": "save-bio",
+      "action": "tap",
+      "identifier": "done-button"
+    },
+    {
+      "id": "wait-editor",
+      "action": "wait",
+      "identifier": "profile-user-name"
+    },
+    {
+      "id": "back-profile",
+      "action": "tap",
+      "identifier": "BackButton"
+    },
+    {
+      "id": "verify-saved-bio",
+      "action": "wait",
+      "text": "VPhone automation verification"
+    },
+    {
+      "id": "restore-edit",
+      "action": "tap",
+      "text": "Edit profile"
+    },
+    {
+      "id": "restore-bio",
+      "action": "tap",
+      "identifier": "profile-bio"
+    },
+    {
+      "id": "restore-focus",
+      "action": "tap",
+      "text": "Write a profile bio"
+    },
+    {
+      "id": "restore-clear",
+      "action": "clear"
+    },
+    {
+      "id": "restore-save",
+      "action": "tap",
+      "identifier": "done-button"
+    },
+    {
+      "id": "restore-wait",
+      "action": "wait",
+      "identifier": "profile-user-name"
+    },
+    {
+      "id": "restore-back",
+      "action": "tap",
+      "identifier": "BackButton"
+    },
+    {
+      "id": "verify-restored",
+      "action": "waitGone",
+      "text": "VPhone automation verification"
+    }
+  ]
+}

@@ -21,11 +21,12 @@ PLIST
         -Wl,-sectcreate,__TEXT,__info_plist,"$temporary/info.plist" -o "$temporary/$name"
     /usr/bin/codesign --force --sign - --identifier com.vphone.test.helper "$temporary/$name" 2>/dev/null
 }
-fixture old 14 0
-fixture current 15 0
-fixture rebuilt 15 1
-fixture newer 21 0
-fixture malformed 15-local 0
+fixture legacy 15 0
+fixture old 20 0
+fixture current 21 0
+fixture rebuilt 21 1
+fixture newer 27 0
+fixture malformed 21-local 0
 
 /usr/bin/xcrun swiftc -swift-version 6 -strict-concurrency=complete \
     -parse-as-library \
@@ -35,3 +36,16 @@ fixture malformed 15-local 0
     "$launchpad/VPhoneLaunchpad/HostSetup/VPhoneLaunchpadHelperInstallation.swift" \
     "$launchpad/Tests/HelperCompatibilityTests.swift" -o "$temporary/helper-tests"
 "$temporary/helper-tests" "$temporary"
+
+# Optional delivery check: passing source tests is not enough when the updater
+# ships a different executable. Inspect compiled code, not translated resources.
+if (( $# > 0 )); then
+    app="$1"
+    /usr/bin/codesign --verify --strict --deep "$app"
+    if ! /usr/bin/strings "$app/Contents/MacOS/vphone-launchpad" \
+        | /usr/bin/grep -F 'The installed helper is the same version or newer. It has not been replaced.' >/dev/null; then
+        print -u2 -- 'FAIL: App executable does not contain the helper compatibility/downgrade guard'
+        exit 1
+    fi
+    print -- 'App delivery check passed: signed executable contains the helper compatibility/downgrade guard'
+fi

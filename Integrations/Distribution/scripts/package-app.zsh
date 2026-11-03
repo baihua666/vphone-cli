@@ -29,6 +29,8 @@ xcodebuild -project VPhoneLaunchpad/VPhoneLaunchpad.xcodeproj -scheme VPhoneLaun
   "VPHONE_DISTRIBUTION_REVISION=$revision" "VPHONE_DISTRIBUTION_SIGNING=$mode" "${team_args[@]}" build
 app="$output/DerivedData/Build/Products/Release/vphone-launchpad.app"
 zsh VPhoneLaunchpad/Build/SignLaunchpad.sh "$app" "$identity"
+# Verify the executable being shipped, not only tests in another checkout.
+zsh VPhoneLaunchpad/Tests/HelperCompatibilityTests.sh "$app"
 mkdir "$output/image"
 ditto "$app" "$output/image/vphone-launchpad.app"
 ln -s /Applications "$output/image/Applications"
