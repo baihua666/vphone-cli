@@ -43,10 +43,43 @@ final class ThreadsTests: XCTestCase {
         }
     }
 
+    func testPixelMatchingSurvivesThumbnailAndSmallSelectionBadge() throws {
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let original = try XCTUnwrap(CGContext(data: nil, width: 160, height: 90, bitsPerComponent: 8,
+            bytesPerRow: 640, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        original.setFillColor(CGColor(red: 0.9, green: 0.8, blue: 0.4, alpha: 1))
+        original.fill(CGRect(x: 0, y: 0, width: 160, height: 90))
+        original.setFillColor(CGColor(red: 0.1, green: 0.5, blue: 0.2, alpha: 1))
+        original.fill(CGRect(x: 40, y: 20, width: 40, height: 50))
+        let image = try XCTUnwrap(original.makeImage())
+        let thumb = try XCTUnwrap(CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8,
+            bytesPerRow: 256, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        thumb.draw(try XCTUnwrap(image.cropping(to: CGRect(x: 35, y: 0, width: 90, height: 90))),
+                   in: CGRect(x: 0, y: 0, width: 64, height: 64))
+        thumb.setFillColor(CGColor(gray: 1, alpha: 1))
+        thumb.fillEllipse(in: CGRect(x: 54, y: 54, width: 8, height: 8))
+        let score = ThreadsOriginalPhoto.distance(try ThreadsOriginalPhoto.pixels(image),
+            try ThreadsOriginalPhoto.pixels(XCTUnwrap(thumb.makeImage())))
+        XCTAssertLessThan(score, 0.08)
+        XCTAssertEqual(try ThreadsOriginalPhoto.uniqueIndex(distances: [score, 0.3]), 0)
+        XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: [score, score]))
+    }
+
+    func testPhotoCellRoundingDoesNotExcludeFirstColumn() throws {
+        let rect = try XCTUnwrap(ThreadsOriginalPhoto.cropRect(
+            frame: ["x": -0.000003390842, "y": 304.333, "width": 142.222, "height": 142.333], width: 1290, height: 2796))
+        XCTAssertEqual(rect.minX, 0)
+        XCTAssertGreaterThan(rect.width, 426)
+        XCTAssertNil(ThreadsOriginalPhoto.cropRect(
+            frame: ["x": -10, "y": 304, "width": 142, "height": 142], width: 1290, height: 2796))
+    }
+
     func testOriginalPhotoSelectionRejectsMissingOrAmbiguousMatches() throws {
         XCTAssertEqual(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.8, 0.05, 0.7]), 1)
+        // Real original in the Threads square picker, compared as normalized RGB pixels.
+        XCTAssertEqual(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.012542, 0.261248, 0.258359]), 0)
         XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: []))
-        XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.4]))
+        XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.6]))
         XCTAssertThrowsError(try ThreadsOriginalPhoto.uniqueIndex(distances: [0.08, 0.09]))
     }
     func testTaskRetryCannotChangeImageOrCaption() throws {

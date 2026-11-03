@@ -51,6 +51,13 @@ struct ThreadsPost {
                 } else { try PhotoSelection(ui: ui).grant(marker: journal.state.marker) }
                 try ui.socket.call("ui.wait_gone", ["identifier": "Update", "match": "exact", "timeout": 30])
                 try ui.wait("Manage")
+                // Threads retains the old limited-library grid after permission changes.
+                // Reopen the picker to read the newly granted assets.
+                if originalImage != nil {
+                    try ui.wait("Cancel", tap: true)
+                    try ui.wait(id: "composer-text-view")
+                    try ui.wait("Add photos and videos from your camera roll", tap: true)
+                }
             }
             try ui.wait("Done")
             if let originalImage {

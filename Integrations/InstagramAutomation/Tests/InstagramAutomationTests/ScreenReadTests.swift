@@ -2,6 +2,21 @@ import XCTest
 @testable import InstagramAutomation
 #if VPHONE_CUSTOM_INSTAGRAM_AUTOMATION
 final class ScreenReadTests: XCTestCase {
+    func testShareSheetAXTransitionCanRecoverAfterThreeReads() throws {
+        var reads = 0
+        _ = try Screen.readTree(read: {
+            reads += 1
+            if reads < 6 { throw Failure("AX element query failed (-25216)") }
+            return [["label": "Image canvas"]]
+        }, pause: {})
+        XCTAssertEqual(reads, 6)
+        reads = 0
+        XCTAssertThrowsError(try Screen.readTree(read: {
+            reads += 1; throw Failure("AX element query failed (-25216)")
+        }, pause: {}))
+        XCTAssertEqual(reads, 10)
+    }
+
     func testTransientTreeFailureRecoversWithoutRepeatingActions() throws {
         var reads = 0
         var pauses = 0
@@ -13,6 +28,16 @@ final class ScreenReadTests: XCTestCase {
         XCTAssertEqual(reads, 3)
         XCTAssertEqual(pauses, 2)
         XCTAssertEqual(result.first?["label"] as? String, "Profile")
+    }
+
+    func testAppRestartAXTransitionCanRecover() throws {
+        var reads = 0
+        _ = try Screen.readTree(read: {
+            reads += 1
+            if reads < 5 { throw Failure("AX element query failed (-25215)") }
+            return [["label": "Profile"]]
+        }, pause: {})
+        XCTAssertEqual(reads, 5)
     }
 
     func testPersistentFailureStopsAndKeepsOriginalReason() {

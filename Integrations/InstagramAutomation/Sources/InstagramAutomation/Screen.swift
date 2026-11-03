@@ -6,10 +6,12 @@ struct Screen {
     var inspect: (([[String: Any]]) throws -> Void)? = nil
     // Only repeat this read-only snapshot, never credential submission or publish taps.
     static func readTree(read: () throws -> [[String: Any]], pause: () -> Void = { Thread.sleep(forTimeInterval: 1) }) throws -> [[String: Any]] {
-        for attempt in 0..<3 {
+        for attempt in 0..<10 {
             do { return try read() }
             catch {
-                guard attempt < 2 else { throw error }
+                // iOS share sheets can temporarily lose their AX root during transitions.
+                let transientAX = ["AX element query failed (-25216)", "AX element query failed (-25215)"].contains { String(describing: error).contains($0) }
+                guard attempt < (transientAX ? 9 : 2) else { throw error }
                 pause()
             }
         }
