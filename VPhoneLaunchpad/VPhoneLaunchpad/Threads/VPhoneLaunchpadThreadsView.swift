@@ -119,13 +119,13 @@ struct VPhoneLaunchpadThreadsView: View {
                                 Text("此任务包含简介修改与恢复测试").font(.caption).foregroundStyle(.secondary)
                             }
                             Button(record.status == "待运行" ? "检查登录并发帖" : record.status == "已完成" ? "重试（已完成不重复发布）" : "重试同一任务") {
-                                // Match by local directory, never by a reused display name.
-                                guard platform.machines.machines.contains(where: { $0.path.url.path + "/vphone.sock" == record.request.socket }) else {
-                                    model.error = "任务绑定的虚拟机已不存在，请核对实例。"; return
+                                Task {
+                                    await model.run(record.id, executable: executable) {
+                                        try await platform.prepareThreadsMachine(socket: record.request.socket)
+                                    }
                                 }
-                                model.run(record.id, executable: executable)
                             }.disabled(model.running != nil)
-                            Text("请先启动对应虚拟机。重试沿用此任务保存的设置与发布状态；上方选项仅用于新建任务。").font(.caption).foregroundStyle(.secondary)
+                            Text("未启动时自动启动对应虚拟机，连接就绪后执行。重试沿用此任务保存的设置与发布状态；上方选项仅用于新建任务。").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -153,4 +153,35 @@ struct VPhoneLaunchpadThreadsView: View {
         }
     }
 }
+@MainActor
+private extension VPhoneLaunchpadModel {
+    func prepareThreadsMachine(socket: String) async throws {
+        await machines.refresh()
+        guard let machine = machines.machines.first(where: { $0.path.url.path + "/vphone.sock" == socket }) else {
+            throw ThreadsDesktopError("任务绑定的虚拟机已不存在，请核对实例。")
+        }
+        switch machines.state(of: machine.path) {
+        case .stopped:
+            machines.actionError = nil
+            await machines.start(machine.path)
+            if let failure = machines.actionError { throw failure }
+        case let .busy(activity):
+            throw ThreadsDesktopError("虚拟机正在执行其它操作：" + activity)
+        case .running: break
+        }
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline {
+            try Task.checkCancellation()
+            if await Task.detached(operation: {
+                VPhoneLaunchpadCreationPipeline.ping(socketPath: socket)
+            }).value { return }
+            guard machines.state(of: machine.path) == .running else {
+                throw ThreadsDesktopError("虚拟机启动后已退出，请查看主窗口中该实例的运行日志。")
+            }
+            try await Task.sleep(for: .seconds(1))
+        }
+        throw ThreadsDesktopError("等待虚拟机连接就绪超时（120 秒）。请确认虚拟机已进入桌面，再重试同一任务。连接：" + socket)
+    }
+}
+
 #endif

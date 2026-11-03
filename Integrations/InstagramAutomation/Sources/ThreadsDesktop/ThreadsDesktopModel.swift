@@ -37,6 +37,23 @@ import Observation
         } catch { self.error = error.localizedDescription; return nil }
     }
     public func directory(_ id: UUID) -> URL? { store?.directory(id) }
+    /// Reserve the task before awaiting startup; a second click cannot launch another run.
+    public func run(_ id: UUID, executable: URL,
+                    prepare: @escaping @MainActor () async throws -> Void) async {
+        guard running == nil, let store, tasks.contains(where: { $0.id == id }) else { return }
+        running = id; error = ""; progress = "正在启动虚拟机并等待连接就绪…"
+        do {
+            try await prepare()
+            running = nil
+            run(id, executable: executable)
+        } catch {
+            running = nil; self.error = error.localizedDescription
+            // Preparation never changes publication checkpoints or the immutable request.
+            try? store.update(id, status: "启动未就绪", detail: error.localizedDescription)
+            reload()
+        }
+    }
+
     public func run(_ id: UUID, executable: URL) {
         guard running == nil, let store, tasks.contains(where: { $0.id == id }) else { return }
         let directory = store.directory(id)
