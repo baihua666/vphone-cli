@@ -3,12 +3,27 @@ import Foundation
 struct ThreadsSession {
     let ui: Screen
     let journal: RunJournal
+    static func checkVerification(_ elements: [[String: Any]], journal: RunJournal) throws {
+        let words = elements.compactMap { $0["label"] as? String }.joined(separator: " ")
+        let challenge = Login.isChallenge(words) || ["验证码", "两步验证", "双重验证", "输入代码", "enter the code", "enter code"]
+            .contains(where: words.lowercased().contains)
+        guard challenge else { return }
+        // A challenge is already an in-flight login, including account-card login.
+        // Resuming after manual approval must not force another logout.
+        journal.state.loginSubmitted = true
+        try journal.save()
+        try journal.event("login", "needs_verification")
+        print("需要登录验证：自动操作已暂停。请在虚拟机完成验证，再点击“验证完成，继续任务”。")
+        throw VerificationRequired()
+    }
+
     func launch() throws {
         try ui.socket.call("apps.launch", ["bundle_id": "com.burbn.barcelona"])
         Thread.sleep(forTimeInterval: 2)
         var ready = false
         for _ in 0..<60 {
-            if let elements = try? ui.tree(), elements.contains(where: {
+            let elements = try ui.tree()
+            if elements.contains(where: {
                 ["Profile", "Password", "Log in with Instagram", "Add this to your Instagram story",
                  "Share your threads to your Instagram story", "Manage", "Photos", "New thread",
                  "Save login info?", "Save your login info?", "Log out of your account?", "Unable to log in"].contains($0["label"] as? String ?? "")
@@ -16,11 +31,11 @@ struct ThreadsSession {
             Thread.sleep(forTimeInterval: 1)
         }
         guard ready else { throw Failure("Threads 启动后的界面尚未就绪") }
-        if (try? ui.has("Add this to your Instagram story")) == true { try ui.wait("Not now", tap: true) }
+        if (try ui.has("Add this to your Instagram story")) == true { try ui.wait("Not now", tap: true) }
         try dismissSharingHint()
     }
     func dismissSharingHint() throws {
-        if (try? ui.has("Share your threads to your Instagram story")) == true {
+        if (try ui.has("Share your threads to your Instagram story")) == true {
             try ui.socket.call("input.swipe", ["x1": 215, "y1": 625, "x2": 215, "y2": 910, "seconds": 0.5])
             Thread.sleep(forTimeInterval: 1)
         }
@@ -62,9 +77,9 @@ struct ThreadsSession {
         }
         for _ in 0..<90 {
             if journal.state.loginSubmitted { break }
-            if (try? ui.has("Save login info?")) == true { try ui.wait("Don't save", tap: true) }
-            else if (try? ui.has("Log out of your account?")) == true { try ui.wait("Log out", tap: true) }
-            else if (try? ui.has("Password")) == true || (try? ui.has(id: "single-user-login-card")) == true { break }
+            if (try ui.has("Save login info?")) == true { try ui.wait("Don't save", tap: true) }
+            else if (try ui.has("Log out of your account?")) == true { try ui.wait("Log out", tap: true) }
+            else if try ui.has("Password") || ui.has(id: "single-user-login-card") { break }
             Thread.sleep(forTimeInterval: 1)
         }
         if !journal.state.loginSubmitted {
@@ -77,7 +92,7 @@ struct ThreadsSession {
                     try ui.wait(id: "single-user-login-card", tap: true)
                 }
                 for _ in 0..<10 {
-                    if (try? ui.has("Password")) == true { break }
+                    if (try ui.has("Password")) == true { break }
                     Thread.sleep(forTimeInterval: 1)
                 }
             }
@@ -102,14 +117,14 @@ struct ThreadsSession {
             try ui.wait("Log in", tap: true)
         }
         for _ in 0..<60 {
-            if (try? ui.has("Unable to log in")) == true {
+            if (try ui.has("Unable to log in")) == true {
                 try ui.image().write(to: journal.directory.appendingPathComponent("login-error.jpg"), options: .atomic)
                 journal.state.loginSubmitted = false
                 try journal.save()
                 try ui.wait("OK", tap: true)
                 throw Failure("Threads 明确返回登录失败；已保留证据，可沿用原命令重试")
             }
-            if (try? ui.has("Save your login info?")) == true {
+            if (try ui.has("Save your login info?")) == true {
                 try ui.wait("Not now", tap: true)
                 continue
             }

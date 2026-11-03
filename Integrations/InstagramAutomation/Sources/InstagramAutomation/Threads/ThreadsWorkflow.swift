@@ -24,7 +24,12 @@ enum ThreadsWorkflow {
             throw Failure("旧任务图片含测试识别条。请重新选择原图创建任务；本任务未提交发布。")
         }
         try ThreadsRestriction.check(directory: directory)
-        let ui = Screen(socket: GuestSocket(path: socket), inspect: { try ThreadsRestriction.inspect($0, directory: directory) })
+        let ui = Screen(socket: GuestSocket(path: socket), inspect: {
+            try ThreadsRestriction.inspect($0, directory: directory)
+            if !journal.state.completed.contains("login"), !journal.state.publishAttempted {
+                try ThreadsSession.checkVerification($0, journal: journal)
+            }
+        })
         try requireInstalled { try ui.socket.request("apps.list", ["filter": "all"]) }
         let screen = try ui.socket.request("device.screen", [:])
         guard screen["width"] as? Int == 430, screen["height"] as? Int == 932,

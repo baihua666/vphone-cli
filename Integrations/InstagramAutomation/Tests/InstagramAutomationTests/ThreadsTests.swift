@@ -5,6 +5,24 @@ import ThreadsDesktop
 @testable import InstagramAutomation
 #if VPHONE_CUSTOM_INSTAGRAM_AUTOMATION && VPHONE_CUSTOM_THREADS_AUTOMATION
 final class ThreadsTests: XCTestCase {
+    func testVerificationPausesWithoutChangingLoginOrPublicationCheckpoint() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let journal = try RunJournal(directory: root, socket: root.appendingPathComponent("vphone.sock").path,
+                                     account: "test409518", freshLogin: false, platform: "threads")
+        XCTAssertFalse(journal.state.loginSubmitted)
+        for label in ["Enter the code", "Security code", "请输入验证码", "双重验证"] {
+            XCTAssertThrowsError(try ThreadsSession.checkVerification([["label": label]], journal: journal)) {
+                XCTAssertTrue($0 is VerificationRequired)
+            }
+        }
+        XCTAssertTrue(journal.state.loginSubmitted)
+        XCTAssertFalse(journal.state.publishAttempted)
+        XCTAssertFalse(journal.state.completed.contains("login"))
+        XCTAssertNoThrow(try ThreadsSession.checkVerification([["label": "Profile"]], journal: journal))
+    }
+
     func testInstallationPreflightDistinguishesMissingFromUnavailable() throws {
         XCTAssertNoThrow(try ThreadsWorkflow.requireInstalled {
             ["apps": [["bundle_id": "com.burbn.barcelona"]]]

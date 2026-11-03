@@ -10,6 +10,16 @@ import Observation
     public var error = ""
     private var store: ThreadsStore?
     private var process: Process?
+    private var preparation: Task<Void, Error>?
+    private var stopRequested = false
+
+    public func stop() {
+        guard running != nil else { return }
+        stopRequested = true
+        progress = "正在中止，等待执行器退出…"
+        preparation?.cancel()
+        if process?.isRunning == true { process?.terminate() }
+    }
     public init(root: URL? = nil, credentials: URL? = nil) {
         do {
             store = try ThreadsStore(root: root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -41,21 +51,31 @@ import Observation
     public func run(_ id: UUID, executable: URL,
                     prepare: @escaping @MainActor () async throws -> Void) async {
         guard running == nil, let store, tasks.contains(where: { $0.id == id }) else { return }
-        running = id; error = ""; progress = "正在启动虚拟机并等待连接就绪…"
+        stopRequested = false; running = id; error = ""; progress = "正在启动虚拟机并等待连接就绪…"
         do {
-            try await prepare()
+            let preparation = Task { try await prepare() }
+            self.preparation = preparation
+            defer { self.preparation = nil }
+            try await preparation.value
+            guard !stopRequested else { throw CancellationError() }
             running = nil
             run(id, executable: executable)
         } catch {
-            running = nil; self.error = error.localizedDescription
+            running = nil; self.error = stopRequested ? "" : error.localizedDescription
             // Preparation never changes publication checkpoints or the immutable request.
-            try? store.update(id, status: "启动未就绪", detail: error.localizedDescription)
+            let state = (try? Data(contentsOf: store.directory(id).appendingPathComponent("state.json")))
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let verified = (state?["completed"] as? [String] ?? []).contains("verify")
+            let attempted = state?["publishAttempted"] as? Bool ?? false
+            let status = verified ? "已完成" : attempted ? "发布结果待核验" : stopRequested ? "已中止" : "启动未就绪"
+            try? store.update(id, status: status, detail: stopRequested ? "任务已中止，可继续同一任务；已有发布尝试时仅核验。" : error.localizedDescription)
             reload()
         }
     }
 
     public func run(_ id: UUID, executable: URL) {
         guard running == nil, let store, tasks.contains(where: { $0.id == id }) else { return }
+        stopRequested = false; error = ""
         let directory = store.directory(id)
         do {
             guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw ThreadsDesktopError("自动化执行器缺失，请安装包含 Threads 功能的 Launchpad") }
@@ -83,8 +103,10 @@ import Observation
                 let verified = (state?["completed"] as? [String] ?? []).contains("verify")
                 let limited = FileManager.default.fileExists(atPath: directory.appendingPathComponent("retry-after.json").path)
                 let attempted = state?["publishAttempted"] as? Bool ?? false
-                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? (attempted ? "发布结果待核验" : "等待验证")
-                    : attempted ? "发布结果待核验" : "失败（未提交发布）"
+                let status = verified ? "已完成" : attempted ? "发布结果待核验" : stopRequested ? "已中止" : limited ? "平台限流" : task.terminationStatus == 22 ? "等待验证" : "失败（未提交发布）"
+                if stopRequested {
+                    progress += attempted ? "\n任务已中止；已有发布尝试，继续时仅核验，不重复发帖。" : "\n任务已中止；请在虚拟机完成验证后继续同一任务。"
+                }
                 do { try store.update(id, status: status, detail: progress); reload() }
                 catch { self.error = "任务结果保存失败：" + error.localizedDescription }
                 running = nil; process = nil

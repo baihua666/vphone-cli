@@ -118,7 +118,7 @@ struct VPhoneLaunchpadThreadsView: View {
                             if record.request.testProfile {
                                 Text("此任务包含简介修改与恢复测试").font(.caption).foregroundStyle(.secondary)
                             }
-                            Button(record.status == "待运行" ? "检查登录并发帖" : record.status == "已完成" ? "重试（已完成不重复发布）" : "重试同一任务") {
+                            Button(record.status == "待运行" ? "检查登录并发帖" : record.status == "已完成" ? "重试（已完成不重复发布）" : record.status == "等待验证" ? "验证完成，继续任务" : record.status == "已中止" ? "继续同一任务" : "重试同一任务") {
                                 Task {
                                     await model.run(record.id, executable: executable) {
                                         try await platform.prepareThreadsMachine(socket: record.request.socket)
@@ -129,7 +129,17 @@ struct VPhoneLaunchpadThreadsView: View {
                         }
                     }
                 }
-                if model.running != nil { ProgressView("正在执行，请勿同时操作目标虚拟机…") }
+                if model.running != nil {
+                    HStack {
+                        ProgressView("正在执行，请勿同时操作目标虚拟机…")
+                        Button("中止任务", role: .destructive) { model.stop() }
+                    }
+                    Text("遇到验证码可中止任务，在虚拟机完成验证后继续同一任务。中止不会关闭虚拟机，也不会撤回已提交的操作。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if record?.status == "等待验证" {
+                    Text("请在虚拟机完成验证码或登录确认，然后点击“验证完成，继续任务”。页面状态会在继续检查后更新。")
+                        .foregroundStyle(.orange)
+                }
                 ScrollView {
                     Text(model.running != nil ? model.progress : record?.detail ?? "")
                         .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
