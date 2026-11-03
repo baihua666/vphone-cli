@@ -7,6 +7,7 @@ import Observation
     public private(set) var tasks: [ThreadsTaskRecord] = []
     public private(set) var running: UUID?
     public private(set) var progress = ""
+    public private(set) var validationResults: [UUID: String] = [:]
     public var error = ""
     private var store: ThreadsStore?
     private var process: Process?
@@ -31,20 +32,20 @@ import Observation
         } catch { self.error = error.localizedDescription; return nil }
     }
     public func directory(_ id: UUID) -> URL? { store?.directory(id) }
-    public func run(_ id: UUID, executable: URL) {
+    public func run(_ id: UUID, executable: URL, mode: ThreadsExecutionMode = .publish) {
         guard running == nil, let store, tasks.contains(where: { $0.id == id }) else { return }
         let directory = store.directory(id)
         do {
             guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw ThreadsDesktopError("自动化执行器缺失，请安装包含 Threads 功能的 Launchpad") }
             let task = Process()
             task.executableURL = executable
-            task.arguments = ["threads-task", directory.path]
-            let output = directory.appendingPathComponent("run.log")
+            task.arguments = mode.arguments(directory: directory.path)
+            let output = directory.appendingPathComponent(mode == .photoValidation ? "photo-validation.log" : "run.log")
             FileManager.default.createFile(atPath: output.path, contents: nil, attributes: [.posixPermissions: 0o600])
             let handle = try FileHandle(forWritingTo: output)
             task.standardOutput = handle; task.standardError = handle
             task.standardInput = FileHandle.nullDevice
-            try store.update(id, status: "运行中", detail: "正在连接虚拟机")
+            if mode == .publish { try store.update(id, status: "运行中", detail: "正在连接虚拟机") }
             running = id; progress = "正在连接虚拟机"; reload()
             try task.run()
             process = task
@@ -60,15 +61,19 @@ import Observation
                 let verified = (state?["completed"] as? [String] ?? []).contains("verify")
                 let limited = FileManager.default.fileExists(atPath: directory.appendingPathComponent("retry-after.json").path)
                 let attempted = state?["publishAttempted"] as? Bool ?? false
-                let status = verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? (attempted ? "发布结果待核验" : "等待验证")
+                let status = mode == .photoValidation ? mode.resultStatus(success: task.terminationStatus == 0) : verified ? "已完成" : limited ? "平台限流" : task.terminationStatus == 22 ? (attempted ? "发布结果待核验" : "等待验证")
                     : attempted ? "发布结果待核验" : "失败（未提交发布）"
-                do { try store.update(id, status: status, detail: progress); reload() }
+                do {
+                    if mode == .photoValidation { validationResults[id] = status + "\n" + progress }
+                    else { try store.update(id, status: status, detail: progress); reload() }
+                }
                 catch { self.error = "任务结果保存失败：" + error.localizedDescription }
                 running = nil; process = nil
             }
         } catch {
             running = nil; process = nil; self.error = error.localizedDescription
-            try? store.update(id, status: "失败", detail: error.localizedDescription); reload()
+            if mode == .photoValidation { validationResults[id] = mode.resultStatus(success: false) + ": " + error.localizedDescription }
+            else { try? store.update(id, status: "失败", detail: error.localizedDescription); reload() }
         }
     }
 }

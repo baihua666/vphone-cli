@@ -23,6 +23,19 @@ func main() throws {
         return
     }
 #if VPHONE_CUSTOM_THREADS_AUTOMATION
+if args.count == 2, args[0] == "threads-photo-check" {
+    let directory = URL(fileURLWithPath: args[1])
+    let request = try JSONDecoder().decode(ThreadsTaskRequest.self, from: Data(contentsOf: directory.appendingPathComponent("request.json")))
+    try request.validate()
+    guard let name = request.sourceImageName, request.includesImage else { throw Failure("此任务没有可验证的原图") }
+    guard PhotoPicker.isEnabled else { throw Failure("通用照片选择未编译启用") }
+    let lock = open(request.socket + ".instagram-test.lock", O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
+    guard lock >= 0 else { throw Failure("无法建立实例锁") }
+    defer { close(lock) }
+    guard flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw Failure("实例已有任务") }
+    try ThreadsPhotoValidation(ui: Screen(socket: GuestSocket(path: request.socket)), image: directory.appendingPathComponent(name)).run()
+    return
+}
 if args.count == 2, args[0] == "threads-task" {
     let directory = URL(fileURLWithPath: args[1])
     let request = try JSONDecoder().decode(ThreadsTaskRequest.self, from: Data(contentsOf: directory.appendingPathComponent("request.json")))

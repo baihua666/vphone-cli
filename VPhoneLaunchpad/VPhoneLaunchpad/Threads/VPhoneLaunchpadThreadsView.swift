@@ -97,6 +97,12 @@ struct VPhoneLaunchpadThreadsView: View {
                         }
                         VStack(alignment: .leading, spacing: 8) {
                             Text(record.request.publishedCaption).lineLimit(4).textSelection(.enabled)
+                            Button("仅验证选图与附件（不发布）") {
+                                guard platform.machines.machines.contains(where: { $0.path.url.path + "/vphone.sock" == record.request.socket }) else {
+                                    model.error = "任务绑定的虚拟机已不存在，请核对实例。"; return
+                                }
+                                model.run(record.id, executable: executable, mode: .photoValidation)
+                            }.disabled(model.running != nil || record.request.sourceImageName == nil)
                             Button(record.status == "待运行" ? "一键登录并发帖" : record.status == "已完成" ? "重试（已完成不重复发布）" : "重试同一任务") {
                                 // Match by local directory, never by a reused display name.
                                 guard platform.machines.machines.contains(where: { $0.path.url.path + "/vphone.sock" == record.request.socket }) else {
@@ -110,7 +116,7 @@ struct VPhoneLaunchpadThreadsView: View {
                 }
                 if model.running != nil { ProgressView("正在执行，请勿同时操作目标虚拟机…") }
                 ScrollView {
-                    Text(model.running != nil ? model.progress : record?.detail ?? "")
+                    Text(model.running != nil ? model.progress : record.map { model.validationResults[$0.id] ?? $0.detail } ?? "")
                         .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.frame(height: 100)
