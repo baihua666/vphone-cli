@@ -2,6 +2,32 @@ import Foundation
 import Testing
 @testable import VPhoneWSCore
 
+@MainActor @Test func nativeDetectionClearsPreviousIPAndShowsStoppedGuestFailure() async {
+    let runner = FakeCLIRunner()
+    let client = VPhoneCLIClient(executable: URL(fileURLWithPath: "/cli"), libraryRoot: nil, runner: runner)
+    let controller = NativeDecodoController(client: client, name: "a")
+    let help = ["vm", "network", "a", "--help"]
+    let probe = ["vm", "network", "a", "--json", "--probe"]
+    runner.stub(arguments: help, result: CLIResult(stdout: "--probe", stderr: "", exitCode: 0))
+    let success = CLIResult(stdout: #"{"device":true,"egress":{"ip":"192.0.2.1","origin":"guest","source":"ipify","checked_at":"2026-10-27T00:00:00Z"}}"#, stderr: "", exitCode: 0)
+    runner.stub(arguments: probe, result: success)
+    await controller.detectGuest()
+    #expect(controller.guestIP == "192.0.2.1")
+
+    runner.stub(arguments: probe, result: CLIResult(stdout: "", stderr: "a is not running, or its control socket does not answer.", exitCode: 64))
+    await controller.detectGuest()
+    #expect(controller.guestIP == nil)
+    #expect(controller.message.contains("not running"))
+    #expect(controller.message.contains("64"))
+    #expect(!controller.busy)
+
+    runner.stub(arguments: probe, result: success)
+    await controller.detectGuest()
+    #expect(controller.guestIP == "192.0.2.1")
+    #expect(controller.message == "检测完成，未修改代理。")
+    #expect(runner.calls.allSatisfy { $0.arguments == help || $0.arguments == probe })
+}
+
 @Test func nativeModeUsesExistingDecodoParameterRulesAndSeparateFiles() throws {
     let fixture = try ClashFixture(); defer { fixture.cleanup() }
     let credentials = NativeDecodoService.Credentials(username: "test", password: "test")

@@ -19,7 +19,7 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 业务源码 | 已合并；本次尚未推送远端或发布 Release |
+| 业务源码 | 已合并；用户随后要求推送 `origin/tb_dev`，不发布 Release |
 | Core | 完整构建、ad-hoc 签名及 admission 通过，当前 Mac 已安装并运行 |
 | 本次 Core 身份 | `2.15.0-local.f7570c4b`，test，源码构建标识 `94dbabe2` |
 | Launchpad 2.15.0 | 完整构建与业务回归通过；等待有效 Apple 签名后部署 |
@@ -38,7 +38,17 @@ Distribution 25 项、共享 Workstation 120 项、全部 16 个 Launchpad 独�
 ## 在另一台 Mac 获取同一份源码
 
 先记录本机工作区、分支和运行实例；保留本地修改，不使用 reset/clean。
-本轮未推送，因此仅 `git pull origin tb_dev` 不保证拿到本次升级。
+首次整理时尚未推送，随附离线包止于 `b3416726`。用户随后要求推送时，另外合并了
+远端 `6575a838` 的宿主相机、社交自动化和代理/Helper 工作；离线包不包含这次
+远端整合。推送完成后优先通过 Git 获取最新 `origin/tb_dev`，核对其包含 `94dbabe2`：
+
+```sh
+git fetch origin tb_dev
+git merge --ff-only origin/tb_dev
+git merge-base --is-ancestor 94dbabe2 HEAD
+```
+
+本机分支分叉时不要强制覆盖，应检查差异并合并。
 若使用随附 Git bundle，在已有完整业务仓库根目录运行：
 
 ```sh
@@ -121,3 +131,18 @@ LP=/Applications/vphone-launchpad.app/Contents/MacOS/vphone-launchpad-cli
   回退 Launchpad 使用备份的完整签名 App，不重建 VM，不清空业务数据库。
 
 现场证据与准确范围见 [本机验收记录](../../Research/Host/upstream_2_15_0_upgrade_20261103.md)。
+
+推送前的远端整合保留 2.15.0 产品版本及双方研究/翻译内容，Helper 构建号仍为 21，
+保留远端的兼容复用策略。此次源码整合不会自动替换当前运行的 `94dbabe2` Core；
+上文实机点击证据仍只针对 `2.15.0-local.f7570c4b`，不能冒充新合并产物的运行验收。
+用户已明确暂不处理证书，新 Launchpad 部署继续暂停。
+
+远端整合后的补充检查：Core/Launchpad 完整构建通过、共享层 128 项通过、
+社交自动化包 22 项通过、HelperCompatibility 与宿主相机启用/停用的逻辑及集成
+模拟测试通过。没有调用真实发布任务，也没有替换已安装 App/Core。
+
+同日用户反馈的原图任务失败另属业务适配问题：当前 Threads 系统照片选择器
+AX 格子为 `PXGGridLayout-Info`，原图选择路径仍过滤 `grid-view-cell-*`，得到空候选；
+失败日志为 `photo: Threads picker`、空 `photo-match:`、无法唯一识别原图。
+需适配照片选择器类型，并处理重复原图、浮点边界和实时尺寸；本次推送未修复该流程，
+既有单测通过不表示真实原图发帖任务已验收。

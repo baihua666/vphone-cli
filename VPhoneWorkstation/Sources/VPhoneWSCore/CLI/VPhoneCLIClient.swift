@@ -1,11 +1,13 @@
 import Foundation
 
-public enum VPhoneCLIError: Error, Equatable {
+public enum VPhoneCLIError: LocalizedError, Equatable {
     case nonZeroExit(code: Int32, stderr: String)
     /// vphone-cli was terminated by a signal before it could run — almost always
     /// AMFI's SIGKILL because the amfidont allowlist daemon isn't active.
     case killedOnLaunch(signal: Int32)
     case decodeFailed(String)
+
+    public var errorDescription: String? { userMessage }
 
     /// Plain-English, actionable text for surfacing in the UI.
     public var userMessage: String {

@@ -232,7 +232,14 @@ compatibility_library="$(/usr/bin/xcrun swift-stdlib-tool --print \
 /usr/bin/codesign --force --sign - --entitlements "$root/VPhoneDaemon/Configuration/VPhoneDaemon.entitlements" "$guest/vphoned-watchos"
 /usr/bin/codesign --force --sign - "$macos/vphone-escalator"
 /usr/bin/codesign --force --sign - "$macos/libswiftCompatibilitySpan.vphone.dylib"
-/usr/bin/codesign --force --sign - --entitlements "$root/VPhoneExecutable/VPhoneVirtualization/Resources/VPhoneVirtualization.entitlements" "$macos/vphone-vm"
+# Static host-camera assembly; permission resources follow the same explicit build flag as the source.
+source "$root/Integrations/HostCamera/Build/HostCameraBuild.zsh"
+vphone_host_camera_prepare_bundle "$info_plist" "${VPHONE_HOST_CAMERA:-}"
+camera_entitlements="${DERIVED_FILE_DIR:?}/VPhoneVirtualization.entitlements"
+vphone_host_camera_entitlements "$info_plist" \
+    "$root/VPhoneExecutable/VPhoneVirtualization/Resources/VPhoneVirtualization.entitlements" "$camera_entitlements"
+/usr/bin/codesign --force --sign - --entitlements "$camera_entitlements" "$macos/vphone-vm"
+vphone_host_camera_validate "$info_plist" "$macos/vphone-vm"
 # locationd keeps the requirement a client first registered with and turns
 # away a client with another one while that one still runs. An ad hoc
 # signature's implicit requirement is its cdhash, so each build would be a

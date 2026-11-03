@@ -1,4 +1,5 @@
 import SwiftUI
+import VPhoneWSCore
 
 /// Shared by the platform inspector and the business registration sheet.
 struct VPhoneLaunchpadFlywheelNetworkView: View {
@@ -41,10 +42,12 @@ struct VPhoneLaunchpadFlywheelNetworkPreparationView: View {
         @Bindable var network = network
         VStack(alignment: .leading, spacing: 16) {
             Text("准备业务网络 · \(machine.name)").font(.headline)
-            Text("仅操作此实例：必要时正常关闭、设置 tunnel 并启动；优先复用已生效的 DECODO，否则通过已有本机代理凭据配置原生 ISP 出口，再从 guest 验证公网 IP。")
+            Text("仅操作此实例：必要时正常关闭、设置 tunnel 并启动；优先复用已生效的 DECODO，否则配置原生 ISP 出口，再从 guest 验证公网 IP。")
             TextField("新出口城市参数", text: $network.city)
             TextField("检测使用的物理网卡", text: $network.device)
-            TextField("本机代理凭据文件", text: $network.credentialsPath)
+            if !NativeDecodoController.usesEmbeddedCredentials {
+                TextField("本机代理凭据文件", text: $network.credentialsPath)
+            }
             Text("默认城市为 New York。网卡需与本机 Wi-Fi 对应；复用已有 DECODO 时不会重新申请出口。")
                 .font(.caption).foregroundStyle(.secondary)
             if let message = network.messages[machine.path] { Text(message).textSelection(.enabled) }
@@ -73,9 +76,10 @@ struct VPhoneLaunchpadFlywheelNetworkPreparationView: View {
 struct VPhoneLaunchpadCurrentIPView: View {
     let path: VPhoneLaunchpadMachinePath
     var body: some View {
-        let result = VPhoneLaunchpadFlywheelNetwork.shared.measurements[path]
+        let network = VPhoneLaunchpadFlywheelNetwork.shared
+        let result = network.measurements[path]
         VStack(alignment: .leading, spacing: 4) {
-            LabeledContent("当前实测公网 IP", value: result?.ip ?? "尚未检测 / 待重新检测")
+            LabeledContent("当前实测公网 IP", value: result?.ip ?? network.messages[path] ?? "尚未检测 / 待重新检测")
             if let result {
                 LabeledContent("检测时间", value: result.checkedAt.formatted(date: .numeric, time: .standard))
             }

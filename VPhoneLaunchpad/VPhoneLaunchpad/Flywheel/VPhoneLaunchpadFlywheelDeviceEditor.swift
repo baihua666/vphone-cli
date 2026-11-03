@@ -1,4 +1,5 @@
 import SwiftUI
+import VPhoneWSCore
 import VPhoneFlywheel
 
 struct VPhoneLaunchpadFlywheelDeviceEditor: View {
@@ -76,7 +77,9 @@ struct VPhoneLaunchpadFlywheelDeviceEditor: View {
                             .font(.caption)
                         TextField("新出口城市参数", text: $network.city)
                         TextField("物理 Wi-Fi 网卡", text: $network.device)
-                        TextField("本机代理凭据文件", text: $network.credentialsPath)
+                        if !NativeDecodoController.usesEmbeddedCredentials {
+                            TextField("本机代理凭据文件", text: $network.credentialsPath)
+                        }
                         Text("仅新申请原生 ISP 出口时使用；已生效的 DECODO 会直接复用。")
                             .font(.caption).foregroundStyle(.secondary)
                         if let message = network.messages[.init(libraryRoot: selectedMachine.libraryRoot, name: selectedMachine.name)] {

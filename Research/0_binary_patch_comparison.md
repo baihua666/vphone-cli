@@ -204,6 +204,26 @@
 > returns directly to Home; the original remains running with its data intact.
 > Both receipts have zero pending changes and legacy setup off.
 
+## 2026-10-28 宿主摄像头独立模块与静态 Hook（无固件二进制补丁）
+
+新增 `Integrations/HostCamera`，实验宏 `VPHONE_EXPERIMENTAL_HOST_CAMERA` 默认关闭。
+经用户明确确认，接入系统 AVFoundation 采集、单槽 BGRA 帧缓冲、受宏控制的菜单／
+生命周期 Hook，以及 Xcode 配置／用途说明／条件签名权限。随后经用户授权部署本机
+测试 App 和仅替换 VM 宿主的 Core，测试机 `4-20261023` 绑定该 Core；原运行实例已恢复。
+60 帧软件模拟及真实 VM 测试图案预览／拍照通过；USB 实物采集和目标第三方 APP 未验证。
+没有新增或启用 guest／固件／内核／DSC 补丁、patch-set 或 preset，既有计数不变。
+范围、接入点、双态验证、回退及真实验收限制见
+[宿主摄像头模块](../Integrations/HostCamera/README.md)和
+[部署验收](Host/host_camera_deployment_20261028.md)。
+
+## 2026-10-23 M0无RF宿主实验（无二进制补丁）
+
+新增独立`Integrations/NFCNoRF`研究工具，宏`VPHONE_EXPERIMENTAL_NFC_NO_RF`默认关闭；
+仅宿主自有NCI/HCP子集与外置真实jCardSim测试applet，不接入产品／guest／内核／DSC。
+没有新增、启用或改写固件补丁／patch-set／preset，已有补丁数量与系统行为不因此改变。
+实际SELECT／echo及故障恢复范围见[验收报告](Guest/nfc_no_rf_m0_implementation_20261023.md)；
+模型通过不代表原Comet、LoadStack或Wallet可用。
+
 > **The iPhone17,3 presents its board (2026-10-25).**
 > `VPhoneGuestDevice.presentsBoard` no longer excludes the iPhone17,3; only the
 > XS Max keeps the shared tree. An iPhone17,3 guest now gets the separate

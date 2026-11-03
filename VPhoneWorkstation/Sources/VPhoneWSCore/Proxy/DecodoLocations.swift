@@ -28,7 +28,11 @@ public struct DecodoLocation: Identifiable, Hashable, Sendable {
             .lowercased().replacingOccurrences(of: " ", with: "_")
     }
     public static func filtered(_ values: [Self], kind: Kind?, search: String) -> [Self] {
-        values.filter { (kind == nil || $0.kind == kind) &&
+        #if VPHONE_CUSTOM_DECODO_LOCATION_BROWSING
+        // Foundation's String.contains("") is false; an empty query means browse all locations.
+        if search.isEmpty { return values.filter { kind == nil || $0.kind == kind } }
+        #endif
+        return values.filter { (kind == nil || $0.kind == kind) &&
             ($0.kind == .random ? search.isEmpty : $0.label.lowercased().contains(search.lowercased())) }
     }
 }

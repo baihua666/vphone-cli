@@ -98,6 +98,15 @@ struct VPhoneLaunchpadApp: App {
         .restorationBehavior(.disabled)
         #endif
 
+        #if VPHONE_CUSTOM_THREADS_DESKTOP
+        Window("Threads 自动化", id: "threads") {
+            VPhoneLaunchpadThreadsView().environment(model)
+        }
+        .defaultSize(width: 1000, height: 850)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        #endif
+
         Settings { DecodoAccountSettingsView() }
 
         MenuBarExtra(isInserted: $showsInMenuBar) {

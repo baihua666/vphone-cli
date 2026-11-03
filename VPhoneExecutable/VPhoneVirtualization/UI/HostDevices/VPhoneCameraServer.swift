@@ -24,6 +24,9 @@ final class VPhoneCameraServer {
         case off
         case testPattern
         case videoFile // .mov / .mp4 / .m4v via AVAssetReader
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+        case hostCamera
+#endif
     }
 
     nonisolated static let vsockPort: UInt32 = 1338
@@ -72,8 +75,8 @@ final class VPhoneCameraServer {
 
     // MARK: - Source selection
 
-    func setSource(_ kind: SourceKind, videoURL: URL? = nil) {
-        if sourceKind == kind, kind != .videoFile {
+    func setSource(_ kind: SourceKind, videoURL: URL? = nil, externalProducer: VPhoneFrameProducer? = nil) {
+        if sourceKind == kind, kind != .videoFile, externalProducer == nil {
             return
         }
         let wasStreaming = (timer != nil)
@@ -82,6 +85,11 @@ final class VPhoneCameraServer {
         }
         sourceKind = kind
         switch kind {
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+        case .hostCamera:
+            producer = externalProducer
+            if producer == nil { sourceKind = .off }
+#endif
         case .off:
             producer = nil
         case .testPattern:
@@ -118,6 +126,9 @@ final class VPhoneCameraServer {
 
     func startStreaming() {
         guard producer != nil, isConnected else { return }
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+        (producer as? VPhoneHostCameraProducer)?.start()
+#endif
         if timer != nil {
             return
         }
@@ -167,6 +178,9 @@ final class VPhoneCameraServer {
     }
 
     func stopStreaming() {
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+        (producer as? VPhoneHostCameraProducer)?.stop()
+#endif
         guard let t = timer else { return }
         t.cancel()
         timer = nil
@@ -177,6 +191,9 @@ final class VPhoneCameraServer {
     /// a write fails with EPIPE — the most common case is vphoned auto-update
     /// killing its server-side socket while the host is streaming.
     private func handleDisconnect() {
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+        (producer as? VPhoneHostCameraProducer)?.stop()
+#endif
         print("[camera] disconnect detected, will reconnect")
         connectionFD = -1
         connection = nil
@@ -207,6 +224,10 @@ final class VPhoneCameraServer {
                     self.isConnected = true
                     print("[camera] connected on vsock port \(Self.vsockPort)")
                     self.onConnectionStateChange?(true)
+#if VPHONE_EXPERIMENTAL_HOST_CAMERA
+                    // Reconnect only resumes an active stream, never a merely selected live camera.
+                    if self.sourceKind == .hostCamera, self.timer == nil { return }
+#endif
                     if self.sourceKind != .off {
                         self.startStreaming()
                     }

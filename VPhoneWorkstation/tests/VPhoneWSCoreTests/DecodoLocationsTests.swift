@@ -2,6 +2,24 @@ import Foundation
 import Testing
 @testable import VPhoneWSCore
 
+@Test func decodoCatalogBrowsesWithoutSearchingAndRestoresAfterClearingSearch() {
+    let country = DecodoLocation(kind: .country, country: "US", city: "", state: "")
+    let state = DecodoLocation(kind: .state, country: "US", city: "", state: "New York")
+    let city = DecodoLocation(kind: .city, country: "US", city: "New York City", state: "New York")
+    let items = [DecodoLocation.random, country, state, city]
+    #expect(DecodoLocation.filtered(items, kind: .city, search: "YORK") == [city])
+    #if VPHONE_CUSTOM_DECODO_LOCATION_BROWSING
+    #expect(DecodoLocation.filtered(items, kind: nil, search: "") == items)
+    for kind in [DecodoLocation.Kind.country, .state, .city] {
+        #expect(DecodoLocation.filtered(items, kind: kind, search: "") == items.filter { $0.kind == kind })
+    }
+    #else
+    #expect(DecodoLocation.filtered(items, kind: nil, search: "") == [.random])
+    #endif
+    #expect(DecodoLocation.filtered([], kind: nil, search: "").isEmpty)
+    #expect(DecodoLocation.filtered(items, kind: .city, search: "not available").isEmpty)
+}
+
 @Test func decodoCatalogMatchesDashboardInventoryAndFiltering() throws {
     let data = Data(#"{"static_isp":{"ip_locations":{"US":100,"IN":0,"FR":1},"ip_locations_by_city":{"US":[{"city":"Boston","state":"Massachusetts","count":10},{"city":"New York City","state":"New York","count":10},{"city":"","state":"","count":0},{"city":"Washington","state":"DC","count":0}],"FR":[{"city":"Paris","state":"Ile de France","count":1}],"IN":[{"city":"Mumbai","state":"Maharashtra","count":10}]}}}"#.utf8)
     let items = try DecodoLocations.decode(data)

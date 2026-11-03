@@ -1,5 +1,19 @@
 # Decodo ISP 官网地区选择器
 
+## 2026-10-25 空搜索列表修复
+
+现场读取 `https://dashboard.decodo.cn/static-isp-proxies/proxy-setup`：展开地点时无需搜索即可浏览城市列表。Launchpad 同步显示 52 个地区，但空搜索仅显示随机，选择城市分类为空，输入 YORK 才出现 New York City。根因为 Foundation 的 `String.contains("")` 返回 false；原过滤器只对随机选项单独处理空搜索。
+
+复用现有订阅库存、分类、列表与选中逻辑，在共享地区过滤器中显式处理空查询，按所选类型返回全部地区。涉及 Workstation subtree 的 `DecodoLocations.swift`、`Package.swift` 和原测试文件，因为 Launchpad 已通过该 package 复用地区规则；不修改 CLI、Core Bundle、VM、guest、helper、版本、账号文件及出口配置。
+
+编译条件 `VPHONE_CUSTOM_DECODO_LOCATION_BROWSING` 集中定义在 `VPhoneWorkstation/Package.swift` 的 `decodoLocationSettings`，默认开启，同时传给 VPhoneWSCore 和测试 target。Launchpad 静态链接此 package，无跨进程协议变化。清空设置数组并重新构建即可退回原搜索路径（空查询仅随机）；不写持久数据，无需迁移。完整删除本次定制时一起删除该配置、过滤器条件分支和对应测试。此开关仅覆盖本次空查询浏览行为，已有 Decodo/代理业务未完成整体宏隔离。
+
+回归测试先在旧实现复现全部及三个分类共四处失败，修复后覆盖空查询、分类、搜索后清空、无结果及空库存；保留原库存解析与地区凭据生成测试。验证日志位于忽略目录 `.build/decodo-location-*.log`，不包含凭据。关闭宏的独立测试使用忽略目录内的临时 manifest，链接实际源码，未改动正式 manifest。选择地点仅改变表单选中项；本次验收不申请新代理、不换 IP。
+
+交付验证：开启和关闭宏各 121 项共享服务测试通过；`scripts/dev.sh build launchpad` 成功。按已安装 App 的开发签名团队通过命令行构建（团队未写入源码），为 Debug dylib、preview dylib 和完整 App 签名，deep strict 校验通过。已更新 `/Applications/vphone-launchpad.app` 为本地测试产物，产品版本保持 2.8.0，原 App 备份在 `.build/validation/decodo-location-before.app`。安装后 debug dylib SHA-256 与构建产物一致。运行中 VM 的 PID 35663 及 pinned `2.8.0-local.199abaf3` 未变。
+
+在停止的 `2-20261023` 实例表单现场验收：真实账号同步仍为 21 个国家、4 个州、27 个城市；空查询全部列表包含随机及全部地区；国家、州、城市三个分类可直接浏览。搜索 YORK 返回 New York City，清空后恢复城市列表；直接点击城市后表单回填，重新展开保留勾选。未点击获取出口、换 IP 或启动实例。既有检测中的 ipify 证书错误不属于本次列表修复，未绕过证书校验。
+
 2026-10-22：读取官网 index.625a8d9c.js 确认 eNF 组件使用 subscriptions 的 static_isp 地区字段；eNz 为忽略大小写的 substring 搜索，国家 count>0，城市 count>0 且名称非空，美国州从城市去重。州使用 -state-，城市使用 -city-，国家使用 -country-。
 
 使用当前 Chrome Default 的 Decodo JWT-AUTH 对固定 HTTPS subscriptions 接口实测 HTTP 200。只检查产品键与地区字段，没有打印身份/订阅/密码/Cookie；美国城市为 Ashburn、Boston、New York City、Palo Alto、San Jose。未登录为 HTTP 401。

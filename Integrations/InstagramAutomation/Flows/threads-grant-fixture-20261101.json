@@ -1,0 +1,5 @@
+{"steps":[
+  {"id":"limited-picker","action":"wait","identifier":"Update"},
+  {"id":"select-fixture","action":"visualTap","text":"VPHONE-THREADS-20261101"},
+  {"id":"grant-selected","action":"tap","identifier":"Update"}
+]}

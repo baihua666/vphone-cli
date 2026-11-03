@@ -35,6 +35,22 @@ private let exe = URL(fileURLWithPath: "/usr/bin/vphone-cli")
     }
 }
 
+@Test func cliFailurePreservesDetailsThroughFoundationErrorBridge() {
+    let failures: [VPhoneCLIError] = [
+        .nonZeroExit(code: 64, stderr: "Error: phone is not running, or its control socket does not answer.\n"),
+        .nonZeroExit(code: 1, stderr: " \n"),
+        .decodeFailed("Invalid network response"),
+        .killedOnLaunch(signal: SIGTERM)
+    ]
+    for failure in failures {
+        let error: any Error = failure
+        #expect(error.localizedDescription == failure.userMessage)
+        #expect((error as NSError).localizedDescription == failure.userMessage)
+    }
+    #expect(failures[0].localizedDescription.contains("control socket"))
+    #expect(failures[1].localizedDescription.contains("code 1"))
+}
+
 @Test func signalTerminationThrowsKilledOnLaunch() async throws {
     let fake = FakeCLIRunner()
     fake.stub(arguments: ["vm", "list", "--json"],

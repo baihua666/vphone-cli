@@ -1,0 +1,11 @@
+{"steps":[
+  {"id":"account","action":"wait","text":"test409518"},
+  {"id":"caption","action":"wait","text":"VPHONE-THREADS-20261101\nAutomated test. Generated image; no personal content."},
+  {"id":"image","action":"visualWait","text":"VPHONE-THREADS-20261101"},
+  {"id":"publish","action":"publish","identifier":"composer-post-button"},
+  {"id":"composer-closed","action":"waitGone","identifier":"composer-post-button"},
+  {"id":"open-profile","action":"tap","identifier":"profile-tab"},
+  {"id":"profile","action":"wait","text":"Edit profile"},
+  {"id":"posted-caption","action":"wait","text":"VPHONE-THREADS-20261101\nAutomated test. Generated image; no personal content."},
+  {"id":"posted-image","action":"visualWait","text":"VPHONE-THREADS-20261101"}
+]}
